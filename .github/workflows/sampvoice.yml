@@ -69,7 +69,9 @@ jobs:
           $abh = & $dumpbin.FullName /dependents $asi | Out-String
           $abh
           if ($abh -match "MSVCP140|VCRUNTIME140") { throw "sampvoice.asi braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
-          if ($abh -notmatch "samp.dll") { throw "sampvoice.asi bindet samp.dll nicht ein" }
+          if ($abh -notmatch "bass.dll") { throw "sampvoice.asi bindet bass.dll nicht ein" }
+          # samp.dll wird nicht importiert, sondern zur Laufzeit gesucht; der Name muss in der Datei stehen
+          if (-not (Select-String -Path $asi -Pattern "samp.dll" -SimpleMatch -Quiet)) { throw "samp.dll fehlt in sampvoice.asi" }
 
       - name: Paket zusammenstellen
         shell: pwsh

@@ -30,7 +30,7 @@ Das übernimmt GitHub mit [`.github/workflows/sampvoice.yml`](../.github/workflo
    - [`Directory.Build.targets`](Directory.Build.targets) stellt das alte Projekt (v141_xp, Windows SDK 7.1A, DirectX SDK) auf aktuelle Werkzeuge um.
    - D3DX 9 kommt aus dem NuGet-Paket `Microsoft.DXSDK.D3DX`.
    - Die C++-Laufzeit ist fest eingebaut (`/MT`). Die `.asi` braucht deshalb keine VC++-Laufzeit beim Spieler.
-3. Prüfen, dass die `.asi` 32 Bit ist und `samp.dll` einbindet.
+3. Prüfen, dass die `.asi` 32 Bit ist, BASS einbindet und keine VC++-Laufzeit braucht.
 4. Das Original-Paket `sv_client_037_r1_english.zip` laden und seine Prüfsumme kontrollieren.
    - Darin wird nur `sampvoice.asi` ersetzt und `sampvoice-lizenz.txt` ergänzt.
    - ASI Loader (`vorbisFile.dll`, `vorbisHooked.dll`) und BASS (`bass.dll`, `bass_fx.dll`) bleiben unverändert.
