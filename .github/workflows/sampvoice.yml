@@ -36,6 +36,7 @@ jobs:
           git clone --quiet https://github.com/CyberMor/sampvoice.git quelle
           git -C quelle checkout --quiet $env:SAMPVOICE_COMMIT
           git -C quelle apply --verbose ../sampvoice/ohne-sprecheranzeige.patch
+          git -C quelle apply --verbose ../sampvoice/neuer-compiler.patch
           Copy-Item sampvoice/Directory.Build.targets quelle/client/
           git -C quelle diff --stat
 

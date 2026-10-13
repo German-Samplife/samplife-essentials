@@ -15,6 +15,8 @@ Eine einzige Stelle in [`ohne-sprecheranzeige.patch`](ohne-sprecheranzeige.patch
 - In `client/Plugin.cpp` (`Plugin::OnInitGame`) entfällt der Aufruf `SpeakerList::Show()`.
 - Ohne ihn zeichnet `SpeakerList::Render` nichts. Liste und Kopf-Symbol fallen damit beide weg.
 
+Dazu kommt [`neuer-compiler.patch`](neuer-compiler.patch). Er ändert nichts am Verhalten. Er setzt nur an einer Stelle in `client/Network.cpp` eine ausdrückliche Typumwandlung, die der heutige Compiler verlangt (Fehler C2398).
+
 Alles andere bleibt wie im Original:
 - Mikrofon-Symbol unten rechts
 - Menü mit den Einstellungen
