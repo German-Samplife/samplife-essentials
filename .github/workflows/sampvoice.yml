@@ -33,8 +33,16 @@ jobs:
       - name: Quelltext von SampVoice 3.1 holen und anpassen
         shell: pwsh
         run: |
-          git clone --quiet https://github.com/CyberMor/sampvoice.git quelle
-          git -C quelle checkout --quiet $env:SAMPVOICE_COMMIT
+          # Jeder fehlgeschlagene Befehl bricht ab; ohne das baut ein gescheiterter Checkout still den aktuellen Master (4.x)
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # Genau diesen Commit holen, ohne Umwandlung der Zeilenenden
+          git init --quiet quelle
+          git -C quelle config core.autocrlf false
+          git -C quelle fetch --quiet --depth 1 https://github.com/CyberMor/sampvoice.git $env:SAMPVOICE_COMMIT
+          git -C quelle checkout --quiet FETCH_HEAD
+          $kopf = (git -C quelle rev-parse HEAD).Trim()
+          if ($kopf -ne $env:SAMPVOICE_COMMIT) { throw "Falscher Stand: $kopf" }
           git -C quelle apply --verbose ../sampvoice/ohne-sprecheranzeige.patch
           git -C quelle apply --verbose ../sampvoice/neuer-compiler.patch
           Copy-Item sampvoice/Directory.Build.targets quelle/client/
@@ -62,6 +70,7 @@ jobs:
       - name: Prüfen
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $asi = "quelle/binaries/sampvoice.asi"
           if (-not (Test-Path $asi)) { throw "sampvoice.asi fehlt" }
           $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
@@ -73,10 +82,15 @@ jobs:
           if ($abh -notmatch "bass.dll") { throw "sampvoice.asi bindet bass.dll nicht ein" }
           # samp.dll wird nicht importiert, sondern zur Laufzeit gesucht; der Name muss in der Datei stehen
           if (-not (Select-String -Path $asi -Pattern "samp.dll" -SimpleMatch -Quiet)) { throw "samp.dll fehlt in sampvoice.asi" }
+          # Stand 3.1 erkennen: Meldungen, die es nur in 3.1 gibt, und keine aus 4.x
+          if (-not (Select-String -Path $asi -Pattern "[sv:dbg:blacklist:init]" -SimpleMatch -Quiet)) { throw "sampvoice.asi ist nicht aus SampVoice 3.1 gebaut" }
+          if (Select-String -Path $asi -Pattern "[sv:dbg:ClientInitialize]" -SimpleMatch -Quiet) { throw "sampvoice.asi stammt aus SampVoice 4.x" }
+          if (-not (Select-String -Path $asi -Pattern "Turn on microphone" -SimpleMatch -Quiet)) { throw "sampvoice.asi hat nicht das englische Menü" }
 
       - name: Paket zusammenstellen
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           Invoke-WebRequest $env:ORIGINAL_URL -OutFile original.zip
           $hash = (Get-FileHash original.zip -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne $env:ORIGINAL_SHA256) { throw "Prüfsumme des Original-Pakets stimmt nicht: $hash" }
