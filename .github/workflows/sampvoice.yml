@@ -1,0 +1,129 @@
+# Baut den SampVoice-3.1-Client für SA-MP 0.3.7 R1 ohne Sprecheranzeige (siehe sampvoice/README.md).
+# Bei Änderungen an sampvoice/ wird nur gebaut und geprüft; ein Tag wie sampvoice-3.1-sl1 legt das Release an.
+name: SampVoice
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "sampvoice/**"
+      - ".github/workflows/sampvoice.yml"
+    tags:
+      - "sampvoice-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # SampVoice v3.1 von CyberMor (MIT)
+  SAMPVOICE_COMMIT: 60a511af30903c4f8a456f5b0ff1e45bf7f498f5
+  # Original-Paket, aus dem ASI Loader und BASS unverändert übernommen werden
+  ORIGINAL_URL: https://github.com/CyberMor/sampvoice/releases/download/v3.1/sv_client_037_r1_english.zip
+  ORIGINAL_SHA256: 6443138c11f3b384ee822af790492216e07b7293a7d1b05f86d7bc43a720ccf2
+  D3DX_VERSION: 9.29.952.8
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Quelltext von SampVoice 3.1 holen und anpassen
+        shell: pwsh
+        run: |
+          # Jeder fehlgeschlagene Befehl bricht ab; ohne das baut ein gescheiterter Checkout still den aktuellen Master (4.x)
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # Genau diesen Commit holen, ohne Umwandlung der Zeilenenden
+          git init --quiet quelle
+          git -C quelle config core.autocrlf false
+          git -C quelle fetch --quiet --depth 1 https://github.com/CyberMor/sampvoice.git $env:SAMPVOICE_COMMIT
+          git -C quelle checkout --quiet FETCH_HEAD
+          $kopf = (git -C quelle rev-parse HEAD).Trim()
+          if ($kopf -ne $env:SAMPVOICE_COMMIT) { throw "Falscher Stand: $kopf" }
+          git -C quelle apply --verbose ../sampvoice/ohne-sprecheranzeige.patch
+          git -C quelle apply --verbose ../sampvoice/neuer-compiler.patch
+          Copy-Item sampvoice/Directory.Build.targets quelle/client/
+          git -C quelle diff --stat
+
+      - name: D3DX 9 aus NuGet holen
+        shell: pwsh
+        run: |
+          nuget install Microsoft.DXSDK.D3DX -Version $env:D3DX_VERSION -OutputDirectory pakete -NonInteractive
+          "D3DX_DIR=$((Resolve-Path "pakete/Microsoft.DXSDK.D3DX.$env:D3DX_VERSION/build/native").Path)\" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Bauen
+        shell: pwsh
+        run: |
+          $sln = (Resolve-Path quelle).Path + "\"
+          msbuild quelle/client/client.vcxproj /m /nologo /v:minimal `
+            /p:Configuration=Release /p:Platform=Win32 `
+            /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 `
+            /p:SolutionDir=$sln
+          if ($LASTEXITCODE -ne 0) { throw "msbuild fehlgeschlagen" }
+          Get-ChildItem quelle/bin
+
+      - name: Prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $asi = "quelle/bin/sampvoice.asi"
+          if (-not (Test-Path $asi)) { throw "sampvoice.asi fehlt" }
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
+          $kopf = & $dumpbin.FullName /headers $asi | Out-String
+          if ($kopf -notmatch "14C machine \(x86\)") { throw "sampvoice.asi ist nicht 32 Bit" }
+          $abh = & $dumpbin.FullName /dependents $asi | Out-String
+          $abh
+          if ($abh -match "MSVCP140|VCRUNTIME140") { throw "sampvoice.asi braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
+          if ($abh -notmatch "bass.dll") { throw "sampvoice.asi bindet bass.dll nicht ein" }
+          # samp.dll wird nicht importiert, sondern zur Laufzeit gesucht; der Name muss in der Datei stehen
+          if (-not (Select-String -Path $asi -Pattern "samp.dll" -SimpleMatch -Quiet)) { throw "samp.dll fehlt in sampvoice.asi" }
+          # Stand 3.1 erkennen: Meldungen, die es nur in 3.1 gibt, und keine aus 4.x
+          if (-not (Select-String -Path $asi -Pattern "[sv:dbg:blacklist:init]" -SimpleMatch -Quiet)) { throw "sampvoice.asi ist nicht aus SampVoice 3.1 gebaut" }
+          if (Select-String -Path $asi -Pattern "[sv:dbg:ClientInitialize]" -SimpleMatch -Quiet) { throw "sampvoice.asi stammt aus SampVoice 4.x" }
+          if (-not (Select-String -Path $asi -Pattern "Turn on microphone" -SimpleMatch -Quiet)) { throw "sampvoice.asi hat nicht das englische Menü" }
+
+      - name: Paket zusammenstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest $env:ORIGINAL_URL -OutFile original.zip
+          $hash = (Get-FileHash original.zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:ORIGINAL_SHA256) { throw "Prüfsumme des Original-Pakets stimmt nicht: $hash" }
+          Expand-Archive original.zip paket
+          Copy-Item quelle/bin/sampvoice.asi paket/sampvoice.asi -Force
+          Copy-Item LIZENZEN/sampvoice-MIT.txt paket/sampvoice-lizenz.txt
+          New-Item -ItemType Directory -Force release | Out-Null
+          Compress-Archive paket/* release/sampvoice-037-r1-samplife.zip
+          Get-ChildItem paket, release | Format-Table Name, Length
+          $zip = Get-Item release/sampvoice-037-r1-samplife.zip
+          $zhash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $ahash = (Get-FileHash paket/sampvoice.asi -Algorithm SHA256).Hash.ToLower()
+          "$zhash  sampvoice-037-r1-samplife.zip`n$ahash  sampvoice.asi" | Out-File -Encoding ascii release/SHA256SUMS.txt
+          "ZIP_SHA256=$zhash" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "ZIP_GROESSE=$($zip.Length)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Get-Content release/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sampvoice
+          path: release/
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/sampvoice-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $text = @"
+          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf).
+
+          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit der Änderung in ``sampvoice/ohne-sprecheranzeige.patch`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
+
+          Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
+          "@
+          gh release create "${{ github.ref_name }}" release/sampvoice-037-r1-samplife.zip release/SHA256SUMS.txt --title "SampVoice 3.1 ohne Sprecheranzeige (${{ github.ref_name }})" --notes $text --latest=false
