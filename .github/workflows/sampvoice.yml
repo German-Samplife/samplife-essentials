@@ -56,12 +56,12 @@ jobs:
             /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 `
             /p:SolutionDir=$sln
           if ($LASTEXITCODE -ne 0) { throw "msbuild fehlgeschlagen" }
-          Get-ChildItem quelle/bin
+          Get-ChildItem quelle/binaries
 
       - name: Prüfen
         shell: pwsh
         run: |
-          $asi = "quelle/bin/sampvoice.asi"
+          $asi = "quelle/binaries/sampvoice.asi"
           if (-not (Test-Path $asi)) { throw "sampvoice.asi fehlt" }
           $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
           $kopf = & $dumpbin.FullName /headers $asi | Out-String
@@ -78,7 +78,7 @@ jobs:
           $hash = (Get-FileHash original.zip -Algorithm SHA256).Hash.ToLower()
           if ($hash -ne $env:ORIGINAL_SHA256) { throw "Prüfsumme des Original-Pakets stimmt nicht: $hash" }
           Expand-Archive original.zip paket
-          Copy-Item quelle/bin/sampvoice.asi paket/sampvoice.asi -Force
+          Copy-Item quelle/binaries/sampvoice.asi paket/sampvoice.asi -Force
           Copy-Item LIZENZEN/sampvoice-MIT.txt paket/sampvoice-lizenz.txt
           New-Item -ItemType Directory -Force release | Out-Null
           Compress-Archive paket/* release/sampvoice-037-r1-samplife.zip
