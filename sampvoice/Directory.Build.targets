@@ -1,0 +1,23 @@
+<Project>
+  <!--
+    Wird vor dem Bau neben client/client.vcxproj gelegt. Das Projekt von SampVoice 3.1 erwartet
+    Visual Studio 2017 mit v141_xp, das Windows SDK 7.1A und das DirectX SDK (Juni 2010). Diese Datei
+    stellt den Bau auf Visual Studio 2022 um, ohne das Projekt selbst zu ändern:
+    - Pfade: aktuelles Windows SDK, D3DX 9 aus dem NuGet-Paket Microsoft.DXSDK.D3DX (Ordner in D3DX_DIR)
+    - SAMP_R1 und SAMP_EN: Fassung für SA-MP 0.3.7 R1 mit englischem Menü, wie sv_client_037_r1_english.zip
+    - Laufzeitbibliothek statisch (/MT), damit die .asi keine bestimmte VC++-Laufzeit beim Spieler voraussetzt
+    Toolset und SDK-Version kommen als Parameter von msbuild (siehe .github/workflows/sampvoice.yml).
+  -->
+  <PropertyGroup>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(D3DX_DIR)include</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);$(D3DX_DIR)release\lib\x86</LibraryPath>
+    <ExecutablePath>$(VC_ExecutablePath_x86);$(WindowsSDK_ExecutablePath);$(VS_ExecutablePath);$(MSBuild_ExecutablePath);$(SystemRoot)\SysWow64;$(PATH)</ExecutablePath>
+    <ExcludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath)</ExcludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>SAMP_R1;SAMP_EN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>

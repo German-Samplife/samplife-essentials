@@ -1,0 +1,14 @@
+diff --git a/client/Plugin.cpp b/client/Plugin.cpp
+index 932d37d..2b36375 100644
+--- a/client/Plugin.cpp
++++ b/client/Plugin.cpp
+@@ -125,7 +125,8 @@ void Plugin::OnInitGame() noexcept
+ 
+     GameUtil::DisableAntiCheat(*Plugin::pAddresses);
+ 
+-    SpeakerList::Show();
++    // German Samplife: keine Sprecheranzeige (Liste am Bildschirmrand und Symbol ueber dem Kopf).
++    // Wer spricht, hoert man ueber die Naehe; SpeakerList::Render zeichnet ohne Show() nichts.
+     MicroIcon::Show();
+ }
+ 
