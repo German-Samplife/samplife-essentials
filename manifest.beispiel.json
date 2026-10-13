@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "hinweis": "",
+  "samp_versionen": [
+    {
+      "name": "0.3.7-R1",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "0.3.7-R3"
+    },
+    {
+      "name": "0.3.DL-R1"
+    }
+  ],
+  "komponenten": [
+    {
+      "id": "sampvoice",
+      "name": "SampVoice",
+      "beschreibung": "Sprach-Chat im Spiel: Wer in deiner Nähe steht, hört dich. Das Paket bringt den ASI Loader mit.",
+      "quelle": "https://github.com/CyberMor/sampvoice",
+      "lizenz": "MIT",
+      "pflicht": true,
+      "pakete": [
+        {
+          "samp": "0.3.7-R1",
+          "url": "https://samplife.isjustfucking.pro/essentials/sampvoice-037-r1.zip",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "groesse": 743814,
+          "typ": "zip"
+        },
+        {
+          "samp": "0.3.7-R3",
+          "url": "https://samplife.isjustfucking.pro/essentials/sampvoice-037-r3.zip",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "groesse": 743828,
+          "typ": "zip"
+        }
+      ]
+    },
+    {
+      "id": "cef",
+      "name": "Browser-Oberfläche (CEF)",
+      "beschreibung": "Zeigt Menüs und Anzeigen des Servers als moderne Oberfläche im Spiel.",
+      "quelle": "https://github.com/zottce/samp-cef",
+      "lizenz": "GPL-3.0",
+      "pflicht": true,
+      "pakete": [
+        {
+          "samp": "0.3.7-R3",
+          "url": "https://samplife.isjustfucking.pro/essentials/cef-client-037-r3.zip",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "groesse": 325058560,
+          "typ": "zip"
+        },
+        {
+          "samp": "0.3.DL-R1",
+          "url": "https://samplife.isjustfucking.pro/essentials/cef-client-03dl-r1.zip",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "groesse": 325058560,
+          "typ": "zip"
+        }
+      ]
+    }
+  ]
+}

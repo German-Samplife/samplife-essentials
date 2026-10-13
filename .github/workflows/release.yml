@@ -1,0 +1,66 @@
+# Baut den Installer aus dem Quelltext dieses Repositorys und hängt ihn an ein Release.
+# Auslöser: ein Tag wie v1.2.0. Von Hand startbar, dann wird nur gebaut und geprüft.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version im Quelltext muss zum Tag passen
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $quelle = (Select-String -Path src/Programm.cs -Pattern 'public const string Version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $quelle) { throw "Tag v$tag passt nicht zur Version $quelle in src/Programm.cs" }
+
+      - name: Bauen
+        shell: cmd
+        run: bauen.cmd
+
+      - name: Prüfen
+        shell: pwsh
+        run: python test/pruefen.py
+
+      - name: Datei für das Release vorbereiten
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          # Leerzeichen im Dateinamen macht GitHub zu Punkten; gleich so benennen, damit der Link in der README stimmt
+          Copy-Item "ausgabe\Samplife Essentials Installer.exe" "release\Samplife.Essentials.Installer.exe"
+          $hash = (Get-FileHash "release\Samplife.Essentials.Installer.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  Samplife.Essentials.Installer.exe" | Out-File -Encoding ascii "release\SHA256SUMS.txt"
+          "SHA256=$hash" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: release/
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $text = @"
+          Samplife Essentials Installer ${{ github.ref_name }}
+
+          Herunterladen, starten, GTA-Verzeichnis bestätigen, auf „Installieren" klicken. Die Datei ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen" → „Trotzdem ausführen").
+
+          Gebaut von GitHub aus dem Quelltext dieses Tags.
+
+          SHA-256: ``$env:SHA256``
+          "@
+          gh release create "${{ github.ref_name }}" "release/Samplife.Essentials.Installer.exe" "release/SHA256SUMS.txt" --title "Samplife Essentials Installer ${{ github.ref_name }}" --notes $text --latest
