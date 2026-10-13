@@ -141,7 +141,8 @@ namespace SamplifeEssentials
         readonly ItemsControl fundListe;
         readonly FrameworkElement bereichVersion;
         readonly StackPanel versionen;
-        readonly TextBlock versionPflicht, versionHinweis;
+        readonly TextBlock versionPflicht, versionHinweis, versionTitel;
+        bool nurEineVersion;
         string vonHandGewaehlt = "";
         readonly ObservableCollection<Fund> funde = new ObservableCollection<Fund>();
         readonly ScrollViewer protokollRollen;
@@ -198,6 +199,7 @@ namespace SamplifeEssentials
             versionen = Finde<StackPanel>("Versionen");
             versionPflicht = Finde<TextBlock>("VersionPflicht");
             versionHinweis = Finde<TextBlock>("VersionHinweis");
+            versionTitel = Finde<TextBlock>("VersionTitel");
             fundListe.ItemsSource = funde;
             Finde<ItemsControl>("Liste").ItemsSource = komponenten;
             Finde<ItemsControl>("Protokoll").ItemsSource = zeilen;
@@ -376,6 +378,7 @@ namespace SamplifeEssentials
                         text += " · SA-MP-Version bitte unten wählen";
                         farbe = Farben.Warnung; symbol = "";
                     }
+                    else if (nurEineVersion) text += " · benötigt SA-MP " + sampVersion + ", siehe unten";
                     else text += " · SA-MP " + sampVersion + " (von dir gewählt)";
                     bereichVersion.Visibility = Visibility.Visible;
                 }
@@ -441,10 +444,29 @@ namespace SamplifeEssentials
             var namen = new List<string>();
             foreach (var version in manifest.SampVersionen) namen.Add(version.Name);
             var unterstuetzt = string.Join(" oder ", namen.ToArray());
-            versionPflicht.Text = "Die Erweiterungen laufen nur mit SA-MP " + unterstuetzt + ".";
-            versionHinweis.Text = "Spielst du über den open.mp-Launcher? Dann stelle dort in den Einstellungen als SA-MP-Version " + unterstuetzt
-                + " ein und wähle hier dieselbe. Mit einer anderen Version, zum Beispiel 0.3.DL, funktionieren die Erweiterungen nicht, "
-                + "und wenn Launcher und Auswahl nicht übereinstimmen, stürzt das Spiel beim Start ab.";
+            nurEineVersion = namen.Count == 1;
+            if (nurEineVersion)
+            {
+                // Nichts zu waehlen: die eine Version gilt, der Spieler muss sie nur im Launcher einstellen
+                vonHandGewaehlt = namen[0];
+                versionTitel.Text = "Wichtig: Du brauchst SA-MP " + unterstuetzt;
+                versionTitel.Foreground = Farben.Warnung;
+                versionPflicht.Text = "Die Erweiterungen und damit der Server laufen ausschließlich mit SA-MP " + unterstuetzt + ".";
+                versionHinweis.Text = "Spielst du über den open.mp-Launcher? Dann stelle dort in den Einstellungen als SA-MP-Version " + unterstuetzt
+                    + " ein, bevor du verbindest. Mit jeder anderen Version, auch 0.3.7-R3 oder 0.3.DL, stürzt das Spiel beim Start ab "
+                    + "oder du kommst nicht auf den Server.";
+                versionen.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                versionTitel.Text = "Mit welcher SA-MP-Version spielst du?";
+                versionTitel.Foreground = Farben.Text;
+                versionPflicht.Text = "Die Erweiterungen laufen nur mit SA-MP " + unterstuetzt + ".";
+                versionHinweis.Text = "Spielst du über den open.mp-Launcher? Dann stelle dort in den Einstellungen als SA-MP-Version " + unterstuetzt
+                    + " ein und wähle hier dieselbe. Mit einer anderen Version, zum Beispiel 0.3.DL, funktionieren die Erweiterungen nicht, "
+                    + "und wenn Launcher und Auswahl nicht übereinstimmen, stürzt das Spiel beim Start ab.";
+                versionen.Visibility = Visibility.Visible;
+            }
             foreach (var version in manifest.SampVersionen)
             {
                 var knopf = new RadioButton { Content = version.Name, GroupName = "SampVersion", Style = (Style)Wurzel.FindResource("Wahlknopf") };

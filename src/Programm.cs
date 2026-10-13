@@ -33,7 +33,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "1.2.0";
+        public const string Version = "1.3.0";
         public const string StandardManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
 
         [STAThread]
@@ -118,6 +118,7 @@ namespace SamplifeEssentials
                 if (!GtaVerzeichnis.IstGtaVerzeichnis(gta)) return 2;
                 var sampVersion = GtaVerzeichnis.SampVersion(gta, manifest);
                 if (sampVersion == "") sampVersion = optionen.Samp;
+                if (sampVersion == "" && manifest.SampVersionen.Count == 1) sampVersion = manifest.SampVersionen[0].Name;
                 var auswahl = new List<Komponente>();
                 foreach (var komponente in manifest.Komponenten)
                 {

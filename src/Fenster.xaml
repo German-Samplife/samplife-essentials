@@ -297,7 +297,7 @@
           </StackPanel>
           <!-- Nur sichtbar, wenn die SA-MP-Version nicht an der samp.dll erkannt wurde -->
           <StackPanel x:Name="BereichVersion" Margin="0,14,0,0" Visibility="Collapsed">
-            <TextBlock Text="Mit welcher SA-MP-Version spielst du?" FontSize="14" FontWeight="SemiBold"/>
+            <TextBlock x:Name="VersionTitel" Text="Mit welcher SA-MP-Version spielst du?" FontSize="14" FontWeight="SemiBold"/>
             <TextBlock x:Name="VersionPflicht" Foreground="{StaticResource Text}" FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap"/>
             <TextBlock x:Name="VersionHinweis" Foreground="{StaticResource Gedaempft}" FontSize="12" Margin="0,3,0,9" TextWrapping="Wrap"/>
             <StackPanel x:Name="Versionen" Orientation="Horizontal"/>
