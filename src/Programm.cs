@@ -13,6 +13,8 @@ namespace SamplifeEssentials
     {
         // Liste der Komponenten: was installiert wird, woher es kommt und welche Pruefsumme es haben muss
         public string ManifestQuelle = Programm.StandardManifest;
+        // Wird gefragt, wenn die Liste unter ManifestQuelle mit einem HTTP-Fehler antwortet; leer = kein Ersatz
+        public string AusweichQuelle = Programm.AusweichManifest;
         public string Gta = "";
         public string Samp = "";     // SA-MP-Version vorgeben, falls sie nicht erkannt wird
         public bool Testmodus;      // erlaubt eine lokale Liste und unverschluesselte Downloads vom eigenen Rechner
@@ -26,6 +28,7 @@ namespace SamplifeEssentials
         {
             var text = "";
             if (ManifestQuelle != Programm.StandardManifest) text += " --manifest \"" + ManifestQuelle + "\"";
+            if (AusweichQuelle != Programm.AusweichManifest && AusweichQuelle != "") text += " --ausweich \"" + AusweichQuelle + "\"";
             if (Testmodus) text += " --test";
             return text;
         }
@@ -33,19 +36,23 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "1.3.0";
-        public const string StandardManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
+        public const string Version = "1.4.0";
+        public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
+        // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
+        public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
 
         [STAThread]
         public static int Main(string[] args)
         {
             var optionen = new Optionen();
+            var ausweichGesetzt = false;
             for (var i = 0; i < args.Length; i++)
             {
                 var naechstes = i + 1 < args.Length ? args[i + 1] : "";
                 switch (args[i])
                 {
                     case "--manifest": optionen.ManifestQuelle = naechstes; i++; break;
+                    case "--ausweich": optionen.AusweichQuelle = naechstes; ausweichGesetzt = true; i++; break;
                     case "--gta": optionen.Gta = naechstes; i++; break;
                     case "--samp": optionen.Samp = naechstes; i++; break;
                     case "--test": optionen.Testmodus = true; break;
@@ -55,6 +62,9 @@ namespace SamplifeEssentials
                     case "--suche": optionen.Suchergebnis = naechstes; i++; break;
                 }
             }
+
+            // Eine eigene Liste hat keinen Ersatz, ausser er wird ausdruecklich angegeben
+            if (optionen.ManifestQuelle != StandardManifest && !ausweichGesetzt) optionen.AusweichQuelle = "";
 
             if (optionen.Suchergebnis != "")
             {
@@ -78,6 +88,31 @@ namespace SamplifeEssentials
             var fenster = new Fenster(optionen);
             anwendung.Run(fenster.Wurzel);
             return 0;
+        }
+
+        /// <summary>
+        /// Holt die Liste von der eingestellten Adresse. Antwortet sie mit einem HTTP-Fehler oder gar nicht,
+        /// wird die Ersatzadresse gefragt.
+        /// </summary>
+        public static string ListeHolen(Optionen optionen)
+        {
+            try
+            {
+                return ManifestHolen(optionen.ManifestQuelle, optionen.Testmodus);
+            }
+            catch (WebException fehler)
+            {
+                if (optionen.AusweichQuelle == "") throw;
+                try
+                {
+                    return ManifestHolen(optionen.AusweichQuelle, optionen.Testmodus);
+                }
+                catch (WebException ersatzFehler)
+                {
+                    throw new InvalidOperationException(fehler.Message + " Auch die Ersatzadresse " + optionen.AusweichQuelle
+                        + " antwortet nicht: " + ersatzFehler.Message);
+                }
+            }
         }
 
         /// <summary>Holt die Liste der Komponenten. Aus dem Netz nur verschluesselt; eine lokale Datei nur im Testmodus.</summary>
@@ -113,7 +148,7 @@ namespace SamplifeEssentials
         {
             try
             {
-                var manifest = Manifest.Lesen(ManifestHolen(optionen.ManifestQuelle, optionen.Testmodus));
+                var manifest = Manifest.Lesen(ListeHolen(optionen));
                 var gta = optionen.Gta != "" ? optionen.Gta : GtaVerzeichnis.Finden();
                 if (!GtaVerzeichnis.IstGtaVerzeichnis(gta)) return 2;
                 var sampVersion = GtaVerzeichnis.SampVersion(gta, manifest);

@@ -35,8 +35,10 @@ Der gesamte Quelltext des Installers liegt in diesem Repository. Die `.exe` in d
 Was installiert wird, steht nicht im Programm, sondern in einer JSON-Datei auf der Website:
 
 ```
-https://samplife.isjustfucking.pro/essentials/manifest.json
+https://www.german-samplife.de/essentials/manifest.json
 ```
+
+Antwortet diese Adresse mit einem HTTP-Fehler oder gar nicht, fragt der Installer die frühere Adresse `https://samplife.isjustfucking.pro/essentials/manifest.json`. Installer bis 1.3.0 kennen nur die frühere Adresse; sie muss deshalb erreichbar bleiben, bis diese Fassungen nicht mehr im Umlauf sind.
 
 So lassen sich Versionen austauschen, ohne den Installer neu zu bauen und neu zu verteilen.
 
@@ -112,7 +114,8 @@ Aufrufparameter für Tests:
 
 | Parameter | Wirkung |
 |---|---|
-| `--manifest <Adresse oder Datei>` | andere Liste verwenden |
+| `--manifest <Adresse oder Datei>` | andere Liste verwenden (dann ohne Ersatzadresse) |
+| `--ausweich <Adresse oder Datei>` | Ersatz, falls die Liste mit einem HTTP-Fehler antwortet |
 | `--gta <Ordner>` | GTA-Verzeichnis vorgeben, die Suche entfällt |
 | `--samp <Version>` | SA-MP-Version vorgeben, falls sie nicht erkannt wird (für `--still`) |
 | `--suche <Datei.txt>` | nur suchen und die gefundenen Verzeichnisse in die Datei schreiben |

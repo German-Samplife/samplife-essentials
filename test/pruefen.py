@@ -56,8 +56,8 @@ def gta_anlegen(ordner, samp=b'samp-0.3.7-R3'):
     open(os.path.join(ordner, 'vorbisFile.dll'), 'wb').write(b'alte fassung')
 
 
-def starten(gta, manifest_url):
-    return subprocess.run([EXE, '--still', '--test', '--gta', gta, '--manifest', manifest_url], timeout=120).returncode
+def starten(gta, manifest_url, *mehr):
+    return subprocess.run([EXE, '--still', '--test', '--gta', gta, '--manifest', manifest_url] + list(mehr), timeout=120).returncode
 
 
 def lesen(*teile):
@@ -165,6 +165,18 @@ def main():
         gta_anlegen(gta)
         fremd = [{'id': 'f', 'name': 'Fremd', 'pakete': [{'url': 'http://example.com/x.zip', 'sha256': '0' * 64, 'groesse': 1}]}]
         pruefe(starten(gta, manifest('fremd.json', fremd)) == 1, 'Rueckgabe 1, kein Download ueber http')
+
+        print('9. Liste nicht erreichbar, Ersatzadresse antwortet')
+        gta = os.path.join(arbeit, 'gta6')
+        gta_anlegen(gta)
+        pruefe(starten(gta, basis + 'gibt-es-nicht.json', '--ausweich', basis + 'gut.json') == 0, 'Rueckgabe 0 ueber die Ersatzadresse')
+        pruefe(lesen(gta, 'sampvoice.asi') == b'voice r3', 'Pakete aus der Ersatzliste installiert')
+
+        print('10. Liste nicht erreichbar, keine Ersatzadresse')
+        gta = os.path.join(arbeit, 'gta7')
+        gta_anlegen(gta)
+        pruefe(starten(gta, basis + 'gibt-es-nicht.json') == 3, 'Rueckgabe 3, nichts installiert')
+        pruefe(not os.path.exists(os.path.join(gta, 'sampvoice.asi')), 'keine Datei geschrieben')
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

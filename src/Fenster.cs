@@ -412,9 +412,7 @@ namespace SamplifeEssentials
             KnoepfeAktualisieren();
             try
             {
-                var quelle = optionen.ManifestQuelle;
-                var testmodus = optionen.Testmodus;
-                var json = await Task.Run(() => Programm.ManifestHolen(quelle, testmodus));
+                var json = await Task.Run(() => Programm.ListeHolen(optionen));
                 ManifestSetzen(Manifest.Lesen(json));
             }
             catch (Exception fehler)
