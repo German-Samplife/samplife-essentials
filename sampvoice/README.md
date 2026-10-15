@@ -4,21 +4,21 @@ German Samplife nutzt für den Sprach-Chat [SampVoice 3.1](https://github.com/Cy
 
 Der Original-Client zeigt immer an, wer gerade spricht:
 - eine Liste mit Namen am linken Bildschirmrand,
-- ein Lautsprecher-Symbol über dem Kopf des Sprechers.
+- ein Lautsprecher-Symbol über dem Kopf des Sprechers,
+- ein eigenes Mikrofon-Symbol unten rechts, das beim Sprechen aufleuchtet.
 
-Auf dem Server hört man Sprache nur in der Nähe, im Funk oder am Telefon. Die Anzeige verrät mehr, als die Figur im Spiel wissen kann, und stört deshalb. Der Server kann sie nicht abschalten, denn der Client schaltet sie beim Spielstart fest ein.
+Auf dem Server hört man Sprache nur in der Nähe, im Funk oder am Telefon. Die Anzeige verrät mehr, als die Figur im Spiel wissen kann, und stört deshalb. Ob man selbst gerade spricht, flüstert, schreit, funkt oder telefoniert, zeigt das HUD des Servers; das Mikrofon-Symbol von SampVoice wäre doppelt. Der Server kann beides nicht abschalten, denn der Client schaltet es beim Spielstart fest ein.
 
 ## Die Änderung
 
 Eine einzige Stelle in [`ohne-sprecheranzeige.patch`](ohne-sprecheranzeige.patch):
 
-- In `client/Plugin.cpp` (`Plugin::OnInitGame`) entfällt der Aufruf `SpeakerList::Show()`.
-- Ohne ihn zeichnet `SpeakerList::Render` nichts. Liste und Kopf-Symbol fallen damit beide weg.
+- In `client/Plugin.cpp` (`Plugin::OnInitGame`) entfallen die Aufrufe `SpeakerList::Show()` und `MicroIcon::Show()`.
+- Ohne sie zeichnen `SpeakerList::Render` und `MicroIcon::Render` nichts. Liste, Kopf-Symbol und Mikrofon-Symbol fallen damit weg. Nichts sonst im Client ruft `Show()` auf.
 
 Dazu kommt [`neuer-compiler.patch`](neuer-compiler.patch). Er ändert nichts am Verhalten. Er setzt nur an einer Stelle in `client/Network.cpp` eine ausdrückliche Typumwandlung, die der heutige Compiler verlangt (Fehler C2398).
 
 Alles andere bleibt wie im Original:
-- Mikrofon-Symbol unten rechts
 - Menü mit den Einstellungen
 - Sprechtasten
 - Lautstärke
@@ -39,4 +39,4 @@ Das übernimmt GitHub mit [`.github/workflows/sampvoice.yml`](../.github/workflo
 
 Ein Push auf einen Branch, der `sampvoice/` ändert, baut und prüft nur. Das Paket hängt dann als Artefakt am Lauf.
 
-Ein Tag wie `sampvoice-3.1-sl1` legt ein Release mit `sampvoice-037-r1-samplife.zip` und `SHA256SUMS.txt` an. Prüfsumme und Größe für das Manifest stehen im Release-Text.
+Ein Tag wie `sampvoice-3.1-sl2` legt ein Release mit `sampvoice-037-r1-samplife.zip` und `SHA256SUMS.txt` an. Prüfsumme und Größe für das Manifest stehen im Release-Text.
