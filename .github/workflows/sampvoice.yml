@@ -120,7 +120,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf).
+          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf, kein Mikrofon-Symbol).
 
           Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit der Änderung in ``sampvoice/ohne-sprecheranzeige.patch`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
 
