@@ -2251,7 +2251,7 @@ index 9cac05b..f1933a8 100644
  	public OnPlayerConnect(playerid)
  	{
 diff --git a/server/src/lib.rs b/server/src/lib.rs
-index 261929e..10cb8b2 100644
+index 261929e..9908fb8 100644
 --- a/server/src/lib.rs
 +++ b/server/src/lib.rs
 @@ -1,7 +1,7 @@
@@ -2263,7 +2263,7 @@ index 261929e..10cb8b2 100644
  use tracing::{info, trace};
  use tracing_subscriber::filter::{LevelFilter, Targets};
  use tracing_subscriber::layer::SubscriberExt;
-@@ -104,6 +104,24 @@ impl CefPlugin {
+@@ -104,6 +104,28 @@ impl CefPlugin {
          Ok(true)
      }
  
@@ -2271,13 +2271,17 @@ index 261929e..10cb8b2 100644
 +    fn set_input_mode(
 +        &mut self, _: &Amx, player_id: i32, browser_id: i32, mode: i32,
 +    ) -> AmxResult<bool> {
-+        let Some(mode) = u32::try_from(mode).ok().and_then(InputMode::from_raw) else {
-+            info!("cef_set_input_mode invalid mode {}", mode);
-+            return Ok(false);
-+        };
-+
-+        self.core.set_input_mode(player_id, browser_id, mode);
-+        Ok(true)
++        // no let-else: the samp-rs native macro does not parse it
++        match u32::try_from(mode).ok().and_then(InputMode::from_raw) {
++            Some(input_mode) => {
++                self.core.set_input_mode(player_id, browser_id, input_mode);
++                Ok(true)
++            }
++            None => {
++                info!("cef_set_input_mode invalid mode {}", mode);
++                Ok(false)
++            }
++        }
 +    }
 +
 +    #[native(name = "cef_get_client_version")]
@@ -2288,7 +2292,7 @@ index 261929e..10cb8b2 100644
      #[native(name = "cef_emit_event", raw)]
      fn emit_event(&mut self, _: &Amx, args: Args) -> AmxResult<bool> {
          if args.count() < 2 || !(args.count() - 2).is_multiple_of(2) {
-@@ -254,6 +272,16 @@ impl CefPlugin {
+@@ -254,6 +276,16 @@ impl CefPlugin {
          });
      }
  
@@ -2305,7 +2309,7 @@ index 261929e..10cb8b2 100644
      fn notify_browser_created(&self, player_id: i32, browser_id: u32, code: i32) {
          self.amx_list.iter().for_each(|&ident| {
              samp::amx::get(ident)
-@@ -311,6 +339,15 @@ impl SampPlugin for CefPlugin {
+@@ -311,6 +343,15 @@ impl SampPlugin for CefPlugin {
                      trace!("process_tick::BrowserCreated({})", player_id);
                      self.notify_browser_created(player_id, browser_id, code);
                  }
@@ -2321,7 +2325,7 @@ index 261929e..10cb8b2 100644
              }
          }
      }
-@@ -334,6 +371,8 @@ initialize_plugin!(
+@@ -334,6 +375,8 @@ initialize_plugin!(
          CefPlugin::toggle_dev_tools,
          CefPlugin::set_audio_settings,
          CefPlugin::load_url,

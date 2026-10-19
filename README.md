@@ -149,6 +149,12 @@ Die meisten Pakete lädt der Installer direkt von den Projekten selbst. Was es d
 
 Der Quelltext zu diesem Paket ist der verlinkte Commit; es wurden keine Änderungen vorgenommen. Der Client funktioniert nur zusammen mit einem Server, auf dem die samp-cef-Komponente aus demselben Stand läuft.
 
+### samp-cef Client mit Eingabemodus „nur Maus“
+
+Derselbe Stand `f14fe4f` mit einer Änderung: Browser können zusätzlich im Modus „nur Maus“ laufen. Maus und ESC gehen an die Seite, die Tastatur bleibt beim Spiel, der Spieler kann also weiterlaufen und fahren. Textfelder schalten beim Anklicken von selbst auf volle Eingabe. Patches, Schnittstellen, Abwärtskompatibilität und die Server-Seite stehen in [`cef/README.md`](cef/README.md), die Testliste in [`cef/TESTEN.md`](cef/TESTEN.md).
+
+GitHub baut das Paket mit [`.github/workflows/cef.yml`](.github/workflows/cef.yml) aus dem Original-Commit und den Patches in `cef/`. Ein Tag wie `cef-f14fe4f-sl1` legt das Release `samp-cef-client-<tag>.zip` mit SHA-256 an.
+
 ## Lizenz
 
 Der Quelltext des Installers ist öffentlich einsehbar. Eine Lizenz dafür ist noch nicht festgelegt; bis dahin bleiben alle Rechte bei German Samplife. Die Pakete fremder Projekte stehen unter deren Lizenzen, siehe oben und in der Liste des Installers.
