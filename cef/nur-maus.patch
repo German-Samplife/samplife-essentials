@@ -161,7 +161,7 @@ index 7c23310..5c362f7 100644
 +  "mouse_only_block_game_mouse": true
  }
 diff --git a/client/src/app.rs b/client/src/app.rs
-index 7a46f76..71ad68b 100644
+index 7a46f76..6db89ad 100644
 --- a/client/src/app.rs
 +++ b/client/src/app.rs
 @@ -11,7 +11,7 @@ use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
@@ -328,8 +328,9 @@ index 7a46f76..71ad68b 100644
 +                        let mut manager = app.manager.lock();
 +                        manager.set_input_mode(id, mode);
 +                        manager.effective_mode()
-+                    };
-+
+                     };
+ 
+-                    client_api::samp::inputs::show_cursor(show_cursor);
 +                    apply_cursor(app, mode);
 +                }
 +
@@ -338,9 +339,8 @@ index 7a46f76..71ad68b 100644
 +                        let mut manager = app.manager.lock();
 +                        manager.set_editing(id, editing);
 +                        manager.effective_mode()
-                     };
- 
--                    client_api::samp::inputs::show_cursor(show_cursor);
++                    };
++
 +                    apply_cursor(app, mode);
 +                }
 +
@@ -369,7 +369,7 @@ index 7a46f76..71ad68b 100644
          if app.cef_ready && app.connected {
              crate::external::call_mainloop();
  
-@@ -570,12 +647,107 @@ pub fn mainloop() {
+@@ -570,12 +647,117 @@ pub fn mainloop() {
      }
  }
  
@@ -421,6 +421,16 @@ index 7a46f76..71ad68b 100644
 +/// SA:MP cursor mode 3: cursor visible, camera locked, keyboard controls on.
 +/// Set every frame like `show_cursor(true)` for FULL, because SA:MP resets it.
 +fn apply_mouse_only_cursor(app: &mut App) {
++    // Straight from mode 2 (FULL) or a mode SA:MP set itself, SA:MP keeps the
++    // controls locked when it only switches to mode 3. Release everything first
++    // like closing a browser does, then enter mode 3 the same way as from NONE.
++    if (app.cursor_mode == inputs::CURSOR_LOCK_CAM_AND_CONTROL || app.cursor_mode == CURSOR_UNKNOWN)
++        && !inputs::Input::is_active()
++    {
++        client_api::samp::inputs::show_cursor(false);
++        app.cursor_mode = inputs::CURSOR_NONE;
++    }
++
 +    inputs::set_cursor_mode(inputs::CURSOR_LOCK_CAM, false);
 +
 +    if app.cursor_mode != inputs::CURSOR_LOCK_CAM && !inputs::Input::is_active() {
@@ -477,7 +487,7 @@ index 7a46f76..71ad68b 100644
          match msg {
              WM_MOUSEMOVE => {
                  let [x, y] = [(lparam as u16) as i32, (lparam >> 16) as u16 as i32];
-@@ -643,10 +815,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -643,10 +825,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
                      }
                  }
  
@@ -491,7 +501,7 @@ index 7a46f76..71ad68b 100644
                          // allowed keys (screenshot and chat cycle)
                          let is_allowed_key = wparam == VK_F8 as usize || wparam == VK_F7 as usize;
  
-@@ -657,7 +831,9 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -657,7 +841,9 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
                              app.key_state[key_index] = false;
                              notify_key_down = true;
                          }
@@ -502,7 +512,7 @@ index 7a46f76..71ad68b 100644
                          app.key_state[key_index] =
                              event.type_ == cef_key_event_type_t::KEYEVENT_RAWKEYDOWN;
                      }
-@@ -665,11 +841,17 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -665,11 +851,17 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
  
                  let input_active = inputs::Input::is_active()
                      || inputs::Dialog::is_input_focused()
@@ -521,7 +531,7 @@ index 7a46f76..71ad68b 100644
              }
  
              WM_ACTIVATE | WM_ACTIVATEAPP => {
-@@ -686,6 +868,13 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -686,6 +878,13 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
                  manager.set_corrupted(!active);
                  manager.do_not_draw(!active);
  
@@ -535,7 +545,7 @@ index 7a46f76..71ad68b 100644
                  return false;
              }
  
-@@ -698,7 +887,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -698,7 +897,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
              return false;
          }
  
@@ -549,7 +559,7 @@ index 7a46f76..71ad68b 100644
      }
  
      false
-@@ -710,11 +904,22 @@ extern "stdcall" fn async_key_state(key: i32) -> u16 {
+@@ -710,11 +914,22 @@ extern "stdcall" fn async_key_state(key: i32) -> u16 {
          let result = app.keystate_hook.call(key);
  
          if let Some(manager) = app.manager.try_lock() {
