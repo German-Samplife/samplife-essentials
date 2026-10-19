@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Zweite Seite (always_listen)</title>
+<style>
+  html, body { margin: 0; background: transparent; }
+  body { font: 13px/1.35 Consolas, monospace; color: #fff; }
+  .fenster {
+    position: fixed;
+    left: 40px;
+    top: 120px;
+    width: 300px;
+    padding: 12px 14px;
+    background: rgba(12, 14, 18, 0.92);
+    border: 1px solid #2a2f38;
+    border-radius: 6px;
+  }
+  h1 { margin: 0 0 8px; font: 600 15px "Segoe UI", Arial, sans-serif; }
+  ol { height: 260px; margin: 0; padding-left: 28px; overflow: hidden; }
+</style>
+</head>
+<body>
+<div class="fenster">
+  <h1>Zweite Seite (always_listen)</h1>
+  <ol id="tasten"></ol>
+</div>
+<script>
+  function taste(art, e) {
+    var liste = document.getElementById("tasten");
+    var eintrag = document.createElement("li");
+    eintrag.textContent = art + " " + (e.key === " " ? "Leertaste" : e.key) + " (" + e.keyCode + ")";
+    liste.appendChild(eintrag);
+    while (liste.children.length > 18) liste.removeChild(liste.firstChild);
+  }
+  window.addEventListener("keydown", function (e) { taste("down", e); });
+  window.addEventListener("keyup", function (e) { taste("up  ", e); });
+</script>
+</body>
+</html>
