@@ -1,0 +1,265 @@
+# Baut den samp-cef-Client mit dem Eingabemodus "nur Maus" (siehe cef/README.md).
+# Bei Änderungen an cef/ wird nur gebaut und geprüft; ein Tag wie cef-f14fe4f-sl1 legt das Release an.
+name: CEF
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "cef/**"
+      - ".github/workflows/cef.yml"
+    tags:
+      - "cef-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # samp-cef von ZOTTCE (GPL-3.0), Stand des bisherigen Releases cef-f14fe4f
+  SAMP_CEF_COMMIT: f14fe4fa7f0d036edf445ba02b4bddd4cccac377
+  # samp-client-api von ZOTTCE, genau der Commit aus Cargo.toml von samp-cef
+  CLIENT_API_COMMIT: d497ffad4903d9cc3f02869c744c3c3d96217cbb
+
+jobs:
+  client:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Quelltext holen und anpassen
+        shell: pwsh
+        run: |
+          # Jeder fehlgeschlagene Befehl bricht ab
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          # Genau diese Commits holen, ohne Umwandlung der Zeilenenden
+          git init --quiet quelle
+          git -C quelle config core.autocrlf false
+          git -C quelle fetch --quiet --depth 1 https://github.com/zottce/samp-cef.git $env:SAMP_CEF_COMMIT
+          git -C quelle checkout --quiet FETCH_HEAD
+          $kopf = (git -C quelle rev-parse HEAD).Trim()
+          if ($kopf -ne $env:SAMP_CEF_COMMIT) { throw "Falscher Stand von samp-cef: $kopf" }
+          # Cargo.toml des Patches verweist mit [patch] auf ../samp-client-api
+          git init --quiet samp-client-api
+          git -C samp-client-api config core.autocrlf false
+          git -C samp-client-api fetch --quiet --depth 1 https://github.com/zottce/samp-client-api.git $env:CLIENT_API_COMMIT
+          git -C samp-client-api checkout --quiet FETCH_HEAD
+          $kopf = (git -C samp-client-api rev-parse HEAD).Trim()
+          if ($kopf -ne $env:CLIENT_API_COMMIT) { throw "Falscher Stand von samp-client-api: $kopf" }
+          git -C quelle apply --verbose ../cef/nur-maus.patch
+          git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
+          git -C quelle diff --stat
+          git -C samp-client-api diff --stat
+
+      - name: Pfade setzen
+        shell: pwsh
+        run: |
+          # Schrägstriche statt Backslashes, damit auch die bash-Schritte die Pfade verstehen
+          $temp = $env:RUNNER_TEMP -replace '\\', '/'
+          "DX_SDK_DIR=$temp/dxsdk" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "DX_SDK=$temp/dxsdk/Lib/x86" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "CEF_PATH=$temp/cef" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: DirectX SDK aus dem Cache
+        id: dx-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DX_SDK_DIR }}
+          key: directx-jun10-x86
+
+      - name: CEF aus dem Cache
+        id: cef-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CEF_PATH }}
+          key: cef-windows32-${{ hashFiles('quelle/cef-distribution.json') }}
+
+      - name: DirectX SDK (Juni 2010) holen
+        if: steps.dx-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL https://download.microsoft.com/download/a/e/7/ae743f1f-632b-4809-87a9-aa1bb3458e31/DXSDK_Jun10.exe -o _DX2010_.exe
+          7z x _DX2010_.exe DXSDK/Lib/x86 -o_DX2010_
+          mv _DX2010_/DXSDK "$DX_SDK_DIR"
+          rm -fR _DX2010_ _DX2010_.exe
+
+      - name: CEF-Distribution holen (Prüfsumme aus cef-distribution.json)
+        if: steps.cef-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: node quelle/scripts/download-cef.mjs --output "$CEF_PATH"
+
+      - name: Rust (stable, i686-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: i686-pc-windows-msvc
+
+      - name: Cargo-Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            quelle/target
+          key: cargo-i686-pc-windows-msvc-${{ hashFiles('quelle/Cargo.lock') }}-${{ hashFiles('cef/*.patch') }}
+          restore-keys: |
+            cargo-i686-pc-windows-msvc-${{ hashFiles('quelle/Cargo.lock') }}-
+            cargo-i686-pc-windows-msvc-
+
+      - name: Bauen
+        shell: bash
+        working-directory: quelle
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo --version
+          # ganzer Workspace wie im Original-Workflow: Client, Renderer, Loader
+          # und zur Kontrolle auch die Rust-Seite von Server und open.mp-Komponente
+          cargo build --release --target i686-pc-windows-msvc
+
+      - name: Tests (Protokoll, Server-Kern)
+        shell: bash
+        working-directory: quelle
+        run: cargo test --release --target i686-pc-windows-msvc -p cef-messages -p cef-server-core
+
+      - name: Prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ziel = "quelle/target/i686-pc-windows-msvc/release"
+          foreach ($datei in "cef_loader.dll", "cef_client.dll", "cef-renderer.exe") {
+            if (-not (Test-Path "$ziel/$datei")) { throw "$datei fehlt" }
+          }
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
+          foreach ($datei in "cef_loader.dll", "cef_client.dll", "cef-renderer.exe") {
+            $kopf = & $dumpbin.FullName /headers "$ziel/$datei" | Out-String
+            if ($kopf -notmatch "14C machine \(x86\)") { throw "$datei ist nicht 32 Bit" }
+          }
+          # Die Änderung muss im Client stecken
+          if (-not (Select-String -Path "$ziel/cef_client.dll" -Pattern "CPad::UpdateMouse hook" -SimpleMatch -Quiet)) { throw "cef_client.dll enthält den Nur-Maus-Modus nicht" }
+          if (-not (Select-String -Path "$ziel/cef-renderer.exe" -Pattern "set_input_mode" -SimpleMatch -Quiet)) { throw "cef-renderer.exe kennt cef.set_input_mode nicht" }
+
+      - name: Paket zusammenstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $name = "${{ github.ref_name }}"
+          } else {
+            $name = "nur-maus-" + "${{ github.sha }}".Substring(0, 7)
+          }
+          Push-Location quelle
+          node scripts/package-client.mjs --cef "$env:CEF_PATH" --output redist
+          Pop-Location
+          Copy-Item LIZENZEN/samp-cef-GPL-3.0.txt quelle/redist/samp-cef-lizenz.txt
+          New-Item -ItemType Directory -Force release | Out-Null
+          $zipname = "samp-cef-client-$name.zip"
+          Push-Location quelle/redist
+          7z a -tzip "../../release/$zipname" cef.asi cef package-manifest.json samp-cef-lizenz.txt | Out-Null
+          Pop-Location
+          $zip = Get-Item "release/$zipname"
+          $zhash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $chash = (Get-FileHash quelle/redist/cef/cef-client.dll -Algorithm SHA256).Hash.ToLower()
+          $rhash = (Get-FileHash quelle/redist/cef/cef-renderer.exe -Algorithm SHA256).Hash.ToLower()
+          $ahash = (Get-FileHash quelle/redist/cef.asi -Algorithm SHA256).Hash.ToLower()
+          "$zhash  $zipname`n$ahash  cef.asi`n$chash  cef/cef-client.dll`n$rhash  cef/cef-renderer.exe" | Out-File -Encoding ascii release/SHA256SUMS.txt
+          "ZIP_NAME=$zipname" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "ZIP_SHA256=$zhash" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "ZIP_GROESSE=$($zip.Length)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          Get-ChildItem quelle/redist | Format-Table Name, Length
+          Get-ChildItem release | Format-Table Name, Length
+          Get-Content release/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: samp-cef-client
+          path: release/
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/cef-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $text = @"
+          samp-cef Client für SA-MP 0.3.7 R1/R3 mit dem Eingabemodus "nur Maus" (CEF_INPUT_MOUSE_ONLY, Client-Version 0x000200).
+
+          Gebaut von GitHub aus https://github.com/zottce/samp-cef/commit/$env:SAMP_CEF_COMMIT (GPL-3.0) mit ``cef/nur-maus.patch`` und https://github.com/zottce/samp-client-api/commit/$env:CLIENT_API_COMMIT mit ``cef/client-api-cursor.patch`` aus diesem Tag. Der Quelltext des Pakets ist genau das. CEF ist die offizielle windows32-Distribution aus ``cef-distribution.json`` (BSD).
+
+          Funktioniert mit jedem samp-cef-Server ab f14fe4f; den Nur-Maus-Modus gibt es nur mit der Server-Seite aus demselben Patch (siehe cef/README.md).
+
+          Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
+          "@
+          gh release create "${{ github.ref_name }}" "release/$env:ZIP_NAME" release/SHA256SUMS.txt --title "samp-cef Client nur Maus (${{ github.ref_name }})" --notes $text --latest=false
+
+  server-pruefen:
+    # Nur zur Kontrolle, ob die Server-Seite des Patches baut (Legacy-Plugin und
+    # open.mp-Komponente für Linux x86). Die Dateien hängen als Artefakt am Lauf.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Abhängigkeiten
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git g++-multilib
+
+      - name: Quelltext holen und anpassen
+        run: |
+          set -euo pipefail
+          git init --quiet quelle
+          git -C quelle config core.autocrlf false
+          git -C quelle fetch --quiet --depth 1 https://github.com/zottce/samp-cef.git "$SAMP_CEF_COMMIT"
+          git -C quelle checkout --quiet FETCH_HEAD
+          test "$(git -C quelle rev-parse HEAD)" = "$SAMP_CEF_COMMIT"
+          git init --quiet samp-client-api
+          git -C samp-client-api config core.autocrlf false
+          git -C samp-client-api fetch --quiet --depth 1 https://github.com/zottce/samp-client-api.git "$CLIENT_API_COMMIT"
+          git -C samp-client-api checkout --quiet FETCH_HEAD
+          test "$(git -C samp-client-api rev-parse HEAD)" = "$CLIENT_API_COMMIT"
+          git -C quelle apply --verbose ../cef/nur-maus.patch
+          git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
+
+      - name: Rust (stable, i686-unknown-linux-gnu)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: i686-unknown-linux-gnu
+
+      - name: open.mp holen
+        uses: actions/checkout@v4
+        with:
+          repository: openmultiplayer/open.mp
+          path: open.mp
+
+      - name: open.mp SDK
+        run: git -C open.mp submodule update --init --recursive SDK lib/pawn
+
+      - name: Legacy-Plugin bauen
+        working-directory: quelle
+        run: |
+          cargo build --package cef-server --release --target i686-unknown-linux-gnu
+          strip -s target/i686-unknown-linux-gnu/release/libcef_server.so -o cef-samp.so
+
+      - name: open.mp-Komponente bauen
+        working-directory: quelle
+        run: |
+          scripts/build-openmp-component.sh \
+            --openmp-root "$GITHUB_WORKSPACE/open.mp" \
+            --build-dir "$GITHUB_WORKSPACE/quelle/target/openmp-component-build" \
+            --jobs 2
+          strip -s target/openmp-component-build/cef.so -o cef-openmp.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: samp-cef-server-linux-nur-zum-testen
+          path: |
+            quelle/cef-samp.so
+            quelle/cef-openmp.so
+            quelle/server/cef.inc

@@ -1,0 +1,85 @@
+diff --git a/src/samp/inputs.rs b/src/samp/inputs.rs
+index 6ca098d..a2944df 100644
+--- a/src/samp/inputs.rs
++++ b/src/samp/inputs.rs
+@@ -116,6 +116,80 @@ impl Dialog {
+     }
+ }
+ 
++/// SA:MP cursor modes for `set_cursor_mode` (`CGame::SetCursorMode`).
++pub const CURSOR_NONE: i32 = 0;
++pub const CURSOR_LOCK_KEYS_NO_CURSOR: i32 = 1;
++pub const CURSOR_LOCK_CAM_AND_CONTROL: i32 = 2;
++pub const CURSOR_LOCK_CAM: i32 = 3;
++pub const CURSOR_LOCK_CAM_NO_CURSOR: i32 = 4;
++
++fn cgame_function(v03dl: usize, v037: usize, v037r3: usize) -> Option<(*mut c_void, *mut u8)> {
++    let (cgame_addr, function_addr) = match version() {
++        Version::V03DL => (super::v03dl::CGAME, v03dl),
++        Version::V037 => (super::v037::CGAME, v037),
++        Version::V037R3 => (super::v037r3::CGAME, v037r3),
++        _ => return None,
++    };
++
++    unsafe {
++        let samp_base = handle();
++        let cgame = (samp_base.add(cgame_addr) as *mut *mut c_void).read();
++
++        if cgame.is_null() {
++            return None;
++        }
++
++        Some((cgame, samp_base.add(function_addr)))
++    }
++}
++
++/// Calls `CGame::SetCursorMode(mode, hide)` with any SA:MP cursor mode, e.g.
++/// `CURSOR_LOCK_CAM` (3): cursor visible, camera locked, controls enabled.
++/// Does nothing while the SA:MP chat input is open (same as `show_cursor`).
++pub fn set_cursor_mode(mode: i32, hide: bool) {
++    if Input::is_active() {
++        return;
++    }
++
++    let function = cgame_function(
++        super::v03dl::CGAME_SETCURSORMODE,
++        super::v037::CGAME_SETCURSORMODE,
++        super::v037r3::CGAME_SETCURSORMODE,
++    );
++
++    if let Some((cgame, function)) = function {
++        unsafe {
++            let set_cursor_mode: extern "thiscall" fn(*mut c_void, i32, BOOL) =
++                std::mem::transmute(function);
++
++            set_cursor_mode(cgame, mode, if hide { 1 } else { 0 });
++        }
++    }
++}
++
++/// Calls `CGame::ProcessInputEnabling()`, which applies the input locks of the
++/// current cursor mode. Does nothing while the SA:MP chat input is open.
++pub fn process_input_enabling() {
++    if Input::is_active() {
++        return;
++    }
++
++    let function = cgame_function(
++        super::v03dl::CGAME_PROCESSINPUTENABLING,
++        super::v037::CGAME_PROCESSINPUTENABLING,
++        super::v037r3::CGAME_PROCESSINPUTENABLING,
++    );
++
++    if let Some((cgame, function)) = function {
++        unsafe {
++            let process_input_enabling: extern "thiscall" fn(*mut c_void) =
++                std::mem::transmute(function);
++
++            process_input_enabling(cgame);
++        }
++    }
++}
++
+ pub fn show_cursor(show: bool) {
+     if Input::is_active() {
+         return;

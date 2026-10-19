@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Testseite Eingabemodus</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: transparent; }
+  body {
+    font: 15px/1.4 "Segoe UI", Arial, sans-serif;
+    color: #fff;
+  }
+  .fenster {
+    position: fixed;
+    right: 40px;
+    top: 120px;
+    width: 420px;
+    padding: 18px 20px;
+    background: rgba(12, 14, 18, 0.92);
+    border: 1px solid #2a2f38;
+    border-radius: 6px;
+  }
+  h1 { margin: 0 0 12px; font-size: 18px; }
+  h1 span { color: #007dff; }
+  .zeile { display: flex; gap: 8px; margin: 10px 0; }
+  button {
+    flex: 1;
+    padding: 9px 0;
+    font: inherit;
+    color: #fff;
+    background: #1c2028;
+    border: 1px solid #3a404c;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover { border-color: #007dff; }
+  button.aktiv { background: #007dff; border-color: #007dff; }
+  input, textarea {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 4px 0 8px;
+    padding: 8px;
+    font: inherit;
+    color: #fff;
+    background: #0b0d11;
+    border: 1px solid #3a404c;
+    border-radius: 4px;
+  }
+  input:focus, textarea:focus { outline: none; border-color: #007dff; }
+  dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 8px; margin: 10px 0; }
+  dt { color: #9aa3b2; }
+  dd { margin: 0; }
+  #modus { font-weight: 600; }
+  ol {
+    height: 150px;
+    margin: 6px 0 0;
+    padding: 6px 6px 6px 28px;
+    overflow: auto;
+    font: 13px/1.35 Consolas, monospace;
+    background: #0b0d11;
+    border: 1px solid #2a2f38;
+    border-radius: 4px;
+  }
+  .hinweis { color: #9aa3b2; font-size: 13px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<div class="fenster">
+  <h1><span>samp-cef</span> Eingabemodus</h1>
+
+  <dl>
+    <dt>Aktueller Modus</dt><dd id="modus">unbekannt</dd>
+    <dt>cef.version</dt><dd id="version">-</dd>
+    <dt>Klicks</dt><dd id="klicks">0</dd>
+    <dt>Mausrad</dt><dd id="rad">0</dd>
+  </dl>
+
+  <div class="zeile">
+    <button data-modus="none">none</button>
+    <button data-modus="full">full</button>
+    <button data-modus="mouse">mouse</button>
+  </div>
+
+  <label for="feld">Textfeld (Fokus schaltet auf full, Klick daneben zurück)</label>
+  <input id="feld" type="text" placeholder="Hier tippen …">
+  <textarea id="bereich" rows="2" placeholder="Mehrzeilig"></textarea>
+
+  <div>Empfangene Tasten (diese Seite)</div>
+  <ol id="tasten"></ol>
+  <p class="hinweis">ESC sollte im Modus mouse hier ankommen und nicht das Pausemenü öffnen.</p>
+</div>
+
+<script>
+  var hatCef = typeof cef !== "undefined";
+  var modusFeld = document.getElementById("modus");
+  var knoepfe = document.querySelectorAll("button[data-modus]");
+  var klicks = 0;
+  var rad = 0;
+
+  function zeigeModus(name) {
+    modusFeld.textContent = name;
+    for (var i = 0; i < knoepfe.length; i++) {
+      knoepfe[i].classList.toggle("aktiv", knoepfe[i].getAttribute("data-modus") === name);
+    }
+  }
+
+  function taste(art, e) {
+    var liste = document.getElementById("tasten");
+    var eintrag = document.createElement("li");
+    eintrag.textContent = art + " " + (e.key === " " ? "Leertaste" : e.key) + " (" + e.code + ", " + e.keyCode + ")";
+    liste.appendChild(eintrag);
+    while (liste.children.length > 40) liste.removeChild(liste.firstChild);
+    liste.scrollTop = liste.scrollHeight;
+  }
+
+  for (var i = 0; i < knoepfe.length; i++) {
+    knoepfe[i].addEventListener("click", function () {
+      var name = this.getAttribute("data-modus");
+      if (hatCef) cef.set_input_mode(name);
+    });
+  }
+
+  document.addEventListener("mousedown", function () {
+    klicks += 1;
+    document.getElementById("klicks").textContent = klicks;
+  });
+  document.addEventListener("wheel", function (e) {
+    rad += e.deltaY > 0 ? 1 : -1;
+    document.getElementById("rad").textContent = rad;
+  });
+  window.addEventListener("keydown", function (e) { taste("down", e); });
+  window.addEventListener("keyup", function (e) { taste("up  ", e); });
+
+  if (hatCef) {
+    document.getElementById("version").textContent = cef.version;
+    cef.on("cef:input_mode", zeigeModus);
+  } else {
+    document.getElementById("version").textContent = "kein CEF (Browser)";
+  }
+</script>
+</body>
+</html>

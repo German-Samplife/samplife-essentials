@@ -1,0 +1,2332 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index da2d05a..9a6d4f9 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -361,7 +361,6 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+ [[package]]
+ name = "client-api"
+ version = "1.0.0"
+-source = "git+https://github.com/zottce/samp-client-api.git?rev=d497ffad4903d9cc3f02869c744c3c3d96217cbb#d497ffad4903d9cc3f02869c744c3c3d96217cbb"
+ dependencies = [
+  "log",
+  "retour",
+diff --git a/Cargo.toml b/Cargo.toml
+index 8e925a6..5fb96e8 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -19,3 +19,8 @@ members = [
+ [profile.release]
+ # lto = true
+ opt-level = "z"
++
++# German Samplife: client-api with set_cursor_mode (cef/client-api-cursor.patch
++# in samplife-essentials), checked out next to this repository.
++[patch."https://github.com/zottce/samp-client-api.git"]
++client-api = { path = "../samp-client-api" }
+diff --git a/cef/src/dom.rs b/cef/src/dom.rs
+new file mode 100644
+index 0000000..6dfe222
+--- /dev/null
++++ b/cef/src/dom.rs
+@@ -0,0 +1,29 @@
++use cef_sys::cef_domnode_t;
++
++/// Snapshot of a DOM node in the renderer process.
++///
++/// CEF: DOM objects are only valid for the scope of the callback that
++/// provides them, so handlers only get a reference and must not keep it.
++pub struct DomNode {
++    raw: *mut cef_domnode_t,
++}
++
++impl DomNode {
++    pub(crate) fn from_raw_borrowed(raw: *mut cef_domnode_t) -> Option<DomNode> {
++        if raw.is_null() {
++            None
++        } else {
++            Some(DomNode { raw })
++        }
++    }
++
++    /// True for editable nodes: text inputs, textareas and contenteditable.
++    pub fn is_editable(&self) -> bool {
++        unsafe {
++            (*self.raw)
++                .is_editable
++                .map(|is_editable| is_editable(self.raw) != 0)
++                .unwrap_or(false)
++        }
++    }
++}
+diff --git a/cef/src/handlers/render_process.rs b/cef/src/handlers/render_process.rs
+index 28769c1..690ee5d 100644
+--- a/cef/src/handlers/render_process.rs
++++ b/cef/src/handlers/render_process.rs
+@@ -1,5 +1,6 @@
+ use crate::ProcessId;
+ use crate::browser::{Browser, Frame};
++use crate::dom::DomNode;
+ use crate::process_message::ProcessMessage;
+ use crate::v8::V8Context;
+ 
+@@ -7,6 +8,12 @@ pub trait RenderProcessHandler {
+     fn on_context_created(&self, _browser: Browser, _frame: Frame, _context: V8Context) {}
+     fn on_context_released(&self, _browser: Browser, _frame: Frame, _context: V8Context) {}
+     fn on_webkit_initialized(&self) {}
++    /// A new DOM node got focus. `frame` and `node` are `None` if no specific
++    /// frame or node has focus.
++    fn on_focused_node_changed(
++        &self, _browser: Browser, _frame: Option<Frame>, _node: Option<&DomNode>,
++    ) {
++    }
+     fn on_process_message(
+         &self, _browser: Browser, _frame: Frame, _source: ProcessId, _message: ProcessMessage,
+     ) -> bool {
+diff --git a/cef/src/lib.rs b/cef/src/lib.rs
+index 33c451c..becbfb9 100644
+--- a/cef/src/lib.rs
++++ b/cef/src/lib.rs
+@@ -4,6 +4,7 @@ pub mod app;
+ pub mod browser;
+ pub mod client;
+ pub mod command_line;
++pub mod dom;
+ pub mod handlers;
+ pub mod process_message;
+ pub mod ref_counted;
+diff --git a/cef/src/rust_to_c/render_process_handler.rs b/cef/src/rust_to_c/render_process_handler.rs
+index e2f89c5..f4ca5a4 100644
+--- a/cef/src/rust_to_c/render_process_handler.rs
++++ b/cef/src/rust_to_c/render_process_handler.rs
+@@ -3,11 +3,12 @@ use crate::handlers::render_process::RenderProcessHandler;
+ 
+ use crate::ProcessId;
+ use crate::browser::{Browser, Frame};
++use crate::dom::DomNode;
+ use crate::process_message::ProcessMessage;
+ use crate::v8::V8Context;
+ use cef_sys::{
+-    cef_browser_t, cef_frame_t, cef_process_message_t, cef_render_process_handler_t,
+-    cef_v8_context_t,
++    cef_browser_t, cef_domnode_t, cef_frame_t, cef_process_message_t,
++    cef_render_process_handler_t, cef_v8_context_t,
+ };
+ 
+ extern "system" fn on_context_created<I: RenderProcessHandler>(
+@@ -41,6 +42,28 @@ extern "system" fn on_webkit_initialized<I: RenderProcessHandler>(
+     obj.interface.on_webkit_initialized();
+ }
+ 
++extern "system" fn on_focused_node_changed<I: RenderProcessHandler>(
++    this: *mut cef_render_process_handler_t, browser: *mut cef_browser_t, frame: *mut cef_frame_t,
++    node: *mut cef_domnode_t,
++) {
++    let obj: &mut Wrapper<_, I> = Wrapper::unwrap(this);
++
++    if browser.is_null() {
++        return;
++    }
++
++    let browser = Browser::from_raw_add_ref(browser);
++    let frame = if frame.is_null() {
++        None
++    } else {
++        Some(Frame::from_raw_add_ref(frame))
++    };
++    let node = DomNode::from_raw_borrowed(node);
++
++    obj.interface
++        .on_focused_node_changed(browser, frame, node.as_ref());
++}
++
+ extern "system" fn on_process_message<I: RenderProcessHandler>(
+     this: *mut cef_render_process_handler_t, browser: *mut cef_browser_t, frame: *mut cef_frame_t,
+     source_process: cef_sys::cef_process_id_t::Type, message: *mut cef_process_message_t,
+@@ -65,6 +88,7 @@ pub fn wrap<T: RenderProcessHandler>(handler: T) -> *mut cef_render_process_hand
+     object.on_context_created = Some(on_context_created::<T>);
+     object.on_context_released = Some(on_context_released::<T>);
+     object.on_web_kit_initialized = Some(on_webkit_initialized::<T>);
++    object.on_focused_node_changed = Some(on_focused_node_changed::<T>);
+     object.on_process_message_received = Some(on_process_message::<T>);
+ 
+     let wrapper = Wrapper::new(object, handler);
+diff --git a/client/config.json b/client/config.json
+index 7c23310..5c362f7 100644
+--- a/client/config.json
++++ b/client/config.json
+@@ -1,3 +1,4 @@
+ {
+-  "log_level": "info"
++  "log_level": "info",
++  "mouse_only_block_game_mouse": true
+ }
+diff --git a/client/src/app.rs b/client/src/app.rs
+index 7a46f76..71ad68b 100644
+--- a/client/src/app.rs
++++ b/client/src/app.rs
+@@ -11,7 +11,7 @@ use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
+ use winapi::um::winuser::*;
+ 
+ use crate::audio::Audio;
+-use crate::browser::manager::{Manager, MouseKey};
++use crate::browser::manager::{InputMode, Manager, MouseKey};
+ use crate::external::CallbackList;
+ use crate::network::NetworkClient;
+ use crate::static_cell::StaticCell;
+@@ -30,10 +30,13 @@ use crossbeam_channel::{Receiver, Sender};
+ use retour::GenericDetour;
+ 
+ const CEF_SERVER_PORT_OFFSET: u16 = 2;
+-pub const CEF_PLUGIN_VERSION: i32 = 0x00_01_00;
++// 0x000200: input modes (SetInputMode / InputModeChanged, mouse only)
++pub const CEF_PLUGIN_VERSION: i32 = 0x00_02_00;
+ const CONNECT_BACKOFF_BASE: Duration = Duration::from_secs(1);
+ const CONNECT_BACKOFF_MAX: Duration = Duration::from_secs(10);
+ const AUDIO_SPATIAL_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
++// cursor mode unknown: SA:MP (dialog, chat) or the pause menu changed it
++const CURSOR_UNKNOWN: i32 = -1;
+ 
+ static APP: StaticCell<App> = StaticCell::new();
+ 
+@@ -69,6 +72,11 @@ pub enum Event {
+ 
+     AlwaysListenKeys(u32, bool),
+     Terminate,
++
++    // input modes
++    SetInputMode(u32, InputMode),
++    BrowserEditing(u32, bool),
++    InputModeChanged(u32, InputMode),
+ }
+ 
+ #[derive(Debug)]
+@@ -100,6 +108,9 @@ pub struct App {
+     //
+     key_state: [bool; 512],
+ 
++    // SA:MP cursor mode last set by the mouse-only code (3) or show_cursor (0/2)
++    cursor_mode: i32,
++
+     // debug
+     initialization: Instant,
+ }
+@@ -149,6 +160,8 @@ impl App {
+         })
+         .unwrap();
+ 
++        crate::mouse_only::install();
++
+         App {
+             connected: false,
+             cef_ready: false,
+@@ -169,6 +182,8 @@ impl App {
+ 
+             //
+             key_state: [false; 512],
++
++            cursor_mode: inputs::CURSOR_NONE,
+         }
+     }
+ 
+@@ -309,6 +324,7 @@ pub fn uninitialize() {
+ }
+ 
+ fn quit() {
++    crate::mouse_only::uninstall();
+     crate::external::quit();
+     crate::render::uninitialize();
+ 
+@@ -348,15 +364,46 @@ pub fn mainloop() {
+             app.audio.set_paused(paused);
+             app.audio.set_gain(menu.sfx_volume());
+ 
+-            let show_cursor = {
++            let mode = {
+                 let mut manager = app.manager.lock();
+                 manager.set_corrupted(paused);
+-                manager.is_input_blocked() && !menu.is_active()
++                manager.effective_mode()
+             };
+ 
+-            // do not redraw default cursor
+-            if show_cursor {
+-                client_api::samp::inputs::show_cursor(true);
++            match mode {
++                // do not redraw default cursor
++                InputMode::Full if !menu.is_active() => {
++                    client_api::samp::inputs::show_cursor(true);
++
++                    // mouse-only browser closed, a FULL browser took over
++                    if app.cursor_mode == inputs::CURSOR_LOCK_CAM && !inputs::Input::is_active() {
++                        inputs::process_input_enabling();
++                        app.cursor_mode = inputs::CURSOR_LOCK_CAM_AND_CONTROL;
++                    }
++                }
++
++                InputMode::MouseOnly => {
++                    if !menu.is_active() && !samp_ui_active() {
++                        apply_mouse_only_cursor(app);
++                    } else {
++                        // SA:MP or the menu own the cursor now; apply mode 3
++                        // completely again afterwards
++                        app.cursor_mode = CURSOR_UNKNOWN;
++                    }
++                }
++
++                // a mouse-only browser was closed or lost the input
++                InputMode::None
++                    if (app.cursor_mode == inputs::CURSOR_LOCK_CAM
++                        || app.cursor_mode == CURSOR_UNKNOWN)
++                        && !menu.is_active()
++                        && !samp_ui_active() =>
++                {
++                    client_api::samp::inputs::show_cursor(false);
++                    app.cursor_mode = inputs::CURSOR_NONE;
++                }
++
++                _ => (),
+             }
+         }
+ 
+@@ -381,16 +428,16 @@ pub fn mainloop() {
+                         "browser creation requested"
+                     );
+ 
+-                    let show_cursor = {
++                    let mode = {
+                         let mut manager = app.manager.lock();
+                         manager.create_browser(id, app.callbacks.clone(), &url);
+                         manager.hide_browser(id, hidden);
+                         manager.browser_focus(id, focused);
+ 
+-                        manager.is_input_blocked() && !CMenuManager::is_menu_active()
++                        manager.effective_mode()
+                     };
+ 
+-                    client_api::samp::inputs::show_cursor(show_cursor);
++                    apply_cursor(app, mode);
+                 }
+ 
+                 Event::CreateExternBrowser(ext) => {
+@@ -416,13 +463,39 @@ pub fn mainloop() {
+                 }
+ 
+                 Event::FocusBrowser(id, focus) => {
+-                    let show_cursor = {
++                    let mode = {
+                         let mut manager = app.manager.lock();
+                         manager.browser_focus(id, focus);
+-                        manager.is_input_blocked() && !CMenuManager::is_menu_active()
++                        manager.effective_mode()
++                    };
++
++                    apply_cursor(app, mode);
++                }
++
++                Event::SetInputMode(id, mode) => {
++                    let mode = {
++                        let mut manager = app.manager.lock();
++                        manager.set_input_mode(id, mode);
++                        manager.effective_mode()
++                    };
++
++                    apply_cursor(app, mode);
++                }
++
++                Event::BrowserEditing(id, editing) => {
++                    let mode = {
++                        let mut manager = app.manager.lock();
++                        manager.set_editing(id, editing);
++                        manager.effective_mode()
+                     };
+ 
+-                    client_api::samp::inputs::show_cursor(show_cursor);
++                    apply_cursor(app, mode);
++                }
++
++                Event::InputModeChanged(id, mode) => {
++                    if let Some(network) = app.network.as_mut() {
++                        network.send(Event::InputModeChanged(id, mode));
++                    }
+                 }
+ 
+                 Event::EmitEvent(event, list) => {
+@@ -440,6 +513,8 @@ pub fn mainloop() {
+                 Event::BrowserCreated(id, code) => {
+                     tracing::info!(browser = id, status = code, "browser created");
+ 
++                    app.manager.lock().send_input_mode_to_browser(id);
++
+                     if let Some(network) = app.network.as_mut() {
+                         let event = Event::BrowserCreated(id, code);
+                         network.send(event);
+@@ -523,6 +598,8 @@ pub fn mainloop() {
+             }
+         }
+ 
++        update_mouse_only_lock(app);
++
+         if app.cef_ready && app.connected {
+             crate::external::call_mainloop();
+ 
+@@ -570,12 +647,107 @@ pub fn mainloop() {
+     }
+ }
+ 
++/// SA:MP chat input or a SA:MP dialog is open. In the mouse-only mode SA:MP
++/// then keeps mouse, ESC and its own cursor, as without a browser.
++fn samp_ui_active() -> bool {
++    inputs::Input::is_active()
++        || inputs::Dialog::get()
++            .map(|dialog| {
++                let active = dialog.m_bIsActive;
++                active != 0
++            })
++            .unwrap_or(false)
++}
++
++/// Cursor after a change of the input mode. NONE and FULL behave exactly as
++/// before (`show_cursor`), MOUSE_ONLY uses SA:MP cursor mode 3.
++fn apply_cursor(app: &mut App, mode: InputMode) {
++    let menu_active = CMenuManager::is_menu_active();
++
++    if mode == InputMode::MouseOnly && !menu_active {
++        if !samp_ui_active() {
++            apply_mouse_only_cursor(app);
++        }
++    } else {
++        let show = mode != InputMode::None && !menu_active;
++
++        // FULL after MOUSE_ONLY (text field focused): lock the controls again
++        let from_mouse_only = app.cursor_mode == inputs::CURSOR_LOCK_CAM;
++
++        client_api::samp::inputs::show_cursor(show);
++
++        if show && from_mouse_only {
++            inputs::process_input_enabling();
++        }
++
++        if !inputs::Input::is_active() {
++            app.cursor_mode = if show {
++                inputs::CURSOR_LOCK_CAM_AND_CONTROL
++            } else {
++                inputs::CURSOR_NONE
++            };
++        }
++    }
++
++    update_mouse_only_lock(app);
++}
++
++/// SA:MP cursor mode 3: cursor visible, camera locked, keyboard controls on.
++/// Set every frame like `show_cursor(true)` for FULL, because SA:MP resets it.
++fn apply_mouse_only_cursor(app: &mut App) {
++    inputs::set_cursor_mode(inputs::CURSOR_LOCK_CAM, false);
++
++    if app.cursor_mode != inputs::CURSOR_LOCK_CAM && !inputs::Input::is_active() {
++        inputs::process_input_enabling();
++        app.cursor_mode = inputs::CURSOR_LOCK_CAM;
++    }
++}
++
++/// Mouse goes to a mouse-only browser right now: clear GTA's mouse state and
++/// hide mouse buttons and ESC from GetAsyncKeyState.
++fn update_mouse_only_lock(app: &mut App) {
++    let mouse_only = app.manager.lock().is_mouse_only();
++
++    let active = mouse_only
++        && app.window_focused
++        && !CMenuManager::is_menu_active()
++        && !samp_ui_active();
++
++    crate::mouse_only::set_active(active);
++}
++
++fn is_mouse_message(msg: UINT) -> bool {
++    matches!(
++        msg,
++        WM_MOUSEMOVE
++            | WM_LBUTTONDOWN
++            | WM_LBUTTONDBLCLK
++            | WM_LBUTTONUP
++            | WM_RBUTTONDOWN
++            | WM_RBUTTONDBLCLK
++            | WM_RBUTTONUP
++            | WM_MBUTTONDOWN
++            | WM_MBUTTONDBLCLK
++            | WM_MBUTTONUP
++            | WM_MOUSEWHEEL
++    )
++}
++
+ // TODO: Save key state. Mouse too?
+ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+     if let Some(app) = App::get() {
+         let mut manager = app.manager.lock();
+         let mut notify_key_down = false;
+ 
++        // mouse only: while a SA:MP dialog or the chat input is open, SA:MP
++        // keeps mouse and ESC (nothing goes to the browser)
++        let mouse_only = manager.is_mouse_only();
++        let samp_ui = mouse_only && samp_ui_active();
++
++        if samp_ui && is_mouse_message(msg) {
++            return false;
++        }
++
+         match msg {
+             WM_MOUSEMOVE => {
+                 let [x, y] = [(lparam as u16) as i32, (lparam >> 16) as u16 as i32];
+@@ -643,10 +815,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+                     }
+                 }
+ 
++                let is_escape = wparam == VK_ESCAPE as usize;
++
+                 // notify GTA. should be notified only once
+                 let key_index = wparam;
+                 if key_index < 512 {
+-                    if manager.is_input_blocked() {
++                    if manager.is_keyboard_blocked() {
+                         // allowed keys (screenshot and chat cycle)
+                         let is_allowed_key = wparam == VK_F8 as usize || wparam == VK_F7 as usize;
+ 
+@@ -657,7 +831,9 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+                             app.key_state[key_index] = false;
+                             notify_key_down = true;
+                         }
+-                    } else if event.type_ != cef_key_event_type_t::KEYEVENT_CHAR {
++                    } else if event.type_ != cef_key_event_type_t::KEYEVENT_CHAR
++                        && !(mouse_only && is_escape && !samp_ui)
++                    {
+                         app.key_state[key_index] =
+                             event.type_ == cef_key_event_type_t::KEYEVENT_RAWKEYDOWN;
+                     }
+@@ -665,11 +841,17 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+ 
+                 let input_active = inputs::Input::is_active()
+                     || inputs::Dialog::is_input_focused()
+-                    || CMenuManager::is_menu_active();
++                    || CMenuManager::is_menu_active()
++                    || (samp_ui && is_escape);
+ 
+                 if !input_active {
+                     manager.send_keyboard_event(event);
+                 }
++
++                // mouse only: every key except ESC goes to the game as usual
++                if mouse_only && !manager.is_input_corrupted() {
++                    return is_escape && !samp_ui && !CMenuManager::is_menu_active();
++                }
+             }
+ 
+             WM_ACTIVATE | WM_ACTIVATEAPP => {
+@@ -686,6 +868,13 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+                 manager.set_corrupted(!active);
+                 manager.do_not_draw(!active);
+ 
++                // Alt+Tab: release keys and mouse buttons in the browsers, the
++                // matching key-up messages go to another window
++                if !active {
++                    manager.release_pressed_input();
++                    crate::mouse_only::set_active(false);
++                }
++
+                 return false;
+             }
+ 
+@@ -698,7 +887,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+             return false;
+         }
+ 
+-        return manager.is_input_blocked() && !notify_key_down;
++        // mouse only: mouse messages belong to the browser
++        if mouse_only {
++            return is_mouse_message(msg);
++        }
++
++        return manager.is_keyboard_blocked() && !notify_key_down;
+     }
+ 
+     false
+@@ -710,11 +904,22 @@ extern "stdcall" fn async_key_state(key: i32) -> u16 {
+         let result = app.keystate_hook.call(key);
+ 
+         if let Some(manager) = app.manager.try_lock() {
+-            if manager.is_input_blocked() {
++            if manager.is_keyboard_blocked() {
+                 return 0;
+-            } else {
+-                return result;
+             }
++
++            // mouse only: hide mouse buttons and ESC from the game
++            if manager.is_mouse_only()
++                && crate::mouse_only::is_active()
++                && matches!(
++                    key,
++                    VK_LBUTTON | VK_RBUTTON | VK_MBUTTON | VK_XBUTTON1 | VK_XBUTTON2 | VK_ESCAPE
++                )
++            {
++                return 0;
++            }
++
++            return result;
+         }
+     }
+ 
+diff --git a/client/src/browser/client.rs b/client/src/browser/client.rs
+index 8f2753b..7e99c03 100644
+--- a/client/src/browser/client.rs
++++ b/client/src/browser/client.rs
+@@ -26,6 +26,7 @@ use client_api::utils::handle_result;
+ 
+ use crate::app::Event;
+ use crate::audio::Audio;
++use crate::browser::manager::InputMode;
+ use crate::browser::view::View;
+ use crate::external::{CallbackList, EXTERNAL_BREAK};
+ 
+@@ -198,6 +199,44 @@ impl Client for WebClientRef {
+                 return true;
+             }
+ 
++            "set_input_mode" => {
++                let args = msg.argument_list();
++
++                let mode = match args.get_type(0) {
++                    ValueType::String => InputMode::from_name(&args.string(0).to_string()),
++                    ValueType::Integer => u32::try_from(args.integer(0))
++                        .ok()
++                        .and_then(InputMode::from_raw),
++                    _ => None,
++                };
++
++                if let Some(mode) = mode {
++                    handle_result(self.0.event_tx.send(Event::SetInputMode(self.0.id, mode)));
++                } else {
++                    tracing::warn!(browser = self.0.id, "cef.set_input_mode: unknown mode");
++                }
++
++                return true;
++            }
++
++            "editing" => {
++                let args = msg.argument_list();
++
++                let editing = match args.get_type(0) {
++                    ValueType::Bool => args.bool(0),
++                    ValueType::Integer => args.integer(0) == 1,
++                    _ => false,
++                };
++
++                handle_result(
++                    self.0
++                        .event_tx
++                        .send(Event::BrowserEditing(self.0.id, editing)),
++                );
++
++                return true;
++            }
++
+             "hide" => {
+                 let args = msg.argument_list();
+                 let value_type = args.get_type(0);
+diff --git a/client/src/browser/manager.rs b/client/src/browser/manager.rs
+index 5c30911..59a611b 100644
+--- a/client/src/browser/manager.rs
++++ b/client/src/browser/manager.rs
+@@ -8,17 +8,63 @@ use cef::types::list::List;
+ use cef::types::string::CefString;
+ use cef_sys::{cef_event_flags_t, cef_key_event_t, cef_mouse_button_type_t, cef_mouse_event_t};
+ 
+-use std::collections::{HashMap, VecDeque};
++use std::collections::{HashMap, HashSet, VecDeque};
+ use std::sync::Arc;
+ use std::time::{Duration, Instant};
+ 
+-use winapi::um::winuser::{GetDoubleClickTime, GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK};
++use winapi::um::winuser::{
++    GetDoubleClickTime, GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK, VK_ESCAPE,
++};
+ 
+ use client_api::gta::rw::rwcore::RwTexture;
+ use client_api::gta::rw::rwplcore::RwSurfaceProperties;
+ 
++use client_api::utils::handle_result;
++
+ use crossbeam_channel::Sender;
+ 
++/// Input mode of a browser (`CEF_INPUT_*` on the server).
++#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
++pub enum InputMode {
++    /// No input (`focused = false`).
++    None = 0,
++    /// Mouse and keyboard go to the browser (`focused = true`).
++    Full = 1,
++    /// Mouse goes to the browser, keyboard stays with the game.
++    MouseOnly = 2,
++}
++
++impl InputMode {
++    pub fn from_raw(mode: u32) -> Option<InputMode> {
++        match mode {
++            0 => Some(InputMode::None),
++            1 => Some(InputMode::Full),
++            2 => Some(InputMode::MouseOnly),
++            _ => None,
++        }
++    }
++
++    pub fn from_name(name: &str) -> Option<InputMode> {
++        match name.trim().to_ascii_lowercase().as_str() {
++            "none" => Some(InputMode::None),
++            "full" => Some(InputMode::Full),
++            "mouse" | "mouse_only" => Some(InputMode::MouseOnly),
++            _ => None,
++        }
++    }
++
++    pub fn name(self) -> &'static str {
++        match self {
++            InputMode::None => "none",
++            InputMode::Full => "full",
++            InputMode::MouseOnly => "mouse",
++        }
++    }
++}
++
++/// Browser event with the new input mode name ("none", "full", "mouse").
++pub const INPUT_MODE_EVENT: &str = "cef:input_mode";
++
+ #[derive(Debug, Clone, Copy, Hash, Ord, PartialOrd, Eq, PartialEq)]
+ pub enum MouseKey {
+     Left,
+@@ -41,6 +87,8 @@ struct Mouse {
+     y: i32,
+     keys: HashMap<MouseKey, bool>,
+     last_click: Option<ClickSequence>,
++    // browser that got the last mouse-down event
++    owner: Option<u32>,
+ }
+ 
+ fn windowless_frame_rate(fps: u64) -> i32 {
+@@ -105,6 +153,12 @@ pub struct Manager {
+     pending_object_ids: HashMap<u32, Vec<i32>>,
+     focused: Option<u32>,
+     focused_queue: VecDeque<u32>,
++    // input mode of every browser that holds or waits for input (FULL or MOUSE_ONLY)
++    input_modes: HashMap<u32, InputMode>,
++    // browsers with a focused text field (input, textarea, contenteditable)
++    editing: HashSet<u32>,
++    // keys that were sent to a browser as pressed and not released yet
++    pressed_keys: HashMap<u32, HashSet<i32>>,
+     input_corrupted: bool,
+     do_not_draw: bool,
+     event_tx: Sender<Event>,
+@@ -130,6 +184,7 @@ impl Manager {
+             y: 0,
+             keys,
+             last_click: None,
++            owner: None,
+         };
+ 
+         Manager {
+@@ -144,6 +199,9 @@ impl Manager {
+             cef_running: false,
+             focused: None,
+             focused_queue: VecDeque::new(),
++            input_modes: HashMap::new(),
++            editing: HashSet::new(),
++            pressed_keys: HashMap::new(),
+             audio,
+             mouse,
+             event_tx,
+@@ -411,6 +469,10 @@ impl Manager {
+         {
+             self.mouse.keys.insert(button, is_down);
+ 
++            if is_down {
++                self.mouse.owner = Some(client.id());
++            }
++
+             let event = cef_mouse_event_t {
+                 x: self.mouse.x,
+                 y: self.mouse.y,
+@@ -453,28 +515,148 @@ impl Manager {
+     }
+ 
+     #[inline]
+-    pub fn send_keyboard_event(&self, event: cef_key_event_t) {
++    pub fn send_keyboard_event(&mut self, event: cef_key_event_t) {
+         if self.input_corrupted {
+             return;
+         }
+ 
+-        // отправлять события клавиш ТОЛЬКО сфокусированному браузеру. иначе можно и другим запросившим
+-        if let Some(client) = self.focused.as_ref().and_then(|id| self.clients.get(id))
+-            && let Some(host) = client.browser().map(|browser| browser.host())
+-        {
+-            host.send_keyboard_event(event);
+-        } else {
+-            for host in self
++        let focused_host = self
++            .focused
++            .as_ref()
++            .and_then(|id| self.clients.get(id))
++            .and_then(|client| client.browser().map(|browser| (client.id(), browser.host())));
++
++        match self.effective_mode() {
++            // отправлять события клавиш ТОЛЬКО сфокусированному браузеру. иначе можно и другим запросившим
++            InputMode::Full => {
++                if let Some((id, host)) = focused_host {
++                    self.track_key(id, &event);
++                    host.send_keyboard_event(event);
++                }
++            }
++
++            // Mouse only: ESC belongs to the browser, every other key stays with
++            // the game and is only seen by browsers that always listen to keys.
++            InputMode::MouseOnly if event.windows_key_code == VK_ESCAPE => {
++                if let Some((id, host)) = focused_host {
++                    self.track_key(id, &event);
++                    host.send_keyboard_event(event);
++                }
++            }
++
++            _ => {
++                let listeners: Vec<_> = self
++                    .clients
++                    .values()
++                    .filter(|client| client.always_listen_keys())
++                    .filter_map(|client| {
++                        client.browser().map(|browser| (client.id(), browser.host()))
++                    })
++                    .collect();
++
++                for (id, host) in listeners {
++                    self.track_key(id, &event);
++                    host.send_keyboard_event(event);
++                }
++            }
++        }
++    }
++
++    fn track_key(&mut self, browser: u32, event: &cef_key_event_t) {
++        use cef_sys::cef_key_event_type_t::*;
++
++        match event.type_ {
++            KEYEVENT_RAWKEYDOWN | KEYEVENT_KEYDOWN => {
++                self.pressed_keys
++                    .entry(browser)
++                    .or_default()
++                    .insert(event.windows_key_code);
++            }
++
++            KEYEVENT_KEYUP => {
++                if let Some(keys) = self.pressed_keys.get_mut(&browser) {
++                    keys.remove(&event.windows_key_code);
++                }
++            }
++
++            _ => (),
++        }
++    }
++
++    /// Sends key-up events for every key a browser still thinks is pressed and
++    /// mouse-up events for pressed mouse buttons, so nothing gets stuck when
++    /// the game window loses focus.
++    pub fn release_pressed_input(&mut self) {
++        self.release_pressed_keys();
++        self.release_mouse_buttons();
++    }
++
++    fn release_pressed_keys(&mut self) {
++        let pressed = std::mem::take(&mut self.pressed_keys);
++
++        for (browser, keys) in pressed {
++            let Some(host) = self
+                 .clients
+-                .values()
+-                .filter(|client| client.always_listen_keys())
+-                .filter_map(|client| client.browser().map(|browser| browser.host()))
+-            {
++                .get(&browser)
++                .and_then(|client| client.browser())
++                .map(|browser| browser.host())
++            else {
++                continue;
++            };
++
++            for key in keys {
++                let mut event: cef_key_event_t = unsafe { std::mem::zeroed() };
++
++                event.size = std::mem::size_of::<cef_key_event_t>();
++                event.type_ = cef_sys::cef_key_event_type_t::KEYEVENT_KEYUP;
++                event.windows_key_code = key;
++
+                 host.send_keyboard_event(event);
+             }
+         }
+     }
+ 
++    fn release_mouse_buttons(&mut self) {
++        let owner = self.mouse.owner.take();
++
++        let pressed_buttons: Vec<MouseKey> = self
++            .mouse
++            .keys
++            .iter()
++            .filter(|(_, pressed)| **pressed)
++            .map(|(key, _)| *key)
++            .collect();
++
++        if pressed_buttons.is_empty() {
++            return;
++        }
++
++        let owner_host = owner
++            .and_then(|id| self.clients.get(&id))
++            .and_then(|client| client.browser())
++            .map(|browser| browser.host());
++
++        for button in pressed_buttons {
++            self.mouse.keys.insert(button, false);
++
++            if let Some(host) = owner_host.as_ref() {
++                let event = cef_mouse_event_t {
++                    x: self.mouse.x,
++                    y: self.mouse.y,
++                    modifiers: 0,
++                };
++
++                let key = match button {
++                    MouseKey::Left => cef_mouse_button_type_t::MBT_LEFT,
++                    MouseKey::Middle => cef_mouse_button_type_t::MBT_MIDDLE,
++                    MouseKey::Right => cef_mouse_button_type_t::MBT_RIGHT,
++                };
++
++                host.send_mouse_click(key, event, false, 1);
++            }
++        }
++    }
++
+     pub fn trigger_event(&self, event_name: &str, list: List) {
+         for client in self.clients.values() {
+             if let Some(frame) = client.browser().map(|browser| browser.main_frame()) {
+@@ -507,17 +689,42 @@ impl Manager {
+         }
+     }
+ 
++    /// `cef_focus_browser` / `cef.set_focus`: focused = FULL, not focused = NONE.
+     pub fn browser_focus(&mut self, id: u32, focus: bool) {
+-        if self.clients.contains_key(&id) {
+-            if focus {
+-                if let Some(&cur_id) = self.focused.as_ref() {
+-                    if cur_id != id {
+-                        self.focused_queue.push_back(id);
+-                    }
+-                } else {
+-                    self.focused = Some(id);
++        let mode = if focus {
++            InputMode::Full
++        } else {
++            InputMode::None
++        };
++
++        self.set_input_mode(id, mode);
++    }
++
++    /// Sets the input mode of a browser. FULL and MOUSE_ONLY take part in the
++    /// same focus queue as `focused = true` did before: the first browser
++    /// holds the input, later ones wait until it is released.
++    pub fn set_input_mode(&mut self, id: u32, mode: InputMode) {
++        if !self.clients.contains_key(&id) {
++            return;
++        }
++
++        let before = self.browser_mode(id);
++        let effective_before = self.effective_mode();
++
++        if mode != InputMode::None {
++            self.input_modes.insert(id, mode);
++
++            if let Some(&cur_id) = self.focused.as_ref() {
++                if cur_id != id && !self.focused_queue.contains(&id) {
++                    self.focused_queue.push_back(id);
+                 }
+-            } else if self
++            } else {
++                self.focused = Some(id);
++            }
++        } else {
++            self.input_modes.remove(&id);
++
++            if self
+                 .focused
+                 .as_ref()
+                 .filter(|focused| **focused == id)
+@@ -531,13 +738,110 @@ impl Manager {
+                     .map(|idx| self.focused_queue.remove(idx));
+             }
+         }
++
++        self.after_mode_change(id, before, effective_before);
++    }
++
++    /// A text field in the browser got (true) or lost (false) focus.
++    pub fn set_editing(&mut self, id: u32, editing: bool) {
++        if !self.clients.contains_key(&id) {
++            return;
++        }
++
++        let before = self.browser_mode(id);
++        let effective_before = self.effective_mode();
++
++        if editing {
++            self.editing.insert(id);
++        } else {
++            self.editing.remove(&id);
++        }
++
++        self.after_mode_change(id, before, effective_before);
++    }
++
++    fn after_mode_change(&mut self, id: u32, before: InputMode, effective_before: InputMode) {
++        self.release_after_change(effective_before);
++
++        let after = self.browser_mode(id);
++
++        if after != before {
++            tracing::debug!(browser = id, mode = after.name(), "browser input mode changed");
++
++            handle_result(self.event_tx.send(Event::InputModeChanged(id, after)));
++            self.trigger_browser_event(id, INPUT_MODE_EVENT, after.name());
++        }
+     }
+ 
++    /// Input mode of one browser: its own mode, MOUSE_ONLY becomes FULL while a
++    /// text field has focus. Browsers waiting in the focus queue report the
++    /// mode they will get.
++    pub fn browser_mode(&self, id: u32) -> InputMode {
++        let in_focus = self.focused == Some(id) || self.focused_queue.contains(&id);
++
++        match self.input_modes.get(&id).copied() {
++            Some(InputMode::MouseOnly) if self.editing.contains(&id) => InputMode::Full,
++            Some(mode) => mode,
++            None if in_focus => InputMode::Full,
++            None => InputMode::None,
++        }
++    }
++
++    /// Input mode that is applied right now (mode of the focused browser).
++    #[inline]
++    pub fn effective_mode(&self) -> InputMode {
++        self.focused
++            .map(|id| self.browser_mode(id))
++            .unwrap_or(InputMode::None)
++    }
++
++    /// A browser holds the input (FULL or MOUSE_ONLY): mouse goes to it.
+     #[inline(always)]
+     pub fn is_input_blocked(&self) -> bool {
+         self.focused.is_some()
+     }
+ 
++    /// Keyboard goes to the focused browser only (FULL).
++    #[inline(always)]
++    pub fn is_keyboard_blocked(&self) -> bool {
++        self.effective_mode() == InputMode::Full
++    }
++
++    /// Mouse goes to the focused browser, keyboard to the game (MOUSE_ONLY).
++    #[inline(always)]
++    pub fn is_mouse_only(&self) -> bool {
++        self.effective_mode() == InputMode::MouseOnly
++    }
++
++    /// Tells a page its current input mode (event `cef:input_mode`), e.g.
++    /// after loading, when the mode was set before the page existed.
++    pub fn send_input_mode_to_browser(&self, id: u32) {
++        if self.clients.contains_key(&id) {
++            self.trigger_browser_event(id, INPUT_MODE_EVENT, self.browser_mode(id).name());
++        }
++    }
++
++    fn trigger_browser_event(&self, id: u32, event_name: &str, value: &str) {
++        if let Some(frame) = self
++            .clients
++            .get(&id)
++            .and_then(|client| client.browser())
++            .map(|browser| browser.main_frame())
++        {
++            let name = CefString::new(event_name);
++            let msg = cef::process_message::ProcessMessage::create("trigger_event");
++
++            let list = List::new();
++            list.set_string(0, &CefString::new(value));
++
++            let args = msg.argument_list();
++            args.set_string(0, &name);
++            args.set_list(1, list);
++
++            frame.send_process_message(cef::ProcessId::Renderer, msg);
++        }
++    }
++
+     #[inline(always)]
+     pub fn is_input_available(&self, browser: u32) -> bool {
+         if self.input_corrupted {
+@@ -652,6 +956,9 @@ impl Manager {
+ 
+         self.focused = None;
+         self.focused_queue.clear();
++        self.input_modes.clear();
++        self.editing.clear();
++        self.pressed_keys.clear();
+     }
+ 
+     pub fn initialize_cef(&mut self) {
+@@ -725,6 +1032,12 @@ impl Manager {
+     }
+ 
+     fn cleanup_focus_after_close(&mut self, closed_id: u32) {
++        let effective_before = self.effective_mode();
++
++        self.input_modes.remove(&closed_id);
++        self.editing.remove(&closed_id);
++        self.pressed_keys.remove(&closed_id);
++
+         self.focused_queue
+             .retain(|&id| id != closed_id && self.clients.contains_key(&id));
+ 
+@@ -749,6 +1062,21 @@ impl Manager {
+             self.focused = None;
+             self.focused_queue.clear();
+         }
++
++        self.release_after_change(effective_before);
++    }
++
++    // Keys go to other browsers after a mode change, so release them. Mouse
++    // buttons only need a release when another browser gets the mouse now;
++    // FULL <-> MOUSE_ONLY of the same browser keeps the click going.
++    fn release_after_change(&mut self, effective_before: InputMode) {
++        if self.effective_mode() != effective_before {
++            self.release_pressed_keys();
++        }
++
++        if self.mouse.owner.is_some() && self.mouse.owner != self.focused {
++            self.release_mouse_buttons();
++        }
+     }
+ }
+ 
+diff --git a/client/src/lib.rs b/client/src/lib.rs
+index c96d645..0e46061 100644
+--- a/client/src/lib.rs
++++ b/client/src/lib.rs
+@@ -3,6 +3,7 @@
+ use std::fs::{self, File};
+ use std::path::Path;
+ use std::str::FromStr;
++use std::sync::atomic::{AtomicBool, Ordering};
+ use std::sync::{Once, OnceLock};
+ 
+ use serde::Deserialize;
+@@ -20,6 +21,7 @@ pub mod browser;
+ #[cfg(feature = "crash_logger")]
+ pub mod crash_logger;
+ pub mod external;
++pub mod mouse_only;
+ pub mod network;
+ pub mod render;
+ pub mod static_cell;
+@@ -29,17 +31,38 @@ pub mod utils;
+ 
+ static INIT: Once = Once::new();
+ static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
++static BLOCK_GAME_MOUSE: AtomicBool = AtomicBool::new(true);
+ 
+ #[derive(Deserialize)]
+ struct ClientConfig {
+     #[serde(default = "default_log_level")]
+     log_level: String,
++    // mouse-only input mode: clear GTA's mouse state (see mouse_only.rs)
++    #[serde(default = "default_block_game_mouse")]
++    mouse_only_block_game_mouse: bool,
+ }
+ 
+ fn default_log_level() -> String {
+     "info".to_owned()
+ }
+ 
++fn default_block_game_mouse() -> bool {
++    true
++}
++
++fn read_block_game_mouse(path: &Path) -> bool {
++    fs::read_to_string(path)
++        .ok()
++        .and_then(|contents| serde_json::from_str::<ClientConfig>(&contents).ok())
++        .map(|config| config.mouse_only_block_game_mouse)
++        .unwrap_or_else(default_block_game_mouse)
++}
++
++/// `mouse_only_block_game_mouse` from `cef/config.json` (default: true).
++pub fn block_game_mouse() -> bool {
++    BLOCK_GAME_MOUSE.load(Ordering::SeqCst)
++}
++
+ fn parse_log_level(value: &str) -> Option<LevelFilter> {
+     LevelFilter::from_str(value.trim().to_ascii_lowercase().as_str()).ok()
+ }
+@@ -138,6 +161,24 @@ mod tests {
+         assert_eq!(read_log_level(&path), (LevelFilter::INFO, None));
+     }
+ 
++    #[test]
++    fn game_mouse_lock_is_enabled_by_default() {
++        let path = std::env::temp_dir().join(format!(
++            "samp-cef-missing-mouse-config-{}.json",
++            std::process::id()
++        ));
++        let _ = fs::remove_file(&path);
++
++        assert!(read_block_game_mouse(&path));
++
++        let config: ClientConfig = serde_json::from_str(r#"{"log_level":"info"}"#).unwrap();
++        assert!(config.mouse_only_block_game_mouse);
++
++        let config: ClientConfig =
++            serde_json::from_str(r#"{"mouse_only_block_game_mouse":false}"#).unwrap();
++        assert!(!config.mouse_only_block_game_mouse);
++    }
++
+     #[test]
+     fn parses_supported_log_levels_case_insensitively() {
+         assert_eq!(parse_log_level("off"), Some(LevelFilter::OFF));
+@@ -155,6 +196,9 @@ pub extern "C" fn cef_client_initialize() {
+     INIT.call_once(|| {
+         initialize_logging();
+ 
++        let config_path = crate::utils::cef_dir().join("config.json");
++        BLOCK_GAME_MOUSE.store(read_block_game_mouse(&config_path), Ordering::SeqCst);
++
+         #[cfg(feature = "crash_logger")]
+         crash_logger::initialize();
+ 
+diff --git a/client/src/mouse_only.rs b/client/src/mouse_only.rs
+new file mode 100644
+index 0000000..1b38f1e
+--- /dev/null
++++ b/client/src/mouse_only.rs
+@@ -0,0 +1,104 @@
++//! Game side of the mouse-only input mode (`CEF_INPUT_MOUSE_ONLY`).
++//!
++//! SA:MP cursor mode 3 shows the cursor and locks the camera, but GTA reads
++//! mouse buttons and the wheel through DirectInput, not through window
++//! messages. To make sure a click on a page never fires a weapon, aims or
++//! switches weapons, the hook below clears GTA's mouse state right after the
++//! game has read it, as long as a mouse-only browser holds the input.
++//!
++//! Switch: `"mouse_only_block_game_mouse": false` in `cef/config.json`
++//! disables the hook (default: enabled).
++
++use std::ffi::c_void;
++use std::sync::atomic::{AtomicBool, Ordering};
++
++use retour::GenericDetour;
++
++use crate::static_cell::StaticCell;
++
++// GTA San Andreas 1.0 US. Source: gta-reversed (github.com/gta-reversed/gta-reversed)
++// - source/game_sa/Pad.cpp: `RH_ScopedInstall(UpdateMouse, 0x53F3C0, ...)`, member
++//   function `void CPad::UpdateMouse()`; it ends with
++//   `OldMouseControllerState = std::exchange(NewMouseControllerState, TempMouseControllerState)`
++//   and is called by `CPad::UpdatePads()` (0x541DD0) before `AffectPadFromMouse()`.
++// - source/game_sa/Pad.h: `NewMouseControllerState = StaticRef<CMouseControllerState>(0xB73418)`
++// - source/game_sa/MouseControllerState.h: LMB, RMB, MMB, wheel up/down, X1, X2,
++//   wheel delta, movement; `VALIDATE_SIZE(CMouseControllerState, 0x14)`
++const CPAD_UPDATE_MOUSE: usize = 0x53F3C0;
++const CPAD_NEW_MOUSE_CONTROLLER_STATE: usize = 0xB73418;
++const MOUSE_CONTROLLER_STATE_SIZE: usize = 0x14;
++
++type UpdateMouseFn = extern "thiscall" fn(*mut c_void);
++
++static UPDATE_MOUSE_HOOK: StaticCell<GenericDetour<UpdateMouseFn>> = StaticCell::new();
++
++// A mouse-only browser holds the input right now (no SA:MP dialog, chat
++// input or pause menu in between, game window active).
++static ACTIVE: AtomicBool = AtomicBool::new(false);
++
++pub fn install() {
++    if !crate::block_game_mouse() {
++        tracing::info!("mouse-only: game mouse lock disabled in config.json");
++        return;
++    }
++
++    let hook = unsafe {
++        let original: UpdateMouseFn = std::mem::transmute(CPAD_UPDATE_MOUSE);
++
++        match GenericDetour::new(original, update_mouse) {
++            Ok(hook) => hook,
++            Err(error) => {
++                tracing::warn!(%error, "mouse-only: cannot create CPad::UpdateMouse hook");
++                return;
++            }
++        }
++    };
++
++    let hook = unsafe { UPDATE_MOUSE_HOOK.set(hook) };
++
++    if let Err(error) = unsafe { hook.enable() } {
++        tracing::warn!(%error, "mouse-only: cannot enable CPad::UpdateMouse hook");
++        unsafe {
++            UPDATE_MOUSE_HOOK.take();
++        }
++        return;
++    }
++
++    tracing::debug!("mouse-only: CPad::UpdateMouse hook installed");
++}
++
++pub fn uninstall() {
++    ACTIVE.store(false, Ordering::SeqCst);
++
++    unsafe {
++        if let Some(hook) = UPDATE_MOUSE_HOOK.get_mut() {
++            let _ = hook.disable();
++        }
++    }
++}
++
++#[inline]
++pub fn set_active(active: bool) {
++    ACTIVE.store(active, Ordering::SeqCst);
++}
++
++#[inline]
++pub fn is_active() -> bool {
++    ACTIVE.load(Ordering::SeqCst)
++}
++
++extern "thiscall" fn update_mouse(pad: *mut c_void) {
++    if let Some(hook) = unsafe { UPDATE_MOUSE_HOOK.get_mut() } {
++        hook.call(pad);
++    }
++
++    if ACTIVE.load(Ordering::SeqCst) {
++        unsafe {
++            std::ptr::write_bytes(
++                CPAD_NEW_MOUSE_CONTROLLER_STATE as *mut u8,
++                0,
++                MOUSE_CONTROLLER_STATE_SIZE,
++            );
++        }
++    }
++}
+diff --git a/client/src/network.rs b/client/src/network.rs
+index eb0d796..e76b0b3 100644
+--- a/client/src/network.rs
++++ b/client/src/network.rs
+@@ -5,6 +5,7 @@ use net::{Event as SocketEvent, PeerId, Socket};
+ use quick_protobuf::deserialize_from_slice;
+ 
+ use crate::app::{Event, ExternalBrowser};
++use crate::browser::manager::InputMode;
+ 
+ use std::net::SocketAddr;
+ use std::time::{Duration, Instant};
+@@ -202,6 +203,12 @@ impl Network {
+                     .ok();
+             }
+ 
++            SET_INPUT_MODE => {
++                deserialize_from_slice(&packet.bytes)
++                    .map(|packet| self.handle_set_input_mode(packet))
++                    .ok();
++            }
++
+             _ => (),
+         }
+     }
+@@ -280,6 +287,20 @@ impl Network {
+         handle_result(self.event_tx.send(event));
+     }
+ 
++    fn handle_set_input_mode(&mut self, packet: packets::SetInputMode) {
++        let Some(mode) = InputMode::from_raw(packet.mode) else {
++            tracing::warn!(
++                browser = packet.browser_id,
++                mode = packet.mode,
++                "unknown input mode from CEF server"
++            );
++            return;
++        };
++
++        let event = Event::SetInputMode(packet.browser_id, mode);
++        handle_result(self.event_tx.send(event));
++    }
++
+     fn handle_create_external_browser(&mut self, packet: packets::CreateExternalBrowser) {
+         let ext = ExternalBrowser {
+             id: packet.browser_id,
+@@ -386,6 +407,26 @@ impl Network {
+         }
+     }
+ 
++    // Old servers do not know this packet and ignore it.
++    fn net_input_mode_changed(&mut self, browser_id: u32, mode: InputMode) {
++        if let ConnectionState::Connected(_address, peer) = self.connection_state {
++            let changed = packets::InputModeChanged {
++                browser_id,
++                mode: mode as u32,
++            };
++
++            let Ok(packet) = messages::try_into_packet(changed) else {
++                tracing::error!(
++                    packet = "input_mode_changed",
++                    "cannot serialize network packet"
++                );
++                return;
++            };
++
++            self.socket.send_message(peer, packet);
++        }
++    }
++
+     fn process_network(&mut self) {
+         if let Some(server_peer) = self.connection_state.peer() {
+             while let Some(event) = self.socket.recv() {
+@@ -437,6 +478,7 @@ impl Network {
+             Event::Connect(addr) => self.net_open_connection(addr),
+             Event::EmitEventOnServer(event, arguments) => self.net_emit_event(event, arguments),
+             Event::BrowserCreated(id, code) => self.net_browser_created(id, code),
++            Event::InputModeChanged(id, mode) => self.net_input_mode_changed(id, mode),
+             _ => (),
+         }
+     }
+diff --git a/docs/main_en.md b/docs/main_en.md
+index 1eb995f..66f42ee 100644
+--- a/docs/main_en.md
++++ b/docs/main_en.md
+@@ -69,6 +69,19 @@ Changes audio settings of a browser. `reference_distance` - distance while volum
+ 
+ Makes a browser focused as it would be on creation with `focused = true`.
+ 
++`cef_set_input_mode(player_id, browser_id, mode)`
++
++Sets the input mode of a browser:
++- `CEF_INPUT_NONE` (0): no input, same as `cef_focus_browser(.., false)`.
++- `CEF_INPUT_FULL` (1): mouse and keyboard go to the browser, same as `cef_focus_browser(.., true)`.
++- `CEF_INPUT_MOUSE_ONLY` (2): cursor visible, mouse (move, buttons, wheel) and ESC go to the browser, every other key stays with the game (walking, driving, chat). Browsers with `cef_always_listen_keys` still get those keys. While a text field (input, textarea, contenteditable) has focus the browser gets full input, after blur it switches back automatically.
++
++Clients older than `0x000200` (`cef_get_client_version`) do not know the mouse-only mode and get full input instead.
++
++`cef_get_client_version(player_id)`
++
++Returns the plugin version of the player's client (`0x000200` and newer support input modes), 0 if unknown.
++
+ `cef_always_listen_keys(player_id, browser_id, listen)`
+ 
+ The browser starts listen to player input even if it is not focused. This allows you to add a JS key handler on background (`window.addEventListener("keyup")` for example).
+@@ -88,6 +101,10 @@ Loads a new page with a given url (faster than destroy and recreate browser).
+ 
+ Called when a player has created a browser (from a server or a plugin). `status_code` will be 0 if there is some error. otherwise it is a HTTP response code (200, 404, etc).
+ 
++`forward OnCefInputModeChanged(player_id, browser_id, mode)`
++
++Called when the input mode of a browser changed on the client (server call, `cef.set_focus`, `cef.set_input_mode`, or a text field switching a mouse-only browser to full input and back).
++
+ `forward OnCefInitialize(player_id, success)`
+ 
+ Called when a player connected to the server with a plugin (or timed-out if there is no installed plugin). Kind of automatic `cef_player_has_plugin`.
+@@ -98,6 +115,10 @@ Called when a player connected to the server with a plugin (or timed-out if ther
+ 
+ Set a focus on a browser. It will be rendered last (means have high Z coord). Also can receive mouse and keyboard events.
+ 
++`cef.set_input_mode(mode)`
++
++Sets the input mode of the browser: `"none"`, `"full"` or `"mouse"` (see `cef_set_input_mode`). The browser gets the event `cef:input_mode` with the new mode name whenever its mode changes.
++
+ `cef.on(event_name, callback)`
+ Subscribes for events from a server / client plugins.
+ 
+diff --git a/messages/src/packets.rs b/messages/src/packets.rs
+index fc69b66..ea3c56b 100644
+--- a/messages/src/packets.rs
++++ b/messages/src/packets.rs
+@@ -18,3 +18,5 @@ impl_into_packet!(RemoveFromObject, PacketId::REMOVE_FROM_OBJECT);
+ impl_into_packet!(ToggleDevTools, PacketId::TOGGLE_DEV_TOOLS);
+ impl_into_packet!(SetAudioSettings, PacketId::SET_AUDIO_SETTINGS);
+ impl_into_packet!(LoadUrl<'a>, PacketId::LOAD_URL);
++impl_into_packet!(SetInputMode, PacketId::SET_INPUT_MODE);
++impl_into_packet!(InputModeChanged, PacketId::INPUT_MODE_CHANGED);
+diff --git a/messages/src/proto/packets.rs b/messages/src/proto/packets.rs
+index 7a3c623..468c823 100644
+--- a/messages/src/proto/packets.rs
++++ b/messages/src/proto/packets.rs
+@@ -30,9 +30,11 @@ pub enum PacketId {
+     TOGGLE_DEV_TOOLS = 14,
+     SET_AUDIO_SETTINGS = 15,
+     LOAD_URL = 16,
++    SET_INPUT_MODE = 17,
+     EMIT_EVENT = 8,
+     BROWSER_CREATED = 9,
+     GOT = 10,
++    INPUT_MODE_CHANGED = 18,
+ }
+ 
+ impl Default for PacketId {
+@@ -58,9 +60,11 @@ impl From<i32> for PacketId {
+             14 => PacketId::TOGGLE_DEV_TOOLS,
+             15 => PacketId::SET_AUDIO_SETTINGS,
+             16 => PacketId::LOAD_URL,
++            17 => PacketId::SET_INPUT_MODE,
+             8 => PacketId::EMIT_EVENT,
+             9 => PacketId::BROWSER_CREATED,
+             10 => PacketId::GOT,
++            18 => PacketId::INPUT_MODE_CHANGED,
+             _ => Self::default(),
+         }
+     }
+@@ -83,9 +87,11 @@ impl<'a> From<&'a str> for PacketId {
+             "TOGGLE_DEV_TOOLS" => PacketId::TOGGLE_DEV_TOOLS,
+             "SET_AUDIO_SETTINGS" => PacketId::SET_AUDIO_SETTINGS,
+             "LOAD_URL" => PacketId::LOAD_URL,
++            "SET_INPUT_MODE" => PacketId::SET_INPUT_MODE,
+             "EMIT_EVENT" => PacketId::EMIT_EVENT,
+             "BROWSER_CREATED" => PacketId::BROWSER_CREATED,
+             "GOT" => PacketId::GOT,
++            "INPUT_MODE_CHANGED" => PacketId::INPUT_MODE_CHANGED,
+             _ => Self::default(),
+         }
+     }
+@@ -730,3 +736,73 @@ impl<'a> MessageWrite for LoadUrl<'a> {
+     }
+ }
+ 
++#[derive(Debug, Default, PartialEq, Clone)]
++pub struct SetInputMode {
++    pub browser_id: u32,
++    pub mode: u32,
++}
++
++impl<'a> MessageRead<'a> for SetInputMode {
++    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
++        let mut msg = Self::default();
++        while !r.is_eof() {
++            match r.next_tag(bytes) {
++                Ok(8) => msg.browser_id = r.read_uint32(bytes)?,
++                Ok(16) => msg.mode = r.read_uint32(bytes)?,
++                Ok(t) => { r.read_unknown(bytes, t)?; }
++                Err(e) => return Err(e),
++            }
++        }
++        Ok(msg)
++    }
++}
++
++impl MessageWrite for SetInputMode {
++    fn get_size(&self) -> usize {
++        0
++        + 1 + sizeof_varint(*(&self.browser_id) as u64)
++        + 1 + sizeof_varint(*(&self.mode) as u64)
++    }
++
++    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
++        w.write_with_tag(8, |w| w.write_uint32(*&self.browser_id))?;
++        w.write_with_tag(16, |w| w.write_uint32(*&self.mode))?;
++        Ok(())
++    }
++}
++
++#[derive(Debug, Default, PartialEq, Clone)]
++pub struct InputModeChanged {
++    pub browser_id: u32,
++    pub mode: u32,
++}
++
++impl<'a> MessageRead<'a> for InputModeChanged {
++    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
++        let mut msg = Self::default();
++        while !r.is_eof() {
++            match r.next_tag(bytes) {
++                Ok(8) => msg.browser_id = r.read_uint32(bytes)?,
++                Ok(16) => msg.mode = r.read_uint32(bytes)?,
++                Ok(t) => { r.read_unknown(bytes, t)?; }
++                Err(e) => return Err(e),
++            }
++        }
++        Ok(msg)
++    }
++}
++
++impl MessageWrite for InputModeChanged {
++    fn get_size(&self) -> usize {
++        0
++        + 1 + sizeof_varint(*(&self.browser_id) as u64)
++        + 1 + sizeof_varint(*(&self.mode) as u64)
++    }
++
++    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
++        w.write_with_tag(8, |w| w.write_uint32(*&self.browser_id))?;
++        w.write_with_tag(16, |w| w.write_uint32(*&self.mode))?;
++        Ok(())
++    }
++}
++
+diff --git a/openmp-component/component/src/component.cpp b/openmp-component/component/src/component.cpp
+index 0f76b3f..7e661dc 100644
+--- a/openmp-component/component/src/component.cpp
++++ b/openmp-component/component/src/component.cpp
+@@ -197,6 +197,11 @@ void grpcReturnBool(GrpcReply& reply, bool value)
+ 	reply.mutable_return_value()->set_bool_value(value);
+ }
+ 
++void grpcReturnInt(GrpcReply& reply, int value)
++{
++	reply.mutable_return_value()->set_int32_value(value);
++}
++
+ GrpcNamedValue grpcNamedPlayer(const char* name, int playerID)
+ {
+ 	GrpcNamedValue arg;
+@@ -436,6 +441,8 @@ public:
+ 			{ "cef_toggle_dev_tools", &CefComponent::nativeToggleDevTools },
+ 			{ "cef_set_audio_settings", &CefComponent::nativeSetAudioSettings },
+ 			{ "cef_load_url", &CefComponent::nativeLoadUrl },
++			{ "cef_set_input_mode", &CefComponent::nativeSetInputMode },
++			{ "cef_get_client_version", &CefComponent::nativeGetClientVersion },
+ 		};
+ 
+ 		script.Register(natives, static_cast<int>(sizeof(natives) / sizeof(natives[0])));
+@@ -534,6 +541,10 @@ private:
+ 			notifyBrowserCreated(event.player_id, event.browser_id, event.code);
+ 			break;
+ 
++		case EventKind::InputModeChanged:
++			notifyInputModeChanged(event.player_id, event.browser_id, event.mode);
++			break;
++
+ 		case EventKind::None:
+ 			break;
+ 		}
+@@ -589,6 +600,22 @@ private:
+ #endif
+ 	}
+ 
++	void notifyInputModeChanged(int playerID, std::uint32_t browserID, int mode)
++	{
++		for (IPawnScript* script : scripts_)
++		{
++			script->Call("OnCefInputModeChanged", DefaultReturnValue_True, playerID, static_cast<int>(browserID), mode);
++		}
++
++#if SAMP_CEF_HAS_GRPC_EXT
++		std::vector<GrpcNamedValue> args;
++		args.push_back(grpcNamedPlayer("player_id", playerID));
++		args.push_back(grpcNamedInt("browser_id", static_cast<int>(browserID)));
++		args.push_back(grpcNamedInt("mode", mode));
++		emitGrpcEvent("OnCefInputModeChanged", std::move(args));
++#endif
++	}
++
+ 	IPawnScript* scriptFromAmx(AMX* amx) const
+ 	{
+ 		return pawn_ ? pawn_->getScript(amx) : nullptr;
+@@ -731,6 +758,14 @@ private:
+ 				addGrpcEventArg(descriptor, "status_code", "int");
+ 			});
+ 
++		registerGrpcEvent("OnCefInputModeChanged",
++			[](GrpcEventDescriptor& descriptor)
++			{
++				addGrpcEventArg(descriptor, "player_id", "int", omp::ext::v1::ENTITY_TYPE_PLAYER);
++				addGrpcEventArg(descriptor, "browser_id", "int");
++				addGrpcEventArg(descriptor, "mode", "int");
++			});
++
+ 		registerGrpcFunction("cef_on_player_connect", "bool",
+ 			[](GrpcFunctionDescriptor& descriptor)
+ 			{
+@@ -871,6 +906,22 @@ private:
+ 				addGrpcParam(descriptor, "url", "char*");
+ 			},
+ 			&CefComponent::grpcLoadUrl);
++
++		registerGrpcFunction("cef_set_input_mode", "bool",
++			[](GrpcFunctionDescriptor& descriptor)
++			{
++				addGrpcParam(descriptor, "player_id", "int", omp::ext::v1::ENTITY_TYPE_PLAYER);
++				addGrpcParam(descriptor, "browser_id", "int");
++				addGrpcParam(descriptor, "mode", "int");
++			},
++			&CefComponent::grpcSetInputMode);
++
++		registerGrpcFunction("cef_get_client_version", "int",
++			[](GrpcFunctionDescriptor& descriptor)
++			{
++				addGrpcParam(descriptor, "player_id", "int", omp::ext::v1::ENTITY_TYPE_PLAYER);
++			},
++			&CefComponent::grpcGetClientVersion);
+ 	}
+ 
+ 	void emitGrpcEvent(const std::string& name, std::vector<GrpcNamedValue> args)
+@@ -1322,6 +1373,49 @@ private:
+ 		(*self->server_)->load_url(playerID, browserID, asRustStr(url));
+ 		grpcReturnBool(reply, true);
+ 	}
++
++	static void grpcSetInputMode(const GrpcRequest& request, GrpcReply& reply, void* userData)
++	{
++		CefComponent* self = grpcSelf(userData, reply);
++		if (!self)
++		{
++			return;
++		}
++
++		int playerID = 0;
++		int browserID = 0;
++		int mode = 0;
++		if (!grpcReadRequired(request, reply, "player_id", 0, grpcReadPlayerValue, playerID, "player")
++			|| !grpcReadRequired(request, reply, "browser_id", 1, grpcReadIntValue, browserID, "int")
++			|| !grpcReadRequired(request, reply, "mode", 2, grpcReadIntValue, mode, "int"))
++		{
++			return;
++		}
++
++		if (!(*self->server_)->set_input_mode(playerID, browserID, mode))
++		{
++			grpcFail(reply, "BAD_ARGUMENT", "Expected input mode 0 (none), 1 (full) or 2 (mouse only)");
++			return;
++		}
++		grpcReturnBool(reply, true);
++	}
++
++	static void grpcGetClientVersion(const GrpcRequest& request, GrpcReply& reply, void* userData)
++	{
++		CefComponent* self = grpcSelf(userData, reply);
++		if (!self)
++		{
++			return;
++		}
++
++		int playerID = 0;
++		if (!grpcReadRequired(request, reply, "player_id", 0, grpcReadPlayerValue, playerID, "player"))
++		{
++			return;
++		}
++
++		grpcReturnInt(reply, (*self->server_)->client_version(playerID));
++	}
+ #endif
+ 
+ 	static CefComponent* component()
+@@ -1574,6 +1668,36 @@ private:
+ 		return 1;
+ 	}
+ 
++	static cell AMX_NATIVE_CALL nativeSetInputMode(AMX*, const cell* params)
++	{
++		CefComponent* self = component();
++		if (!self || !self->server_ || !self->requireParams(params, 3, "cef_set_input_mode"))
++		{
++			return 0;
++		}
++
++		if (!(*self->server_)->set_input_mode(static_cast<int>(params[1]), static_cast<int>(params[2]), static_cast<int>(params[3])))
++		{
++			if (self->core_)
++			{
++				self->core_->logLn(LogLevel::Error, "[CEF] cef_set_input_mode: invalid mode %d", static_cast<int>(params[3]));
++			}
++			return 0;
++		}
++		return 1;
++	}
++
++	static cell AMX_NATIVE_CALL nativeGetClientVersion(AMX*, const cell* params)
++	{
++		CefComponent* self = component();
++		if (!self || !self->server_ || !self->requireParams(params, 1, "cef_get_client_version"))
++		{
++			return 0;
++		}
++
++		return static_cast<cell>((*self->server_)->client_version(static_cast<int>(params[1])));
++	}
++
+ 	static cell AMX_NATIVE_CALL nativePlayerHasPlugin(AMX*, const cell* params)
+ 	{
+ 		CefComponent* self = component();
+diff --git a/openmp-component/src/lib.rs b/openmp-component/src/lib.rs
+index e7d38d4..14a3457 100644
+--- a/openmp-component/src/lib.rs
++++ b/openmp-component/src/lib.rs
+@@ -2,7 +2,7 @@ use std::borrow::Cow;
+ use std::net::{IpAddr, SocketAddr};
+ use std::sync::Once;
+ 
+-use server_core::{CoreEvent, EventValue, ServerCore as InnerServerCore};
++use server_core::{CoreEvent, EventValue, InputMode, ServerCore as InnerServerCore};
+ use tracing_subscriber::filter::{LevelFilter, Targets};
+ use tracing_subscriber::layer::SubscriberExt;
+ use tracing_subscriber::util::SubscriberInitExt;
+@@ -54,6 +54,7 @@ mod ffi {
+         EmitEvent = 1,
+         PlayerInitialized = 2,
+         BrowserCreated = 3,
++        InputModeChanged = 4,
+     }
+ 
+     struct ServerEvent {
+@@ -64,6 +65,7 @@ mod ffi {
+         success: bool,
+         event: String,
+         arguments: String,
++        mode: i32,
+     }
+ 
+     extern "Rust" {
+@@ -85,6 +87,8 @@ mod ffi {
+         fn destroy_browser(self: &mut ServerCore, player_id: i32, browser_id: i32);
+         fn hide_browser(self: &ServerCore, player_id: i32, browser_id: i32, hide: bool);
+         fn focus_browser(self: &ServerCore, player_id: i32, browser_id: i32, focused: bool);
++        fn set_input_mode(self: &ServerCore, player_id: i32, browser_id: i32, mode: i32) -> bool;
++        fn client_version(self: &ServerCore, player_id: i32) -> i32;
+         fn emit_event(self: &ServerCore, player_id: i32, event: &str, arguments: &EventArguments);
+         fn always_listen_keys(self: &ServerCore, player_id: i32, browser_id: i32, listen: bool);
+         fn has_plugin(self: &ServerCore, player_id: i32) -> bool;
+@@ -200,6 +204,26 @@ impl ServerCore {
+         }
+     }
+ 
++    fn set_input_mode(&self, player_id: i32, browser_id: i32, mode: i32) -> bool {
++        let Some(mode) = u32::try_from(mode).ok().and_then(InputMode::from_raw) else {
++            return false;
++        };
++
++        if let Some(inner) = self.inner.as_ref() {
++            inner.set_input_mode(player_id, browser_id, mode);
++            true
++        } else {
++            false
++        }
++    }
++
++    fn client_version(&self, player_id: i32) -> i32 {
++        self.inner
++            .as_ref()
++            .map(|inner| inner.client_version(player_id))
++            .unwrap_or(0)
++    }
++
+     fn emit_event(&self, player_id: i32, event: &str, arguments: &EventArguments) {
+         if let Some(inner) = self.inner.as_ref() {
+             inner.emit_event(player_id, event, arguments.values.clone());
+@@ -302,6 +326,18 @@ impl ServerCore {
+                 ..empty_event()
+             },
+ 
++            Some(CoreEvent::InputModeChanged {
++                player_id,
++                browser_id,
++                mode,
++            }) => ffi::ServerEvent {
++                kind: ffi::EventKind::InputModeChanged,
++                player_id,
++                browser_id,
++                mode: mode as i32,
++                ..empty_event()
++            },
++
+             None => empty_event(),
+         }
+     }
+@@ -346,5 +382,6 @@ fn empty_event() -> ffi::ServerEvent {
+         success: false,
+         event: String::new(),
+         arguments: String::new(),
++        mode: 0,
+     }
+ }
+diff --git a/proto/packets.proto b/proto/packets.proto
+index 8b8819e..5ec9266 100644
+--- a/proto/packets.proto
++++ b/proto/packets.proto
+@@ -16,11 +16,15 @@ enum PacketId {
+     TOGGLE_DEV_TOOLS = 14;
+     SET_AUDIO_SETTINGS = 15;
+     LOAD_URL = 16;
++    SET_INPUT_MODE = 17;
+ 
+     // client/server side
+     EMIT_EVENT = 8;
+     BROWSER_CREATED = 9;
+     GOT = 10;
++
++    // client side (German Samplife, plugin version 0x000200)
++    INPUT_MODE_CHANGED = 18;
+ }
+ 
+ message Packet {
+@@ -118,3 +122,14 @@ message LoadUrl {
+     required uint32 browser_id = 1;
+     required string url = 2;
+ }
++
++// Input modes: 0 = none, 1 = full, 2 = mouse only
++message SetInputMode {
++    required uint32 browser_id = 1;
++    required uint32 mode = 2;
++}
++
++message InputModeChanged {
++    required uint32 browser_id = 1;
++    required uint32 mode = 2;
++}
+diff --git a/renderer/src/main.rs b/renderer/src/main.rs
+index d2766c1..2c946c0 100644
+--- a/renderer/src/main.rs
++++ b/renderer/src/main.rs
+@@ -7,6 +7,7 @@ use winapi::um::winuser::{MessageBoxA, ShowWindow};
+ use cef::ProcessId;
+ use cef::app::App;
+ use cef::browser::{Browser, Frame};
++use cef::dom::DomNode;
+ use cef::handlers::browser_process::BrowserProcessHandler;
+ use cef::handlers::render_process::RenderProcessHandler;
+ use cef::handlers::v8handler::V8Handler;
+@@ -55,6 +56,24 @@ impl V8Handler for Handler {
+                 return true;
+             }
+ 
++            "set_input_mode" => {
++                let msg = ProcessMessage::create("set_input_mode");
++                let list = msg.argument_list();
++
++                if args.len() != 1 {
++                    return true;
++                }
++
++                convert_to_list(&args, &list);
++
++                self.frame
++                    .browser()
++                    .main_frame()
++                    .send_process_message(ProcessId::Browser, msg);
++
++                return true;
++            }
++
+             "hide" => {
+                 let msg = ProcessMessage::create("hide");
+                 let list = msg.argument_list();
+@@ -180,8 +199,9 @@ impl RenderProcessHandler for Application {
+ 
+         let cef_obj = V8Value::new_object();
+ 
+-        let version = V8Value::new_string("0.1.0");
++        let version = V8Value::new_string("0.2.0");
+         let func_focus = V8Value::new_function("set_focus", Some(handler.clone()));
++        let func_input_mode = V8Value::new_function("set_input_mode", Some(handler.clone()));
+         let func_on = V8Value::new_function("on", Some(handler.clone()));
+         let func_off = V8Value::new_function("off", Some(handler.clone()));
+         let func_hide = V8Value::new_function("hide", Some(handler.clone()));
+@@ -189,6 +209,7 @@ impl RenderProcessHandler for Application {
+ 
+         let key_str = CefString::new("version");
+         let key_focus = CefString::new("set_focus");
++        let key_input_mode = CefString::new("set_input_mode");
+         let key_on = CefString::new("on");
+         let key_off = CefString::new("off");
+         let key_emit = CefString::new("emit");
+@@ -196,6 +217,7 @@ impl RenderProcessHandler for Application {
+ 
+         cef_obj.set_value_by_key(&key_str, &version);
+         cef_obj.set_value_by_key(&key_focus, &func_focus);
++        cef_obj.set_value_by_key(&key_input_mode, &func_input_mode);
+         cef_obj.set_value_by_key(&key_hide, &func_hide);
+         cef_obj.set_value_by_key(&key_on, &func_on);
+         cef_obj.set_value_by_key(&key_off, &func_off);
+@@ -218,6 +240,19 @@ impl RenderProcessHandler for Application {
+ 
+     fn on_webkit_initialized(&self) {}
+ 
++    // Text fields switch a mouse-only browser to full input while they have
++    // focus (handled by the client), without any code on the page.
++    fn on_focused_node_changed(&self, browser: Browser, _frame: Option<Frame>, node: Option<&DomNode>) {
++        let editing = node.map(|node| node.is_editable()).unwrap_or(false);
++
++        let msg = ProcessMessage::create("editing");
++        msg.argument_list().set_bool(0, editing);
++
++        browser
++            .main_frame()
++            .send_process_message(ProcessId::Browser, msg);
++    }
++
+     fn on_process_message(
+         &self, _browser: Browser, _frame: Frame, _source: ProcessId, msg: ProcessMessage,
+     ) -> bool {
+diff --git a/server-core/src/client.rs b/server-core/src/client.rs
+index df5921a..928ee4b 100644
+--- a/server-core/src/client.rs
++++ b/server-core/src/client.rs
+@@ -14,6 +14,7 @@ pub struct Client {
+     state: State,
+     addr: SocketAddr,
+     peer: PeerId,
++    plugin_version: i32,
+ }
+ 
+ impl Client {
+@@ -23,6 +24,7 @@ impl Client {
+             addr,
+             peer,
+             state: State::Connecting,
++            plugin_version: 0,
+         }
+     }
+ 
+@@ -46,4 +48,13 @@ impl Client {
+     pub fn peer(&self) -> PeerId {
+         self.peer
+     }
++
++    /// `RequestJoin.plugin_version` of the client, 0 until the client joined.
++    pub fn plugin_version(&self) -> i32 {
++        self.plugin_version
++    }
++
++    pub fn set_plugin_version(&mut self, version: i32) {
++        self.plugin_version = version;
++    }
+ }
+diff --git a/server-core/src/lib.rs b/server-core/src/lib.rs
+index ad70f6d..ec96041 100644
+--- a/server-core/src/lib.rs
++++ b/server-core/src/lib.rs
+@@ -15,6 +15,31 @@ pub use messages::packets::EventValue;
+ 
+ const INIT_TIMEOUT: Duration = Duration::from_secs(5);
+ 
++/// First client plugin version that understands `SetInputMode`.
++pub const INPUT_MODE_CLIENT_VERSION: i32 = 0x00_02_00;
++
++/// Input mode of a browser (`CEF_INPUT_*` in cef.inc).
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum InputMode {
++    /// No input, same as `cef_focus_browser(.., false)`.
++    None = 0,
++    /// Mouse and keyboard, same as `cef_focus_browser(.., true)`.
++    Full = 1,
++    /// Mouse to the browser, keyboard to the game.
++    MouseOnly = 2,
++}
++
++impl InputMode {
++    pub fn from_raw(mode: u32) -> Option<InputMode> {
++        match mode {
++            0 => Some(InputMode::None),
++            1 => Some(InputMode::Full),
++            2 => Some(InputMode::MouseOnly),
++            _ => None,
++        }
++    }
++}
++
+ #[derive(Debug, Clone)]
+ pub enum CoreEvent {
+     EmitEvent {
+@@ -31,6 +56,11 @@ pub enum CoreEvent {
+         browser_id: u32,
+         code: i32,
+     },
++    InputModeChanged {
++        player_id: i32,
++        browser_id: u32,
++        mode: InputMode,
++    },
+ }
+ 
+ #[derive(Debug)]
+@@ -46,6 +76,11 @@ pub(crate) enum ServerEvent {
+         browser_id: u32,
+         code: i32,
+     },
++    InputModeChanged {
++        player_id: i32,
++        browser_id: u32,
++        mode: InputMode,
++    },
+ }
+ 
+ enum AwaitConnection {
+@@ -150,6 +185,17 @@ impl ServerCore {
+         server.focus_browser(player_id, browser_id, focused);
+     }
+ 
++    pub fn set_input_mode(&self, player_id: i32, browser_id: i32, mode: InputMode) {
++        let server = self.server.lock().unwrap();
++        server.set_input_mode(player_id, browser_id, mode);
++    }
++
++    /// Plugin version reported by the player's client (0 if unknown).
++    pub fn client_version(&self, player_id: i32) -> i32 {
++        let server = self.server.lock().unwrap();
++        server.client_version(player_id)
++    }
++
+     pub fn emit_event(&self, player_id: i32, event: &str, arguments: Vec<EventValue<'static>>) {
+         let server = self.server.lock().unwrap();
+         server.emit_event(player_id, event, arguments);
+@@ -240,6 +286,18 @@ impl ServerCore {
+                         code,
+                     });
+                 }
++
++                ServerEvent::InputModeChanged {
++                    player_id,
++                    browser_id,
++                    mode,
++                } => {
++                    self.pending_events.push_back(CoreEvent::InputModeChanged {
++                        player_id,
++                        browser_id,
++                        mode,
++                    });
++                }
+             }
+         }
+ 
+@@ -280,6 +338,14 @@ mod tests {
+         assert!(!state.notify_timeout(now + INIT_TIMEOUT));
+     }
+ 
++    #[test]
++    fn input_mode_accepts_only_known_values() {
++        assert_eq!(InputMode::from_raw(0), Some(InputMode::None));
++        assert_eq!(InputMode::from_raw(1), Some(InputMode::Full));
++        assert_eq!(InputMode::from_raw(2), Some(InputMode::MouseOnly));
++        assert_eq!(InputMode::from_raw(3), None);
++    }
++
+     #[test]
+     fn connection_does_not_time_out_early() {
+         let now = Instant::now();
+diff --git a/server-core/src/server.rs b/server-core/src/server.rs
+index 6177272..93b7023 100644
+--- a/server-core/src/server.rs
++++ b/server-core/src/server.rs
+@@ -10,9 +10,9 @@ use std::net::{IpAddr, SocketAddr};
+ use std::sync::{Arc, Mutex};
+ use std::time::Duration;
+ 
+-use crate::ServerEvent;
+ use crate::client::Client;
+ use crate::client::State;
++use crate::{INPUT_MODE_CLIENT_VERSION, InputMode, ServerEvent};
+ 
+ enum Packet {
+     Normal { peer: PeerId, bytes: Vec<u8> },
+@@ -123,13 +123,24 @@ impl Server {
+                     .map(|packet| self.handle_browser_created(peer, packet));
+             }
+ 
++            PacketId::INPUT_MODE_CHANGED => {
++                let _ = deserialize_from_slice(&packet.bytes)
++                    .map(|packet| self.handle_input_mode_changed(peer, packet));
++            }
++
+             _ => (),
+         }
+     }
+ 
+-    fn handle_auth(&mut self, peer: PeerId, _packet: packets::RequestJoin) {
++    fn handle_auth(&mut self, peer: PeerId, packet: packets::RequestJoin) {
+         let client = self.clients.get_mut(&peer).unwrap();
+ 
++        trace!(
++            "handle_auth {:?} plugin_version {:#08x}",
++            peer, packet.plugin_version
++        );
++        client.set_plugin_version(packet.plugin_version);
++
+         let response = packets::JoinResponse {
+             success: true,
+             current_version: None,
+@@ -177,6 +188,24 @@ impl Server {
+         let _ = self.event_tx.send(event);
+     }
+ 
++    fn handle_input_mode_changed(&mut self, peer: PeerId, packet: packets::InputModeChanged) {
++        let client = self.clients.get_mut(&peer).unwrap();
++        let player_id = client.id();
++
++        let Some(mode) = InputMode::from_raw(packet.mode) else {
++            trace!("handle_input_mode_changed: invalid mode {}", packet.mode);
++            return;
++        };
++
++        let event = ServerEvent::InputModeChanged {
++            player_id,
++            browser_id: packet.browser_id,
++            mode,
++        };
++
++        let _ = self.event_tx.send(event);
++    }
++
+     fn handle_timeout(&mut self, addr: PeerId) {
+         trace!("handle_timeout {:?}", addr);
+         if let Some(client) = self.clients.remove(&addr) {
+@@ -294,6 +323,31 @@ impl Server {
+         );
+     }
+ 
++    /// Sends the input mode to the client. Clients older than 0x000200 do not
++    /// know `SetInputMode`; they get `FocusBrowser` instead (mouse only falls
++    /// back to full input, which is the old focused behavior).
++    pub fn set_input_mode(&self, player_id: i32, browser_id: i32, mode: InputMode) {
++        if self.client_version(player_id) >= INPUT_MODE_CLIENT_VERSION {
++            self.send_packet(
++                player_id,
++                packets::SetInputMode {
++                    browser_id: browser_id as u32,
++                    mode: mode as u32,
++                },
++            );
++        } else {
++            self.focus_browser(player_id, browser_id, mode != InputMode::None);
++        }
++    }
++
++    /// `RequestJoin.plugin_version` of the player's client, 0 if unknown.
++    pub fn client_version(&self, player_id: i32) -> i32 {
++        self.peer_by_id(player_id)
++            .and_then(|peer| self.clients.get(&peer))
++            .map(|client| client.plugin_version())
++            .unwrap_or(0)
++    }
++
+     pub fn emit_event(&self, player_id: i32, event: &str, arguments: Vec<packets::EventValue>) {
+         self.send_packet(
+             player_id,
+diff --git a/server/cef.inc b/server/cef.inc
+index 9cac05b..f1933a8 100644
+--- a/server/cef.inc
++++ b/server/cef.inc
+@@ -15,6 +15,17 @@
+ 	#define CEF_DEFAULT_MAX_DIST 50.0
+ 	#define CEF_DEFAULT_REF_DIST 15.0
+ 
++	// Input modes for cef_set_input_mode / OnCefInputModeChanged:
++	// NONE = no input (cef_focus_browser(.., false)),
++	// FULL = mouse and keyboard (cef_focus_browser(.., true)),
++	// MOUSE_ONLY = mouse to the browser, keyboard to the game.
++	#define CEF_INPUT_NONE 0
++	#define CEF_INPUT_FULL 1
++	#define CEF_INPUT_MOUSE_ONLY 2
++
++	// First client version with cef_set_input_mode support (cef_get_client_version)
++	#define CEF_CLIENT_VERSION_INPUT_MODE 0x000200
++
+ 	native cef_create_browser(player_id, browser_id, const url[], bool:hidden, bool:focused);
+ 	native cef_destroy_browser(player_id, browser_id);
+ 	native cef_on_player_connect(player_id, const ip[]);
+@@ -31,9 +42,12 @@
+ 	native cef_focus_browser(player_id, browser_id, bool:focused);
+ 	native cef_always_listen_keys(player_id, browser_id, bool:listen);
+ 	native cef_load_url(player_id, browser_id, const url[]);
++	native cef_set_input_mode(player_id, browser_id, mode);
++	native cef_get_client_version(player_id);
+ 
+ 	forward OnCefInitialize(player_id, success);
+ 	forward OnCefBrowserCreated(player_id, browser_id, status_code);
++	forward OnCefInputModeChanged(player_id, browser_id, mode);
+ 
+ 	public OnPlayerConnect(playerid)
+ 	{
+diff --git a/server/src/lib.rs b/server/src/lib.rs
+index 261929e..10cb8b2 100644
+--- a/server/src/lib.rs
++++ b/server/src/lib.rs
+@@ -1,7 +1,7 @@
+ use std::collections::HashMap;
+ use std::net::{IpAddr, SocketAddr};
+ 
+-use server_core::{CoreEvent, EventValue, ServerCore};
++use server_core::{CoreEvent, EventValue, InputMode, ServerCore};
+ use tracing::{info, trace};
+ use tracing_subscriber::filter::{LevelFilter, Targets};
+ use tracing_subscriber::layer::SubscriberExt;
+@@ -104,6 +104,24 @@ impl CefPlugin {
+         Ok(true)
+     }
+ 
++    #[native(name = "cef_set_input_mode")]
++    fn set_input_mode(
++        &mut self, _: &Amx, player_id: i32, browser_id: i32, mode: i32,
++    ) -> AmxResult<bool> {
++        let Some(mode) = u32::try_from(mode).ok().and_then(InputMode::from_raw) else {
++            info!("cef_set_input_mode invalid mode {}", mode);
++            return Ok(false);
++        };
++
++        self.core.set_input_mode(player_id, browser_id, mode);
++        Ok(true)
++    }
++
++    #[native(name = "cef_get_client_version")]
++    fn get_client_version(&mut self, _: &Amx, player_id: i32) -> AmxResult<i32> {
++        Ok(self.core.client_version(player_id))
++    }
++
+     #[native(name = "cef_emit_event", raw)]
+     fn emit_event(&mut self, _: &Amx, args: Args) -> AmxResult<bool> {
+         if args.count() < 2 || !(args.count() - 2).is_multiple_of(2) {
+@@ -254,6 +272,16 @@ impl CefPlugin {
+         });
+     }
+ 
++    fn notify_input_mode_changed(&self, player_id: i32, browser_id: u32, mode: InputMode) {
++        let mode = mode as i32;
++
++        self.amx_list.iter().for_each(|&ident| {
++            samp::amx::get(ident).map(|amx| {
++                exec_public!(amx, "OnCefInputModeChanged", player_id, browser_id, mode)
++            });
++        });
++    }
++
+     fn notify_browser_created(&self, player_id: i32, browser_id: u32, code: i32) {
+         self.amx_list.iter().for_each(|&ident| {
+             samp::amx::get(ident)
+@@ -311,6 +339,15 @@ impl SampPlugin for CefPlugin {
+                     trace!("process_tick::BrowserCreated({})", player_id);
+                     self.notify_browser_created(player_id, browser_id, code);
+                 }
++
++                CoreEvent::InputModeChanged {
++                    player_id,
++                    browser_id,
++                    mode,
++                } => {
++                    trace!("process_tick::InputModeChanged({}, {})", player_id, browser_id);
++                    self.notify_input_mode_changed(player_id, browser_id, mode);
++                }
+             }
+         }
+     }
+@@ -334,6 +371,8 @@ initialize_plugin!(
+         CefPlugin::toggle_dev_tools,
+         CefPlugin::set_audio_settings,
+         CefPlugin::load_url,
++        CefPlugin::set_input_mode,
++        CefPlugin::get_client_version,
+     ],
+     {
+         samp::plugin::enable_process_tick();
