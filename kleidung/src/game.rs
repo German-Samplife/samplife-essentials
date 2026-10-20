@@ -216,7 +216,46 @@ const INTELLIGENCE_TASK_SECONDARY_IK: usize = 0x2C;
 // 4 GetTaskType, 5 StopTimer, 6 MakeAbortable; ABORT_PRIORITY_IMMEDIATE = 2
 const TASK_VTABLE_MAKE_ABORTABLE: usize = 6;
 
-pub fn rebuild_player_manual(ped: usize, desc_ptr: usize) {
+// gta-reversed / samp-client-api gta/rw.rs: RpClumpForAllAtomics 0x749B70 (cdecl,
+// callback returns the atomic to continue or null to stop)
+const RP_CLUMP_FOR_ALL_ATOMICS: usize = 0x749B70;
+
+extern "C" fn first_atomic_cb(atomic: usize, data: *mut usize) -> usize {
+    unsafe { *data = atomic };
+    0
+}
+
+/// First atomic's geometry and the texture of its first material, to see whether two
+/// figures share their clothes (structs from samp-client-api gta/rw/rpworld.rs).
+pub fn clump_parts(clump: usize) -> (usize, usize) {
+    use client_api::gta::rw::rpworld::{RpAtomic, RpGeometry};
+
+    if clump == 0 || !readable(clump, 0x30) {
+        return (0, 0);
+    }
+
+    let mut atomic = 0usize;
+    let for_all: extern "C" fn(usize, extern "C" fn(usize, *mut usize) -> usize, *mut usize) -> usize =
+        unsafe { std::mem::transmute(RP_CLUMP_FOR_ALL_ATOMICS) };
+    for_all(clump, first_atomic_cb, &mut atomic);
+
+    let geometry = read_ptr(atomic + std::mem::offset_of!(RpAtomic, geometry)).unwrap_or(0);
+    if geometry == 0 {
+        return (0, 0);
+    }
+
+    // RpGeometry::matList.materials -> first RpMaterial -> texture (first field)
+    let texture = read_ptr(geometry + std::mem::offset_of!(RpGeometry, matList))
+        .and_then(read_ptr)
+        .and_then(read_ptr)
+        .unwrap_or(0);
+
+    (geometry, texture)
+}
+
+/// `force`: pass no "old clothes" to ConstructPedModel, so CreateSkinnedClump always
+/// builds (with PlayerClothes it returns early when the clothes equal the last build).
+pub fn rebuild_player_manual(ped: usize, desc_ptr: usize, force: bool) {
     unsafe {
         let extract: extern "C" fn(usize) -> usize = std::mem::transmute(RP_ANIM_EXTRACT);
         let give: extern "C" fn(usize, usize) = std::mem::transmute(RP_ANIM_GIVE);
@@ -241,7 +280,8 @@ pub fn rebuild_player_manual(ped: usize, desc_ptr: usize) {
 
         delete_rw(ped);
         world_remove(ped);
-        construct(ped_view.model() as u16 as u32, desc_ptr, PLAYER_CLOTHES, false);
+        let old_clothes = if force { 0 } else { PLAYER_CLOTHES };
+        construct(ped_view.model() as u16 as u32, desc_ptr, old_clothes, false);
         dress(ped);
         give(ped_view.rw_object(), assoc);
 
@@ -257,6 +297,18 @@ const MODEL_INFO_PTRS_REF: usize = 0x40CD67;
 const MODEL_INFO_PTRS: usize = 0xA9B0C8;
 
 /// RwObject (clump) of the model info of model 0, the clump every CJ is cloned from.
+/// Makes the next RebuildPlayer/ConstructPedModel with &PlayerClothes build in any case.
+pub fn forget_player_clothes() {
+    if crate::game::writable(PLAYER_CLOTHES, std::mem::size_of::<ClothesDesc>()) {
+        unsafe {
+            let mut desc = (PLAYER_CLOTHES as *const ClothesDesc).read_unaligned();
+            desc.texture_keys = [0; CLOTHES_TEXTURE_TOTAL];
+            desc.model_keys = [0; CLOTHES_MODEL_TOTAL];
+            (PLAYER_CLOTHES as *mut ClothesDesc).write_unaligned(desc);
+        }
+    }
+}
+
 pub fn model0_clump() -> usize {
     let array = read_ptr(MODEL_INFO_PTRS_REF).unwrap_or(MODEL_INFO_PTRS);
     read_ptr(array).and_then(|info| read_ptr(info + 0x1C)).unwrap_or(0)

@@ -53,6 +53,8 @@ pub fn command_text() -> String {
 
 enum Command {
     Outfit(OutfitId),
+    /// own figure, every other CJ
+    Mix(OutfitId, OutfitId),
     Aus,
     Info,
     Hilfe,
@@ -74,6 +76,8 @@ unsafe extern "C" fn cmd_kleidungtest(params: *const c_char) {
         let command = match text.as_str() {
             "" | "1" => Command::Outfit(OutfitId::Eins),
             "2" => Command::Outfit(OutfitId::Zwei),
+            "mix" => Command::Mix(OutfitId::Eins, OutfitId::Zwei),
+            "mix2" => Command::Mix(OutfitId::Zwei, OutfitId::Eins),
             "aus" | "0" => Command::Aus,
             "info" => Command::Info,
             _ => Command::Hilfe,
@@ -105,6 +109,7 @@ enum Target {
 enum Mode {
     Aus,
     Aktiv(OutfitId),
+    Mix { eigene: OutfitId, fremde: OutfitId },
     Wiederherstellen,
 }
 
@@ -114,11 +119,15 @@ enum Phase {
     NichtUnterstuetzt,
 }
 
+#[derive(Clone, Copy)]
 struct Entry {
     /// RwObject (clump) we last confirmed for this ped
     rw: usize,
+    /// geometry of that clump, the clothes this figure really wears
+    geo: usize,
     applied: Option<Target>,
     original: Option<ClothesDesc>,
+    local: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -393,6 +402,17 @@ impl State {
                 );
             }
 
+            Command::Mix(eigene, fremde) => {
+                crate::log!("Befehl: Mix, eigene {}, fremde {}", eigene.name(), fremde.name());
+                self.set_mode(Mode::Mix { eigene, fremde });
+                samp::chat_line(
+                    ver,
+                    WHITE,
+                    &format!("{PREFIX}Mix aktiv: du {}, alle anderen CJs {}", eigene.name(), fremde.name()),
+                );
+                samp::chat_line(ver, WHITE, &format!("{PREFIX}Jede Figur wird einzeln gebaut. Beenden mit /kleidungtest aus"));
+            }
+
             Command::Aus => {
                 if self.mode == Mode::Aus && self.peds.is_empty() {
                     samp::chat_line(ver, WHITE, &format!("{PREFIX}Der Test ist nicht aktiv."));
@@ -407,7 +427,7 @@ impl State {
             Command::Info => self.info(ver),
 
             Command::Hilfe => {
-                samp::chat_line(ver, WHITE, &format!("{PREFIX}Benutze: /kleidungtest [1 | 2 | aus | info]"));
+                samp::chat_line(ver, WHITE, &format!("{PREFIX}Benutze: /kleidungtest [1 | 2 | mix | mix2 | aus | info]"));
             }
         }
     }
@@ -435,6 +455,7 @@ impl State {
         match self.mode {
             Mode::Aus => None,
             Mode::Aktiv(id) => Some(Target::Outfit(id)),
+            Mode::Mix { eigene, fremde } => Some(Target::Outfit(if entry.local { eigene } else { fremde })),
             Mode::Wiederherstellen => Some(match entry.original {
                 Some(original) if !original.is_empty() => Target::Original,
                 _ => Target::Outfit(OutfitId::Standard),
@@ -508,15 +529,34 @@ impl State {
         let mut result = count(&cjs);
         let seen: HashSet<usize> = cjs.iter().map(|cj| cj.ped).collect();
 
+        // (ped, geometry, target) of every CJ, to find figures that share clothes
+        let targets: Vec<(usize, usize, Option<Target>)> = cjs
+            .iter()
+            .map(|cj| {
+                let entry = self.peds.get(&cj.ped).copied().unwrap_or(Entry {
+                    rw: 0,
+                    geo: 0,
+                    applied: None,
+                    original: None,
+                    local: cj.local,
+                });
+                let entry = Entry { local: cj.local, ..entry };
+                (cj.ped, game::clump_parts(cj.rw).0, self.target_for(&entry))
+            })
+            .collect();
+
         for cj in &cjs {
             let entry = self.peds.entry(cj.ped).or_insert_with(|| {
                 let original = Ped(cj.ped).clothes_desc();
                 Entry {
                     rw: 0,
+                    geo: 0,
                     applied: None,
                     original,
+                    local: cj.local,
                 }
             });
+            entry.local = cj.local;
 
             // don't take our own outfits for the original clothes (shared descs)
             if let Some(original) = entry.original {
@@ -528,13 +568,9 @@ impl State {
                 }
             }
 
-            let entry_rw = entry.rw;
-            let entry_applied = entry.applied;
-            let entry_snapshot = Entry {
-                rw: entry.rw,
-                applied: entry.applied,
-                original: entry.original,
-            };
+            let entry_snapshot = *entry;
+            let entry_rw = entry_snapshot.rw;
+            let entry_applied = entry_snapshot.applied;
 
             let Some(target) = self.target_for(&entry_snapshot) else {
                 continue;
@@ -557,7 +593,28 @@ impl State {
             let desc = unsafe { (desc_ptr as *const ClothesDesc).read_unaligned() };
             let desc_ok = self.desc_matches(target, &desc, &entry_snapshot);
 
-            if entry_rw == cj.rw && entry_applied == Some(target) && desc_ok {
+            // the clump must still carry the geometry we built for this figure, and no
+            // figure with a different outfit may share it
+            let (geo_now, _) = game::clump_parts(cj.rw);
+            let conflict = geo_now != 0
+                && targets
+                    .iter()
+                    .any(|&(other, other_geo, other_target)| other != cj.ped && other_geo == geo_now && other_target != Some(target));
+
+            if conflict {
+                crate::log!(
+                    "{} {:#x}: Geometrie {geo_now:#x} geteilt mit einer Figur mit anderem Outfit, wird neu gebaut",
+                    who(cj),
+                    cj.ped
+                );
+            }
+
+            if entry_rw == cj.rw
+                && entry_applied == Some(target)
+                && desc_ok
+                && !conflict
+                && (entry_snapshot.geo == 0 || entry_snapshot.geo == geo_now)
+            {
                 result.ok += 1;
                 continue;
             }
@@ -574,6 +631,7 @@ impl State {
                 && self.model_shows == Some(target)
                 && target != Target::Original
                 && !self.stale_rws.contains(&cj.rw)
+                && !conflict
             {
                 if !desc_ok {
                     self.write_target(target, desc_ptr, entry_snapshot.original);
@@ -581,6 +639,7 @@ impl State {
 
                 if let Some(entry) = self.peds.get_mut(&cj.ped) {
                     entry.rw = cj.rw;
+                    entry.geo = geo_now;
                     entry.applied = Some(target);
                 }
 
@@ -702,11 +761,7 @@ impl State {
             let Some(entry) = self.peds.get(&ped_addr) else {
                 continue;
             };
-            let snapshot = Entry {
-                rw: entry.rw,
-                applied: entry.applied,
-                original: entry.original,
-            };
+            let snapshot = *entry;
             let Some(target) = self.target_for(&snapshot) else {
                 continue;
             };
@@ -736,9 +791,25 @@ impl State {
             self.stats.last_ms = ms;
             self.stats.max_ms = self.stats.max_ms.max(ms);
 
+            let (geo, _) = game::clump_parts(ergebnis.rw_nachher);
+
             if let Some(entry) = self.peds.get_mut(&ped_addr) {
                 entry.rw = ergebnis.rw_nachher;
+                entry.geo = geo;
                 entry.applied = Some(target);
+            }
+
+            // what every CJ wears now: own geometry/texture per figure means nothing is shared
+            for cj in self.survey(ver) {
+                let (g, t) = game::clump_parts(cj.rw);
+                let soll = self.peds.get(&cj.ped).and_then(|e| e.applied);
+                crate::log!(
+                    "    danach {} {:#x}: Clump {:#x}, Geometrie {g:#x}, Textur {t:#x}, Outfit {:?}",
+                    who(&cj),
+                    cj.ped,
+                    cj.rw,
+                    soll
+                );
             }
 
             if ergebnis.wirksam.is_some() {
@@ -781,6 +852,7 @@ impl State {
         let mode = match self.mode {
             Mode::Aus => "aus".to_owned(),
             Mode::Aktiv(id) => format!("{} aktiv", id.name()),
+            Mode::Mix { eigene, fremde } => format!("Mix (du {}, andere {})", eigene.name(), fremde.name()),
             Mode::Wiederherstellen => "Wiederherstellung läuft".to_owned(),
         };
 
@@ -859,17 +931,42 @@ impl State {
             ),
         );
 
-        for cj in cjs.iter().take(6) {
+        let mut parts: Vec<(Option<Target>, usize, usize)> = Vec::new();
+
+        for cj in cjs.iter() {
             let desc = Ped(cj.ped).clothes_desc();
+            let (geo, tex) = game::clump_parts(cj.rw);
+            let soll = self.peds.get(&cj.ped).and_then(|e| e.applied);
             crate::log!(
-                "Info: {} Ped {:#x} Clump {:#x} Kleidungsdaten {:#x} Oberteil-Textur {:08x}",
+                "Info: {} Ped {:#x} Clump {:#x} Geometrie {geo:#x} Textur {tex:#x} Kleidungsdaten {:#x} Oberteil-Textur {:08x} Outfit {:?}",
                 who(cj),
                 cj.ped,
                 cj.rw,
                 cj.desc.unwrap_or(0),
-                desc.map(|d| d.texture_keys[0]).unwrap_or(0)
+                desc.map(|d| d.texture_keys[0]).unwrap_or(0),
+                soll
             );
+            parts.push((soll, geo, tex));
         }
+
+        let shared_geo = parts
+            .iter()
+            .enumerate()
+            .any(|(i, a)| a.1 != 0 && parts.iter().skip(i + 1).any(|b| b.1 == a.1 && b.0 != a.0));
+        let shared_tex = parts
+            .iter()
+            .enumerate()
+            .any(|(i, a)| a.2 != 0 && parts.iter().skip(i + 1).any(|b| b.2 == a.2 && b.0 != a.0));
+
+        samp::chat_line(
+            ver,
+            WHITE,
+            &format!(
+                "Figuren mit verschiedenem Outfit teilen Geometrie: {}, Texturen: {} (Details im Log)",
+                if shared_geo { "JA (Fehler)" } else { "nein" },
+                if shared_tex { "JA (Fehler)" } else { "nein" }
+            ),
+        );
     }
 }
 
