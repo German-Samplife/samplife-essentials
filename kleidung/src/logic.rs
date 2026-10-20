@@ -2,11 +2,12 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{c_char, CStr};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::game::{self, ClothesDesc, Ped, Skip, MODEL_PLAYER};
+use crate::hooks;
 use crate::outfit::{OutfitId, OutfitKeys};
 use crate::samp::{self, SampVersion};
 
@@ -19,6 +20,35 @@ const COMMAND: &CStr = c"kleidungtest";
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
 static PENDING: Mutex<Vec<Command>> = Mutex::new(Vec::new());
+
+// read by the watchdog thread
+static SAMP_DETECTED: AtomicU32 = AtomicU32::new(0);
+static COMMAND_STATE: AtomicU32 = AtomicU32::new(0);
+static COMMAND_INPUT: AtomicUsize = AtomicUsize::new(0);
+const CMD_WAITING: u32 = 1;
+const CMD_OK: u32 = 2;
+const CMD_FAILED: u32 = 3;
+
+pub fn samp_text() -> &'static str {
+    match SAMP_DETECTED.load(Ordering::SeqCst) {
+        0 => "noch nicht",
+        1 => "0.3.7 R1",
+        2 => "0.3.7 R3",
+        3 => "0.3.DL (nicht unterstützt)",
+        _ => "unbekannt (nicht unterstützt)",
+    }
+}
+
+pub fn command_text() -> String {
+    let input = COMMAND_INPUT.load(Ordering::SeqCst);
+
+    match COMMAND_STATE.load(Ordering::SeqCst) {
+        0 => "noch nicht versucht".to_owned(),
+        CMD_WAITING => "warte auf CChat/CInput/CNetGame".to_owned(),
+        CMD_OK => format!("registriert (CInput {input:#x})"),
+        _ => format!("fehlgeschlagen (CInput {input:#x})"),
+    }
+}
 
 enum Command {
     Outfit(OutfitId),
@@ -133,6 +163,8 @@ struct State {
     frames: u64,
     last_init_try: Option<Instant>,
     init_tries: u32,
+    register_tries: u32,
+    last_wait_text: String,
     started: Instant,
     mode: Mode,
     mode_since: Instant,
@@ -158,6 +190,8 @@ impl State {
             frames: 0,
             last_init_try: None,
             init_tries: 0,
+            register_tries: 0,
+            last_wait_text: String::new(),
             started: Instant::now(),
             mode: Mode::Aus,
             mode_since: Instant::now(),
@@ -180,11 +214,8 @@ impl State {
 
         if self.frames == 1 {
             crate::log!(
-                "samplife-kleidung {} geladen, gta_sa.exe 1.0 US (Kennung {:#010x}), Hook auf CGame::Process aktiv (vorheriges Ziel {:#x}, Original {:#x})",
-                crate::ASI_VERSION,
-                game::EXE_PROBE.load(Ordering::SeqCst),
-                game::ORIGINAL_TARGET.load(Ordering::SeqCst),
-                game::CGAME_PROCESS
+                "Spiel-Thread erreicht (erster Aufruf über Einstieg {})",
+                if hooks::LOGIC_FROM_PROCESS.load(Ordering::Relaxed) > 0 { "A, CGame::Process" } else { "B, Present" }
             );
         }
 
@@ -220,11 +251,23 @@ impl State {
 
         self.init_tries += 1;
 
-        match samp::detect() {
+        let detected = samp::detect();
+        SAMP_DETECTED.store(
+            match detected {
+                Some(SampVersion::R1) => 1,
+                Some(SampVersion::R3) => 2,
+                Some(SampVersion::Dl) => 3,
+                None => 4,
+            },
+            Ordering::SeqCst,
+        );
+
+        match detected {
             None => {
                 // version() re-reads the file version each time while it's unknown
                 if self.init_tries >= 20 {
                     crate::log!("Unbekannte SA-MP-Version (weder 0.3.7 R1 noch R3). Das ASI bleibt inaktiv.");
+                    COMMAND_STATE.store(CMD_FAILED, Ordering::SeqCst);
                     self.phase = Phase::NichtUnterstuetzt;
                 }
             }
@@ -237,29 +280,64 @@ impl State {
                         &format!("{PREFIX}SA-MP 0.3.DL wird nicht unterstützt, nur 0.3.7 R1 und R3. /kleidungtest gibt es hier nicht."),
                     );
                     crate::log!("SA-MP 0.3.DL erkannt, nicht unterstützt");
+                    COMMAND_STATE.store(CMD_FAILED, Ordering::SeqCst);
                     self.phase = Phase::NichtUnterstuetzt;
                 } else if self.started.elapsed() > Duration::from_secs(120) {
                     crate::log!("SA-MP 0.3.DL erkannt, nicht unterstützt (Chat nicht gefunden)");
+                    COMMAND_STATE.store(CMD_FAILED, Ordering::SeqCst);
                     self.phase = Phase::NichtUnterstuetzt;
                 }
             }
 
             Some(ver) => {
-                if samp::chat(ver).is_none() || samp::input(ver).is_none() || !samp::netgame_ready(ver) {
+                let chat = samp::chat(ver);
+                let input = samp::input(ver);
+                let netgame = samp::netgame_ready(ver);
+                let waiting = format!(
+                    "SA-MP {}: CChat {:#x}, CInput {:#x}, CNetGame {}",
+                    ver.name(),
+                    chat.unwrap_or(0),
+                    input.unwrap_or(0),
+                    if netgame { "da" } else { "fehlt" }
+                );
+
+                if waiting != self.last_wait_text {
+                    crate::log!("{waiting}");
+                    self.last_wait_text = waiting;
+                }
+
+                if chat.is_none() || input.is_none() || !netgame {
+                    COMMAND_STATE.store(CMD_WAITING, Ordering::SeqCst);
                     return;
                 }
 
+                COMMAND_INPUT.store(input.unwrap_or(0), Ordering::SeqCst);
+                self.register_tries += 1;
+
                 if samp::register_command(ver, COMMAND, cmd_kleidungtest) {
-                    crate::log!("SA-MP {} erkannt, Befehl /kleidungtest registriert", ver.name());
-                    self.phase = Phase::Bereit(ver);
-                } else if self.init_tries >= 40 {
-                    crate::log!("Befehl /kleidungtest konnte nicht registriert werden");
-                    samp::chat_line(
-                        ver,
-                        WHITE,
-                        &format!("{PREFIX}Der Befehl /kleidungtest konnte nicht angelegt werden (siehe samplife-kleidung.log)."),
+                    crate::log!(
+                        "Befehl /kleidungtest registriert (CInput {:#x}, Versuch {})",
+                        input.unwrap_or(0),
+                        self.register_tries
                     );
-                    self.phase = Phase::NichtUnterstuetzt;
+                    COMMAND_STATE.store(CMD_OK, Ordering::SeqCst);
+                    self.phase = Phase::Bereit(ver);
+                } else {
+                    crate::log!(
+                        "CInput::AddCommand hat /kleidungtest nicht angelegt (CInput {:#x}, Versuch {})",
+                        input.unwrap_or(0),
+                        self.register_tries
+                    );
+
+                    if self.register_tries >= 10 {
+                        samp::chat_line(
+                            ver,
+                            WHITE,
+                            &format!("{PREFIX}Der Befehl /kleidungtest konnte nicht angelegt werden (siehe samplife-kleidung.log)."),
+                        );
+                        COMMAND_STATE.store(CMD_FAILED, Ordering::SeqCst);
+                        self.phase = Phase::NichtUnterstuetzt;
+                    }
                 }
             }
         }

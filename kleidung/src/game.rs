@@ -7,34 +7,11 @@
 //!   in the headers name the field offsets.
 
 use std::ffi::{c_char, c_void};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
-
-use winapi::um::memoryapi::{VirtualProtect, VirtualQuery};
-use winapi::um::processthreadsapi::{FlushInstructionCache, GetCurrentProcess};
+use winapi::um::memoryapi::VirtualQuery;
 use winapi::um::winnt::{
     MEMORY_BASIC_INFORMATION, MEM_COMMIT, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY,
     PAGE_GUARD, PAGE_NOACCESS, PAGE_READWRITE, PAGE_WRITECOPY,
 };
-
-// ---------------------------------------------------------------------------
-// Executable version
-// plugin-sdk shared/GameVersion.cpp, detect_game_id():
-//   GetUInt(0x401000) == 0x53EC8B55 -> GAME_10US_COMPACT
-//   GetUInt(0x401000) == 0x16197BE9 -> GAME_10US_HOODLUM
-// Both are 1.0 US and share all addresses below.
-const VERSION_PROBE: usize = 0x401000;
-const VERSION_10US_COMPACT: u32 = 0x53EC8B55;
-const VERSION_10US_HOODLUM: u32 = 0x16197BE9;
-
-// ---------------------------------------------------------------------------
-// Per-frame hook
-// plugin-sdk shared/Events.h (GTA SA): `gameProcessEvent` = AddressList<0x53E981, H_CALL>,
-// i.e. the `call CGame::Process` inside Idle(). Hooking a call site (instead of
-// the function entry) is what plugin-sdk ASIs do and chains with other hooks:
-// we call whatever the call pointed to before.
-const IDLE_CALL_GAME_PROCESS: usize = 0x53E981;
-// gta-reversed source/game_sa/Game.cpp: RH_ScopedInstall(Process, 0x53BEE0)
-pub const CGAME_PROCESS: usize = 0x53BEE0;
 
 // ---------------------------------------------------------------------------
 // Functions
@@ -191,70 +168,6 @@ pub fn read_u32(addr: usize) -> Option<u32> {
 
 pub fn read_ptr(addr: usize) -> Option<usize> {
     read_u32(addr).map(|v| v as usize).filter(|&v| v != 0)
-}
-
-// ---------------------------------------------------------------------------
-// Hook installation (runs inside DllMain)
-
-pub const HOOK_NOT_TRIED: u32 = 0;
-pub const HOOK_OK: u32 = 1;
-pub const HOOK_WRONG_EXE: u32 = 2;
-pub const HOOK_NOT_A_CALL: u32 = 3;
-pub const HOOK_PROTECT_FAILED: u32 = 4;
-
-pub static HOOK_STATUS: AtomicU32 = AtomicU32::new(HOOK_NOT_TRIED);
-pub static EXE_PROBE: AtomicU32 = AtomicU32::new(0);
-pub static ORIGINAL_TARGET: AtomicUsize = AtomicUsize::new(0);
-
-pub fn install_process_hook() {
-    let probe = read_u32(VERSION_PROBE).unwrap_or(0);
-    EXE_PROBE.store(probe, Ordering::SeqCst);
-
-    if probe != VERSION_10US_COMPACT && probe != VERSION_10US_HOODLUM {
-        HOOK_STATUS.store(HOOK_WRONG_EXE, Ordering::SeqCst);
-        return;
-    }
-
-    let site = IDLE_CALL_GAME_PROCESS;
-
-    if !readable(site, 5) || unsafe { *(site as *const u8) } != 0xE8 {
-        HOOK_STATUS.store(HOOK_NOT_A_CALL, Ordering::SeqCst);
-        return;
-    }
-
-    unsafe {
-        let rel = ((site + 1) as *const i32).read_unaligned();
-        let target = (site + 5).wrapping_add(rel as isize as usize);
-        ORIGINAL_TARGET.store(target, Ordering::SeqCst);
-
-        let mut old = 0;
-
-        if VirtualProtect((site + 1) as *mut c_void as _, 4, PAGE_EXECUTE_READWRITE, &mut old) == 0 {
-            HOOK_STATUS.store(HOOK_PROTECT_FAILED, Ordering::SeqCst);
-            return;
-        }
-
-        let new_rel = (game_process_hook as extern "C" fn() as usize).wrapping_sub(site + 5) as i32;
-        ((site + 1) as *mut i32).write_unaligned(new_rel);
-
-        let mut ignored = 0;
-        VirtualProtect((site + 1) as *mut c_void as _, 4, old, &mut ignored);
-        FlushInstructionCache(GetCurrentProcess(), site as *const c_void as _, 5);
-    }
-
-    HOOK_STATUS.store(HOOK_OK, Ordering::SeqCst);
-}
-
-extern "C" fn game_process_hook() {
-    let target = ORIGINAL_TARGET.load(Ordering::Relaxed);
-
-    if target != 0 {
-        let original: extern "C" fn() = unsafe { std::mem::transmute(target) };
-        original();
-    }
-
-    // never unwind into GTA
-    let _ = std::panic::catch_unwind(crate::logic::frame);
 }
 
 // ---------------------------------------------------------------------------

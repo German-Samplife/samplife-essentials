@@ -59,7 +59,12 @@ Beide Tester haben das ASI im GTA-Ordner und sind auf dem Server.
 
 Alle Adressen gelten für GTA San Andreas 1.0 US; Quellen stehen auch im Quelltext.
 
-**Einstieg.** Im `DllMain` wird nur der Aufruf von `CGame::Process` in `Idle()` bei `0x53E981` auf das ASI umgeleitet; das ASI ruft zuerst das bisherige Ziel auf (`CGame::Process` `0x53BEE0` oder den Hook eines anderen ASI) und arbeitet danach. Das ist dieselbe Stelle wie `gameProcessEvent` im plugin-sdk ([`shared/Events.h`](https://github.com/DK22Pac/plugin-sdk/blob/master/shared/Events.h)). Vorher prüft es an `0x401000`, ob es GTA 1.0 US ist ([plugin-sdk `shared/GameVersion.cpp`](https://github.com/DK22Pac/plugin-sdk/blob/master/shared/GameVersion.cpp)). Alles Weitere läuft im Spiel-Thread.
+**Einstieg in den Spiel-Thread.** Es gibt zwei Wege; die Test-Logik läuft pro Bild genau einmal, über A, wenn A läuft, sonst über B.
+
+- **A:** Im `DllMain` wird der Aufruf von `CGame::Process` in `Idle()` bei `0x53E981` auf das ASI umgeleitet; das ASI ruft zuerst das bisherige Ziel auf (`CGame::Process` `0x53BEE0` oder den Hook eines anderen ASI) und arbeitet danach. Das ist dieselbe Stelle wie `gameProcessEvent` im plugin-sdk ([`shared/Events.h`](https://github.com/DK22Pac/plugin-sdk/blob/master/shared/Events.h)). Überschreibt später jemand die Stelle, ohne das ASI weiter aufzurufen, hakt es sich nach 120 Bildern ohne Aufruf erneut ein und ruft dann das neue Ziel auf (höchstens fünfmal).
+- **B:** `IDirect3DDevice9::Present` des Geräts, mit dem GTA zeichnet (RenderWare-Variable `RwD3D9Device` bei `0xC97C28`, wie in samp-client-api `gta/d3d9.rs`). Das ASI ersetzt den Present-Eintrag in der Funktionstabelle dieses Geräts und ruft den vorherigen Eintrag weiter auf. So bleiben der Geräte-Proxy von SA-MP, der Present-Hook des CEF-Clients und andere Hooks in der Kette. Present ruft GTA am Ende jedes Bilds im Spiel-Thread auf. Solange das Pausenmenü offen ist, läuft die Logik über B nicht.
+
+Vor allem anderen prüft das ASI an `0x401000`, ob es GTA 1.0 US ist ([plugin-sdk `shared/GameVersion.cpp`](https://github.com/DK22Pac/plugin-sdk/blob/master/shared/GameVersion.cpp)); sonst bleibt es aus.
 
 **SA-MP.** Versionserkennung, Spieler-Pool und `CInput` kommen aus [samp-client-api](https://github.com/zottce/samp-client-api) (Stand `d497ffad`, derselbe wie in samp-cef). Diese Bibliothek kann weder in den Chat schreiben noch Befehle anlegen; dafür ruft das ASI die Funktionen von samp.dll direkt auf. Adressen aus [BlastHackNet/SAMP-API](https://github.com/BlastHackNet/SAMP-API/tree/multiver/src/sampapi):
 
@@ -88,7 +93,22 @@ Alle Adressen gelten für GTA San Andreas 1.0 US; Quellen stehen auch im Quellte
 
 ## Logdatei
 
-`samplife-kleidung.log` im GTA-Ordner wird bei jedem Spielstart neu angelegt. Sie enthält Version und Hook-Stand, die erkannte SA-MP-Version, jede Prüfung, deren Ergebnis sich geändert hat, jeden Umbau mit Dauer und bei `/kleidungtest info` die Adressen der gefundenen Figuren und ihrer Kleidungsdaten.
+`samplife-kleidung.log` wird bei jedem Spielstart neu angelegt, und zwar gleich beim Laden des ASI, noch bevor SA-MP fertig ist. Sie liegt im GTA-Ordner. Lässt sich dort nicht schreiben (z. B. GTA unter `C:\Program Files` ohne Administratorrechte), liegt sie unter `Dokumente\GTA San Andreas User Files\` und als letzte Möglichkeit in `%TEMP%`. Die erste Zeile mit „Logdatei:“ nennt den Ort.
+
+Inhalt:
+
+- Beim Laden: ASI-Version, Pfad der ASI und der EXE, Wert an `0x401000` (GTA 1.0 US oder nicht), Stand von Einstieg A (vorheriges Ziel, was jetzt an `0x53E981` steht), ob samp.dll schon geladen ist.
+- Eine Minute lang jede Sekunde, danach bis zehn Minuten alle 30 Sekunden eine Zeile `t+…s:` mit Version der samp.dll, Inhalt von `0x53E981` (unser Hook oder nicht), Zähler der Aufrufe über A und B, wie oft die Logik über A bzw. B lief, wie oft neu eingehakt wurde, Stand von Einstieg B, erkannte SA-MP-Version und Stand des Befehls `/kleidungtest`.
+- „Spiel-Thread erreicht“, sobald die Logik das erste Mal läuft.
+- Adressen von CChat, CInput und CNetGame, sobald sie sich ändern, und das Ergebnis jedes `CInput::AddCommand`.
+- Danach jede Prüfung, deren Ergebnis sich geändert hat, jeden Umbau mit Dauer und bei `/kleidungtest info` die Adressen der gefundenen Figuren und ihrer Kleidungsdaten.
+
+**Fehlersuche, wenn `/kleidungtest` fehlt** („unbekannter Befehl“ vom Server):
+
+- Gar keine Logdatei, auch nicht in `Dokumente\GTA San Andreas User Files` oder `%TEMP%`: Das ASI wurde nicht geladen. Prüfen, ob ein ASI Loader da ist (`vorbisFile.dll` und `vorbisHooked.dll` von SampVoice) und ob `cef.asi` im selben Ordner lädt.
+- „NICHT GTA SA 1.0 US“: andere `gta_sa.exe`, das ASI bleibt aus.
+- Zähler A und B bleiben bei 0: Keiner der beiden Einstiege läuft; die Zeilen `t+…s` zeigen, was an `0x53E981` steht und ob Einstieg B eingehakt ist.
+- „/kleidungtest: warte auf CChat/CInput/CNetGame“: SA-MP ist noch nicht verbunden oder eine Adresse passt nicht zur Version.
 
 ## Bauen
 
@@ -98,8 +118,10 @@ Lokal ginge es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung
 
 | Datei | Inhalt |
 |---|---|
-| `src/lib.rs` | `DllMain`, Hook einrichten |
-| `src/game.rs` | GTA-Adressen, Offsets, Speicherprüfung, Zugriff auf Figuren |
+| `src/lib.rs` | `DllMain` |
+| `src/hooks.rs` | Einstiege A und B in den Spiel-Thread |
+| `src/watchdog.rs` | Lebenszeichen und Protokoll im Sekundentakt, richtet Einstieg B ein |
+| `src/game.rs` | GTA-Adressen der Kleidung, Offsets, Speicherprüfung, Zugriff auf Figuren |
 | `src/samp.rs` | SA-MP-Version, Chat, Befehl, eigene und fremde Figuren |
 | `src/outfit.rs` | die Outfits |
 | `src/logic.rs` | Befehl, Prüfung jede Sekunde, Umbauten, Info |

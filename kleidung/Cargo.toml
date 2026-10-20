@@ -2,7 +2,7 @@
 # Gebaut wird nur von GitHub (.github/workflows/kleidung.yml) für i686-pc-windows-msvc.
 [package]
 name = "samplife-kleidung"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 publish = false
 
@@ -14,7 +14,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # samp-client-api von ZOTTCE, genau der Stand, den samp-cef (client/Cargo.toml) benutzt
 client-api = { git = "https://github.com/zottce/samp-client-api.git", rev = "d497ffad4903d9cc3f02869c744c3c3d96217cbb" }
-winapi = { version = "0.3.9", features = ["minwindef", "winnt", "memoryapi", "processthreadsapi", "libloaderapi"] }
+winapi = { version = "0.3.9", features = ["minwindef", "winnt", "memoryapi", "processthreadsapi", "libloaderapi", "d3d9", "windef", "wingdi", "winver"] }
 
 [profile.release]
 opt-level = 2
