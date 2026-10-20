@@ -7,7 +7,7 @@ use crate::game::{
     TEX_LEGS, TEX_NECKLACE, TEX_SHOES, TEX_TORSO,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum OutfitId {
     Eins,
     Zwei,

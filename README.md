@@ -155,6 +155,10 @@ Derselbe Stand `f14fe4f` mit einer Änderung: Browser können zusätzlich im Mod
 
 GitHub baut das Paket mit [`.github/workflows/cef.yml`](.github/workflows/cef.yml) aus dem Original-Commit und den Patches in `cef/`. Ein Tag wie `cef-f14fe4f-sl1` legt das Release `samp-cef-client-<tag>.zip` mit SHA-256 an.
 
+## Machbarkeitstest: CJ-Kleidung
+
+Im Ordner [`kleidung/`](kleidung/README.md) liegt ein kleines ASI für das Team, nicht für Spieler: `samplife-kleidung.asi` legt im Spiel den lokalen Befehl `/kleidungtest` an und zieht damit alle Figuren mit Skin 0 in der Nähe um, die eigene und die anderer Spieler, so wie im Singleplayer. So prüfen wir, ob Kleidung für CJ auf dem Server machbar ist. GitHub baut die Datei mit [`.github/workflows/kleidung.yml`](.github/workflows/kleidung.yml) nur als Artefakt, ohne Release; sie steht nicht im Manifest. Installation, Testablauf und Quellen stehen in [`kleidung/README.md`](kleidung/README.md).
+
 ## Lizenz
 
 Der Quelltext des Installers ist öffentlich einsehbar. Eine Lizenz dafür ist noch nicht festgelegt; bis dahin bleiben alle Rechte bei German Samplife. Die Pakete fremder Projekte stehen unter deren Lizenzen, siehe oben und in der Liste des Installers.
