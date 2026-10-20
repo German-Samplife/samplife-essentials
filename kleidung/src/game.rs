@@ -234,7 +234,7 @@ pub fn install_process_hook() {
             return;
         }
 
-        let new_rel = (game_process_hook as usize).wrapping_sub(site + 5) as i32;
+        let new_rel = (game_process_hook as extern "C" fn() as usize).wrapping_sub(site + 5) as i32;
         ((site + 1) as *mut i32).write_unaligned(new_rel);
 
         let mut ignored = 0;
