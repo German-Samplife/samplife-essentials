@@ -161,7 +161,7 @@ index 7c23310..5c362f7 100644
 +  "mouse_only_block_game_mouse": true
  }
 diff --git a/client/src/app.rs b/client/src/app.rs
-index 7a46f76..6db89ad 100644
+index 7a46f76..ab92084 100644
 --- a/client/src/app.rs
 +++ b/client/src/app.rs
 @@ -11,7 +11,7 @@ use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
@@ -487,7 +487,24 @@ index 7a46f76..6db89ad 100644
          match msg {
              WM_MOUSEMOVE => {
                  let [x, y] = [(lparam as u16) as i32, (lparam >> 16) as u16 as i32];
-@@ -643,10 +825,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -623,11 +805,13 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+                     event.type_ = cef_key_event_type_t::KEYEVENT_CHAR;
+ 
+                     // GTA:SA creates an ANSI window, so WM_CHAR values in the byte range use the
+-                    // active Windows-1251 code page. Preserve that behavior while also accepting
+-                    // UTF-16 values produced by Unicode input methods.
++                    // ANSI code page of the player's Windows. German Samplife players use German or
++                    // other western Windows (Windows-1252: ä ö ü ß € „ “ –); upstream assumed the
++                    // Cyrillic Windows-1251, which turned umlauts into Cyrillic letters. UTF-16
++                    // values produced by Unicode input methods are still accepted as they are.
+                     let character = if wparam <= u8::MAX as usize {
+                         let bytes = [wparam as u8];
+-                        encoding_rs::WINDOWS_1251
++                        encoding_rs::WINDOWS_1252
+                             .decode(&bytes)
+                             .0
+                             .encode_utf16()
+@@ -643,10 +827,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
                      }
                  }
  
@@ -501,7 +518,7 @@ index 7a46f76..6db89ad 100644
                          // allowed keys (screenshot and chat cycle)
                          let is_allowed_key = wparam == VK_F8 as usize || wparam == VK_F7 as usize;
  
-@@ -657,7 +841,9 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -657,7 +843,9 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
                              app.key_state[key_index] = false;
                              notify_key_down = true;
                          }
@@ -512,7 +529,7 @@ index 7a46f76..6db89ad 100644
                          app.key_state[key_index] =
                              event.type_ == cef_key_event_type_t::KEYEVENT_RAWKEYDOWN;
                      }
-@@ -665,11 +851,17 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -665,11 +853,17 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
  
                  let input_active = inputs::Input::is_active()
                      || inputs::Dialog::is_input_focused()
@@ -531,7 +548,7 @@ index 7a46f76..6db89ad 100644
              }
  
              WM_ACTIVATE | WM_ACTIVATEAPP => {
-@@ -686,6 +878,13 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -686,6 +880,13 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
                  manager.set_corrupted(!active);
                  manager.do_not_draw(!active);
  
@@ -545,7 +562,7 @@ index 7a46f76..6db89ad 100644
                  return false;
              }
  
-@@ -698,7 +897,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+@@ -698,7 +899,12 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
              return false;
          }
  
@@ -559,7 +576,7 @@ index 7a46f76..6db89ad 100644
      }
  
      false
-@@ -710,11 +914,22 @@ extern "stdcall" fn async_key_state(key: i32) -> u16 {
+@@ -710,11 +916,22 @@ extern "stdcall" fn async_key_state(key: i32) -> u16 {
          let result = app.keystate_hook.call(key);
  
          if let Some(manager) = app.manager.try_lock() {
