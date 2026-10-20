@@ -3,7 +3,7 @@
 //! up to 10 minutes, what the entries into the game thread are doing. It also
 //! installs entry B as soon as GTA's Direct3D device exists.
 
-use std::ffi::{c_void, OsString};
+use std::ffi::OsString;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -63,10 +63,10 @@ fn samp_version() -> Option<String> {
         }
 
         let root: Vec<u16> = "\\".encode_utf16().chain(Some(0)).collect();
-        let mut info: *mut c_void = std::ptr::null_mut();
+        let mut info: winapi::shared::minwindef::LPVOID = std::ptr::null_mut();
         let mut len = 0u32;
 
-        if VerQueryValueW(data.as_ptr() as *const _, root.as_ptr(), &mut info as *mut _ as *mut _, &mut len) == 0
+        if VerQueryValueW(data.as_ptr() as *const _, root.as_ptr(), &mut info, &mut len) == 0
             || info.is_null()
             || len < 16
         {
