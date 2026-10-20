@@ -1,0 +1,3 @@
+# Statisch gegen die C-Laufzeit linken, damit die .asi ohne VC++-Redistributable läuft.
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

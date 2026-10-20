@@ -1,0 +1,84 @@
+# Baut das ASI für den Machbarkeitstest CJ-Kleidung (siehe kleidung/README.md).
+# Nur bauen und als Artefakt hochladen: kein Release, keine Tags.
+name: Kleidung
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "kleidung/**"
+      - ".github/workflows/kleidung.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: kleidung
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (stable, i686-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: i686-pc-windows-msvc
+
+      - name: Cargo-Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            kleidung/target
+          key: kleidung-i686-pc-windows-msvc-${{ hashFiles('kleidung/Cargo.toml', 'kleidung/Cargo.lock') }}
+          restore-keys: |
+            kleidung-i686-pc-windows-msvc-
+
+      - name: Bauen
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo --version
+          cargo build --release --target i686-pc-windows-msvc
+
+      - name: Prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dll = "target/i686-pc-windows-msvc/release/samplife_kleidung.dll"
+          if (-not (Test-Path $dll)) { throw "samplife_kleidung.dll fehlt" }
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
+          $kopf = & $dumpbin.FullName /headers $dll | Out-String
+          if ($kopf -notmatch "14C machine \(x86\)") { throw "Die DLL ist nicht 32 Bit" }
+          $abh = & $dumpbin.FullName /dependents $dll | Out-String
+          $abh
+          if ($abh -match "VCRUNTIME140|MSVCP140|api-ms-win-crt") { throw "Die DLL braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
+          if (-not (Select-String -Path $dll -Pattern "kleidungtest" -SimpleMatch -Quiet)) { throw "Der Befehlsname fehlt in der DLL" }
+
+      - name: Paket zusammenstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force ../ausgabe | Out-Null
+          Copy-Item target/i686-pc-windows-msvc/release/samplife_kleidung.dll ../ausgabe/samplife-kleidung.asi
+          # Cargo.lock des Laufs, damit der Stand der Abhängigkeiten nachvollziehbar bleibt
+          Copy-Item Cargo.lock ../ausgabe/Cargo.lock
+          $hash = (Get-FileHash ../ausgabe/samplife-kleidung.asi -Algorithm SHA256).Hash.ToLower()
+          "$hash  samplife-kleidung.asi" | Out-File -Encoding ascii ../ausgabe/SHA256SUMS.txt
+          Get-ChildItem ../ausgabe | Format-Table Name, Length
+          Get-Content ../ausgabe/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: samplife-kleidung
+          path: ausgabe/
