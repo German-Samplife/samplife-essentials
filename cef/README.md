@@ -75,6 +75,10 @@ Neu in `proto/packets.proto` (und von Hand gleich in `messages/src/proto/packets
 | `SetInputMode` | 17 | Server → Client | `browser_id`, `mode` |
 | `InputModeChanged` | 18 | Client → Server | `browser_id`, `mode` |
 
+## Umlaute bei der Eingabe
+
+Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. Auf deutschen Windows-Systemen wurden ä, ö, ü, ß, „ “ und – dadurch zu kyrillischen Buchstaben. Der Patch liest sie als Windows-1252 (`client/src/app.rs`, `win_event`). Zeichen, die Eingabemethoden als Unicode schicken, bleiben unverändert.
+
 ## Abwärtskompatibilität
 
 - **Alter Client, neuer Server:** Der Server merkt sich die Version aus `RequestJoin`. Clients unter `0x000200` bekommen statt `SetInputMode` das alte `FocusBrowser`: NONE wird nicht fokussiert, FULL und MOUSE_ONLY werden fokussiert (also volle Eingabe wie bisher). Wer das anders will, fragt vorher `cef_get_client_version` ab. Ein alter Client würde ein unbekanntes Paket ohnehin nur als `OPEN_CONNECTION` lesen und im verbundenen Zustand verwerfen.
