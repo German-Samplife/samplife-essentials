@@ -20,7 +20,7 @@ Der Befehl `/kleidungtest` existiert nur im eigenen Client und geht nicht an den
 | `/kleidungtest` oder `/kleidungtest 1` | Outfit 1 auf **alle** Figuren mit Skin 0 im Streamingbereich, eigene und fremde |
 | `/kleidungtest 2` | Outfit 2, deutlich anders als Outfit 1 |
 | `/kleidungtest aus` | Standard-CJ wiederherstellen und den Test beenden |
-| `/kleidungtest info` | Version des ASI und von SA-MP, gefundene CJ-Figuren (eigene, fremde mit Spieler-ID), Zahl der Umbauten mit Dauer, wartende Figuren |
+| `/kleidungtest info` | Version des ASI und von SA-MP, gefundene CJ-Figuren (eigene, fremde mit Spieler-ID), Zahl der Umbauten mit Dauer, wartende Figuren, ob der Kleidungs-Code gepatcht ist und welche Umbau-Variante wirkt |
 
 Solange ein Outfit aktiv ist, prüft das ASI jede Sekunde, ob neue CJ-Figuren gestreamt wurden oder eine Figur ihr Outfit verloren hat (Respawn, Streaming, Skinwechsel), und zieht sie dann wieder an. Umgebaut wird höchstens eine Figur pro Bild und nur, wenn es nötig ist (siehe „Wie es funktioniert“).
 
@@ -79,6 +79,16 @@ Vor allem anderen prüft das ASI an `0x401000`, ob es GTA 1.0 US ist ([plugin-sd
 
 **Anziehen.** Jede Spielerfigur hat über `CPed::m_pPlayerData` (`+0x480`) einen `CPlayerPedData`, darin `m_pPedClothesDesc` (`+0x4`), die Kleidungsbeschreibung (`CPedClothesDesc`, `0x78` Bytes: 10 Modell-Schlüssel, 18 Textur-Schlüssel, Fett, Muskeln). Das ASI schreibt die Schlüssel genau wie `CPedClothesDesc::SetTextureAndModel` (`0x5A8080`; die Funktion selbst wird nicht aufgerufen, weil sie laut gta-reversed einen Parameter im Register erwartet), berechnet mit `CKeyGen::GetUppercaseKey` (`0x53CF30`), und ruft dann `CClothes::RebuildPlayer(ped, true)` (`0x5A82C0`) auf. `true` heißt: Fett und Muskeln bleiben, wie sie sind, statt die Werte des eigenen Spielers zu übernehmen. Quellen: [gta-reversed](https://github.com/gta-reversed/gta-reversed) `Clothes.cpp`, `PedClothesDesc.cpp/.h`, `PlayerPedData.h`, `Core/KeyGen.cpp`, `Enums/eClothes*Part.h`; Offsets aus den `VALIDATE_OFFSET`-Zeilen in plugin-sdk `CPed.h`, `CEntity.h`, `CPlayerInfo.h`. Die Teilenamen stammen aus der Kleidungsliste von MTA ([`CClientPlayerClothes.cpp`](https://github.com/multitheftauto/mtasa-blue/blob/master/Client/mods/deathmatch/logic/CClientPlayerClothes.cpp)).
 
+**Wenn SA-MP den Umbau stilllegt.** Im ersten Live-Test (0.2.0) lief `RebuildPlayer` in 0,0 ms durch, ohne dass sich etwas änderte. Seit 0.3.0 vergleicht das ASI deshalb den Code des Kleidungswegs im Speicher mit der `gta_sa.exe` auf der Festplatte: den Bereich `0x5A4190` bis `0x5A8400` (CClothesBuilder, CPedClothesDesc, CClothes) und die Funktionen, die `RebuildPlayer` aufruft (`CPed::Dress` `0x5E0130`, `CPed::SetModelIndex` `0x5E4880`, `CPed::DeleteRwObject` `0x5DEBF0`, `CPedModelInfo::SetClump` `0x4C7340`, `CClumpModelInfo::SetClump`/`CreateInstance`, `CStreaming::RequestFile`/`LoadAllRequestedModels`, `CTimer::Suspend`/`Resume`, `CWorld::Add`/`Remove`, die Animations-Helfer und `CKeyGen::GetUppercaseKey`; Adressen aus gta-reversed, Liste in `src/diag.rs`). Jede Abweichung steht im Log mit Adresse, Originalbytes, Bytes im Speicher und, bei einem eingesetzten Sprung oder Aufruf, dem Ziel und dem Modul (z. B. `samp.dll`). Das passiert 15 und 60 Sekunden nach dem Start, vor dem ersten Umbau und bei `/kleidungtest info`.
+
+Umgebaut wird dann mit der ersten Variante, die wirkt; die wirksame wird ab da zuerst genommen:
+
+1. **RebuildPlayer:** `CClothes::RebuildPlayer` wie bisher.
+2. **nachgebaut:** dieselben Schritte wie `RebuildPlayer` in gta-reversed, aber mit den inneren Funktionen des Spiels (`RpAnimBlendClumpExtractAssociations` `0x4D6BE0`, IK-Aufgabe abbrechen, `CPed::DeleteRwObject`, `CWorld::Remove` `0x563280`, `CClothes::ConstructPedModel` `0x5A81E0`, `CPed::Dress`, `RpAnimBlendClumpGiveAssociations` `0x4D6C30`, `PlayerClothes` `0xBC1C78`). Hilft, wenn nur `RebuildPlayer` selbst gepatcht ist.
+3. **Originalbytes:** `RebuildPlayer`, während alle gefundenen Abweichungen auf die Bytes der EXE zurückgesetzt sind. Direkt nach dem Aufruf kommen genau die Bytes von SA-MP wieder hin (im Spiel-Thread).
+
+„Wirkt“ heißt: Modell 0 hat danach einen neuen Clump (`CPedModelInfo::m_pRwObject`, Modellinfo über `0xA9B0C8`), der Kleidungs-Baukasten hat also wirklich etwas gebaut. Für jeden Versuch stehen im Log Dauer, Clump der Figur vorher/nachher, Clump von Modell 0 vorher/nachher und der Stand von `player.img` (Bild-ID `0xBC12F8`, Einträge im Verzeichnis `0xBC12C0`). Wirkt dreimal hintereinander keine Variante, hört das ASI mit Umbauen auf und sagt das im Chat. `/kleidungtest info` zeigt in einer vierten Zeile, ob der Kleidungs-Code gepatcht ist (mit der ersten Stelle), welche Variante wirkt und den Stand von `player.img`.
+
 **Nur umbauen, wenn nötig.** `RebuildPlayer` baut nicht nur die Figur um, sondern auch das gemeinsame Modell 0, aus dem jede neu erscheinende CJ-Figur kopiert wird. Das ASI merkt sich deshalb, welches Outfit das Modell gerade zeigt und welche Figuren schon vor dem letzten Umbau da waren. Eine CJ-Figur, die danach hereinstreamt oder respawnt, trägt das Outfit schon und wird nur übernommen („ohne Umbau“). Umgebaut werden Figuren, deren Kleidungsdaten nicht passen oder deren Modell älter ist.
 
 **Wann nicht.** `RebuildPlayer` setzt die Figur über `CPed::Dress` auf „steht“ und fügt sie neu in die Welt ein. Figuren im Fahrzeug (`bInVehicle`, Flags `+0x46C` Bit 8) und tote Figuren (`m_ePedState` `+0x530`, 54 bis 56) werden deshalb nicht umgebaut, sondern danach.
@@ -124,6 +134,8 @@ Lokal ginge es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung
 | `src/game.rs` | GTA-Adressen der Kleidung, Offsets, Speicherprüfung, Zugriff auf Figuren |
 | `src/samp.rs` | SA-MP-Version, Chat, Befehl, eigene und fremde Figuren |
 | `src/outfit.rs` | die Outfits |
+| `src/diag.rs` | Vergleich des Kleidungs-Codes mit gta_sa.exe, Originalbytes für einen Aufruf |
+| `src/rebuild.rs` | die drei Umbau-Varianten und die Auswahl der wirksamen |
 | `src/logic.rs` | Befehl, Prüfung jede Sekunde, Umbauten, Info |
 | `src/log.rs` | Logdatei |
 

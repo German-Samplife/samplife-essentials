@@ -146,6 +146,16 @@ fn run() {
             crate::log!("{text}");
         }
 
+        // compare the clothes code with gta_sa.exe once SA-MP has applied its patches
+        if seconds == 15 || seconds == 60 {
+            crate::diag::scan(&format!("t+{seconds}s"));
+            let (image, entries) = crate::game::player_img_state();
+            crate::log!(
+                "player.img: Bild-ID {image}, Verzeichnis {entries} Einträge, Modell-0-Clump {:#x}",
+                crate::game::model0_clump()
+            );
+        }
+
         crate::log!(
             "t+{seconds}s: samp.dll {} | 0x53E981 {} | Aufrufe A {} B {} | Logik über A {} über B {} | neu eingehakt {} | Einstieg B {} (Gerät {:#x}) | SA-MP erkannt: {} | /kleidungtest: {}",
             samp_version().unwrap_or_else(|| "nicht geladen".to_owned()),

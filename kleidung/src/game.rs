@@ -193,6 +193,84 @@ pub fn rebuild_player(ped: usize) {
     rebuild(ped as *mut c_void, true);
 }
 
+// ---------------------------------------------------------------------------
+// Rebuild by hand (variant b), the steps of CClothes::RebuildPlayer in gta-reversed
+// Clothes.cpp, with the game's own inner functions:
+// gta-reversed RpAnimBlend.cpp: RpAnimBlendClumpExtractAssociations 0x4D6BE0, ...GiveAssociations 0x4D6C30
+// gta-reversed Ped.cpp: DeleteRwObject 0x5DEBF0 (CPlayerPed doesn't override it), Dress 0x5E0130
+// gta-reversed World.cpp: Remove 0x563280
+// gta-reversed Clothes.cpp: ConstructPedModel 0x5A81E0, PlayerClothes = StaticRef<CPedClothesDesc>(0xBC1C78)
+const RP_ANIM_EXTRACT: usize = 0x4D6BE0;
+const RP_ANIM_GIVE: usize = 0x4D6C30;
+const CPED_DELETE_RW_OBJECT: usize = 0x5DEBF0;
+const CPED_DRESS: usize = 0x5E0130;
+const CWORLD_REMOVE: usize = 0x563280;
+const CCLOTHES_CONSTRUCT_PED_MODEL: usize = 0x5A81E0;
+const PLAYER_CLOTHES: usize = 0xBC1C78;
+// plugin-sdk CPed.h: VALIDATE_OFFSET(CPed, m_pIntelligence, 0x47C)
+const PED_INTELLIGENCE: usize = 0x47C;
+// gta-reversed PedIntelligence.h (m_pPed, then m_TaskMgr) and TaskManager.h
+// (5 primary, then 6 secondary tasks, TASK_SECONDARY_IK = 5): 4 + 5*4 + 5*4
+const INTELLIGENCE_TASK_SECONDARY_IK: usize = 0x2C;
+// gta-reversed Tasks/Task.h: vtable 0 dtor, 1 Clone, 2 GetSubTask, 3 IsSimple,
+// 4 GetTaskType, 5 StopTimer, 6 MakeAbortable; ABORT_PRIORITY_IMMEDIATE = 2
+const TASK_VTABLE_MAKE_ABORTABLE: usize = 6;
+
+pub fn rebuild_player_manual(ped: usize, desc_ptr: usize) {
+    unsafe {
+        let extract: extern "C" fn(usize) -> usize = std::mem::transmute(RP_ANIM_EXTRACT);
+        let give: extern "C" fn(usize, usize) = std::mem::transmute(RP_ANIM_GIVE);
+        let delete_rw: extern "thiscall" fn(usize) = std::mem::transmute(CPED_DELETE_RW_OBJECT);
+        let dress: extern "thiscall" fn(usize) = std::mem::transmute(CPED_DRESS);
+        let world_remove: extern "C" fn(usize) = std::mem::transmute(CWORLD_REMOVE);
+        let construct: extern "C" fn(u32, usize, usize, bool) =
+            std::mem::transmute(CCLOTHES_CONSTRUCT_PED_MODEL);
+
+        let ped_view = Ped(ped);
+        let assoc = extract(ped_view.rw_object());
+
+        if let Some(intelligence) = read_ptr(ped + PED_INTELLIGENCE) {
+            if let Some(task) = read_ptr(intelligence + INTELLIGENCE_TASK_SECONDARY_IK) {
+                if let Some(func) = read_ptr(task).and_then(|vt| read_ptr(vt + TASK_VTABLE_MAKE_ABORTABLE * 4)) {
+                    let make_abortable: extern "thiscall" fn(usize, usize, i32, usize) -> bool =
+                        std::mem::transmute(func);
+                    make_abortable(task, ped, 2, 0);
+                }
+            }
+        }
+
+        delete_rw(ped);
+        world_remove(ped);
+        construct(ped_view.model() as u16 as u32, desc_ptr, PLAYER_CLOTHES, false);
+        dress(ped);
+        give(ped_view.rw_object(), assoc);
+
+        let desc = (desc_ptr as *const ClothesDesc).read_unaligned();
+        (PLAYER_CLOTHES as *mut ClothesDesc).write_unaligned(desc);
+    }
+}
+
+// gta-reversed Models/ModelInfo.h: ms_modelInfoPtrs = StaticRef<...>(0xA9B0C8);
+// plugin-sdk CModelInfo.cpp reads the array pointer from 0x40CD67 (limit adjusters).
+// plugin-sdk CBaseModelInfo.h: VALIDATE_OFFSET(CBaseModelInfo, m_pRwObject, 0x1C)
+const MODEL_INFO_PTRS_REF: usize = 0x40CD67;
+const MODEL_INFO_PTRS: usize = 0xA9B0C8;
+
+/// RwObject (clump) of the model info of model 0, the clump every CJ is cloned from.
+pub fn model0_clump() -> usize {
+    let array = read_ptr(MODEL_INFO_PTRS_REF).unwrap_or(MODEL_INFO_PTRS);
+    read_ptr(array).and_then(|info| read_ptr(info + 0x1C)).unwrap_or(0)
+}
+
+/// CClothes::ms_clothesImageId (gta-reversed Clothes.h, 0xBC12F8) and the entry count of
+/// the player.img directory (ClothesBuilder.cpp: playerImg = StaticRef<CDirectory>(0xBC12C0);
+/// Directory.h: m_pEntries, m_nCapacity, m_nNumEntries).
+pub fn player_img_state() -> (i32, u32) {
+    let image = read_u32(0xBC12F8).unwrap_or(u32::MAX) as i32;
+    let entries = read_u32(0xBC12C0 + 8).unwrap_or(0);
+    (image, entries)
+}
+
 /// CWorld::Players[0].m_pPed, fallback for the local ped
 pub fn world_player0_ped() -> Option<usize> {
     read_ptr(CWORLD_PLAYERS)

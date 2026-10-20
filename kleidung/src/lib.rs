@@ -8,11 +8,13 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+mod diag;
 mod game;
 mod hooks;
 mod log;
 mod logic;
 mod outfit;
+mod rebuild;
 mod samp;
 mod watchdog;
 

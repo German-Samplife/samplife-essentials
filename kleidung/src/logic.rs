@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::game::{self, ClothesDesc, Ped, Skip, MODEL_PLAYER};
 use crate::hooks;
+use crate::rebuild;
 use crate::outfit::{OutfitId, OutfitKeys};
 use crate::samp::{self, SampVersion};
 
@@ -181,6 +182,8 @@ struct State {
     stats_at_command: Stats,
     last_result: ScanResult,
     report_pending: bool,
+    diagnosed: bool,
+    aufgabe_gemeldet: bool,
 }
 
 impl State {
@@ -206,6 +209,8 @@ impl State {
             stats_at_command: Stats::default(),
             last_result: ScanResult::default(),
             report_pending: false,
+            diagnosed: false,
+            aufgabe_gemeldet: false,
         }
     }
 
@@ -414,6 +419,8 @@ impl State {
         self.force_scan = true;
         self.report_pending = true;
         self.stats_at_command = self.stats;
+        self.aufgabe_gemeldet = false;
+        rebuild::zuruecksetzen();
     }
 
     fn keys(&mut self, id: OutfitId) -> OutfitKeys {
@@ -680,6 +687,11 @@ impl State {
     // Rebuild
 
     fn rebuild_next(&mut self, ver: SampVersion) {
+        if rebuild::aufgegeben() {
+            self.queue.clear();
+            return;
+        }
+
         while let Some(ped_addr) = self.queue.pop_front() {
             let ped = Ped(ped_addr);
 
@@ -702,39 +714,59 @@ impl State {
                 continue;
             };
 
+            if !self.diagnosed {
+                self.diagnosed = true;
+                crate::diag::scan("vor dem ersten Umbau");
+            }
+
             self.write_target(target, desc_ptr, snapshot.original);
 
-            let start = Instant::now();
-            game::rebuild_player(ped_addr);
-            let ms = start.elapsed().as_secs_f32() * 1000.0;
+            let wer = self
+                .survey(ver)
+                .iter()
+                .find(|cj| cj.ped == ped_addr)
+                .map(who)
+                .unwrap_or_else(|| "Figur".to_owned());
+
+            crate::log!("Umbau {wer} {ped_addr:#x} -> {target:?}");
+            let ergebnis = rebuild::umbauen(ped_addr, desc_ptr, &wer);
+            let ms = ergebnis.ms;
 
             self.stats.rebuilds += 1;
             self.stats.last_ms = ms;
             self.stats.max_ms = self.stats.max_ms.max(ms);
 
-            let rw = if ped.valid() { ped.rw_object() } else { 0 };
-
             if let Some(entry) = self.peds.get_mut(&ped_addr) {
-                entry.rw = rw;
+                entry.rw = ergebnis.rw_nachher;
                 entry.applied = Some(target);
             }
 
-            // the model-0 clump now shows `target`; every other existing CJ clump is older
-            self.model_shows = Some(target);
-            self.stale_rws = self
-                .survey(ver)
-                .iter()
-                .filter(|cj| cj.ped != ped_addr && cj.rw != 0)
-                .map(|cj| cj.rw)
-                .collect();
+            if ergebnis.wirksam.is_some() {
+                // the model-0 clump now shows `target`; every other existing CJ clump is older
+                self.model_shows = Some(target);
+                self.stale_rws = self
+                    .survey(ver)
+                    .iter()
+                    .filter(|cj| cj.ped != ped_addr && cj.rw != 0)
+                    .map(|cj| cj.rw)
+                    .collect();
+            } else {
+                self.model_shows = None;
+            }
 
-            crate::log!(
-                "RebuildPlayer {:#x} -> {:?} in {:.1} ms (Clump jetzt {:#x})",
-                ped_addr,
-                target,
-                ms,
-                rw
-            );
+            if rebuild::aufgegeben() {
+                self.queue.clear();
+
+                if !self.aufgabe_gemeldet {
+                    self.aufgabe_gemeldet = true;
+                    samp::chat_line(
+                        ver,
+                        WHITE,
+                        &format!("{PREFIX}Kein Umbau wirkt (alle Varianten probiert). Details: /kleidungtest info und samplife-kleidung.log"),
+                    );
+                }
+            }
+
             break;
         }
     }
@@ -797,6 +829,33 @@ impl State {
                 last.wait_vehicle,
                 last.wait_dead,
                 last.no_data
+            ),
+        );
+
+        let patches = crate::diag::scan("/kleidungtest info");
+        let erste = patches
+            .iter()
+            .find(|p| !p.note.is_empty())
+            .or(patches.first())
+            .map(|p| {
+                let note: String = p.note.chars().take(40).collect();
+                format!(" (erste {:#x} {note})", p.addr)
+            })
+            .unwrap_or_default();
+        let variante = match (rebuild::wirksame_variante(), rebuild::aufgegeben(), self.stats.rebuilds) {
+            (Some(v), _, _) => format!("wirkt: {}", v.name()),
+            (None, true, _) => "keine wirkt".to_owned(),
+            (None, false, 0) => "noch kein Umbau".to_owned(),
+            (None, false, _) => "bisher keine wirksam".to_owned(),
+        };
+        let (image, entries) = game::player_img_state();
+
+        samp::chat_line(
+            ver,
+            WHITE,
+            &format!(
+                "Kleidungs-Code gepatcht: {}{erste}, Umbau {variante}, player.img {image}/{entries}",
+                if patches.is_empty() { "nein".to_owned() } else { format!("ja, {} Stellen", patches.len()) }
             ),
         );
 
