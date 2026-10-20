@@ -19,6 +19,8 @@ Der Befehl `/kleidungtest` existiert nur im eigenen Client und geht nicht an den
 |---|---|
 | `/kleidungtest` oder `/kleidungtest 1` | Outfit 1 auf **alle** Figuren mit Skin 0 im Streamingbereich, eigene und fremde |
 | `/kleidungtest 2` | Outfit 2, deutlich anders als Outfit 1 |
+| `/kleidungtest mix` | eigene Figur Outfit 1, jede fremde CJ-Figur Outfit 2; jede Figur wird einzeln gebaut |
+| `/kleidungtest mix2` | umgekehrt: eigene Figur Outfit 2, fremde Outfit 1 |
 | `/kleidungtest aus` | Standard-CJ wiederherstellen und den Test beenden |
 | `/kleidungtest info` | Version des ASI und von SA-MP, gefundene CJ-Figuren (eigene, fremde mit Spieler-ID), Zahl der Umbauten mit Dauer, wartende Figuren, ob der Kleidungs-Code gepatcht ist und welche Umbau-Variante wirkt |
 
@@ -44,9 +46,10 @@ Beide Tester haben das ASI im GTA-Ordner und sind auf dem Server.
    3. **Bleibt das Outfit?** Nacheinander: Respawn (`/kill` oder Tod), weit weglaufen oder teleportieren, bis der andere verschwindet, und zurückkommen (Streaming), Fahrzeug ein- und aussteigen, Animationen (z. B. `/sit`, Tanzen, Hinlegen), Schießen und Waffenwechsel, Skin kurz wechseln und zurück auf 0. Während einer im Fahrzeug sitzt oder tot ist, wartet das ASI und zieht ihn danach wieder an.
    4. **Leistung:** Mit drei oder mehr CJs in der Nähe die Bildrate beobachten, vor allem beim ersten Anziehen und beim Hereinstreamen. `/kleidungtest info` zeigt die Dauer des letzten und des längsten Umbaus in Millisekunden.
    5. **Abstürze und Grafikfehler:** fehlende Körperteile, falsche Texturen, unsichtbare Figuren, Absturz beim Umziehen, beim Verlassen des Servers oder beim Beenden des Spiels.
-4. `/kleidungtest info` bei beiden ausführen und die drei Zeilen abschreiben oder ein Bild machen. Wichtig ist die Angabe „Kleidungsdaten: N verschiedene“: Steht dort „teilweise GETEILT“, teilen sich mehrere Figuren dieselben Kleidungsdaten (siehe Risiken).
-5. `/kleidungtest aus` bei beiden: Standard-CJ wiederhergestellt?
-6. Danach `samplife-kleidung.log` aus dem GTA-Ordner beider Tester einsammeln. Dort steht jeder Umbau mit Dauer, jede Prüfung mit den gefundenen Figuren und bei Fehlern der Grund.
+4. **Verschiedene Outfits auf einem Client (`mix`, ab 0.4.0):** Beide geben `/kleidungtest mix` ein. Erwartet: Jeder sieht sich selbst in Outfit 1 (schwarzes Unterhemd, Afro, Tarnhose) und den anderen in Outfit 2 (roter Anzug, Cowboyhut). Gegenprobe mit `/kleidungtest mix2` bei einem der beiden: Bei ihm tauschen sich die Outfits, beim anderen bleibt alles. Danach Respawn, Weg- und Wiederkommen und Fahrzeug wie oben; jede Figur muss ihr eigenes Outfit behalten. `/kleidungtest info` zeigt in der fünften Zeile, ob Figuren mit verschiedenem Outfit Geometrie oder Texturen teilen (muss „nein“ sein).
+5. `/kleidungtest info` bei beiden ausführen und die drei Zeilen abschreiben oder ein Bild machen. Wichtig ist die Angabe „Kleidungsdaten: N verschiedene“: Steht dort „teilweise GETEILT“, teilen sich mehrere Figuren dieselben Kleidungsdaten (siehe Risiken).
+6. `/kleidungtest aus` bei beiden: Standard-CJ wiederhergestellt?
+7. Danach `samplife-kleidung.log` aus dem GTA-Ordner beider Tester einsammeln. Dort steht jeder Umbau mit Dauer, jede Prüfung mit den gefundenen Figuren und bei Fehlern der Grund.
 
 ## Was das Ergebnis bedeutet
 
@@ -83,11 +86,17 @@ Vor allem anderen prüft das ASI an `0x401000`, ob es GTA 1.0 US ist ([plugin-sd
 
 Umgebaut wird dann mit der ersten Variante, die wirkt; die wirksame wird ab da zuerst genommen:
 
-1. **RebuildPlayer:** `CClothes::RebuildPlayer` wie bisher.
-2. **nachgebaut:** dieselben Schritte wie `RebuildPlayer` in gta-reversed, aber mit den inneren Funktionen des Spiels (`RpAnimBlendClumpExtractAssociations` `0x4D6BE0`, IK-Aufgabe abbrechen, `CPed::DeleteRwObject`, `CWorld::Remove` `0x563280`, `CClothes::ConstructPedModel` `0x5A81E0`, `CPed::Dress`, `RpAnimBlendClumpGiveAssociations` `0x4D6C30`, `PlayerClothes` `0xBC1C78`). Hilft, wenn nur `RebuildPlayer` selbst gepatcht ist.
+1. **nachgebaut** (seit 0.4.0 zuerst, immer vollständiger Bau): dieselben Schritte wie `RebuildPlayer` in gta-reversed, aber mit den inneren Funktionen des Spiels (`RpAnimBlendClumpExtractAssociations` `0x4D6BE0`, IK-Aufgabe abbrechen, `CPed::DeleteRwObject`, `CWorld::Remove` `0x563280`, `CClothes::ConstructPedModel` `0x5A81E0`, `CPed::Dress`, `RpAnimBlendClumpGiveAssociations` `0x4D6C30`, `PlayerClothes` `0xBC1C78`). Hilft, wenn nur `RebuildPlayer` selbst gepatcht ist.
+2. **RebuildPlayer:** `CClothes::RebuildPlayer` wie bisher (vorher wird `PlayerClothes` geleert, damit gebaut wird).
 3. **Originalbytes:** `RebuildPlayer`, während alle gefundenen Abweichungen auf die Bytes der EXE zurückgesetzt sind. Direkt nach dem Aufruf kommen genau die Bytes von SA-MP wieder hin (im Spiel-Thread).
 
-„Wirkt“ heißt: Modell 0 hat danach einen neuen Clump (`CPedModelInfo::m_pRwObject`, Modellinfo über `0xA9B0C8`), der Kleidungs-Baukasten hat also wirklich etwas gebaut. Für jeden Versuch stehen im Log Dauer, Clump der Figur vorher/nachher, Clump von Modell 0 vorher/nachher und der Stand von `player.img` (Bild-ID `0xBC12F8`, Einträge im Verzeichnis `0xBC12C0`). Wirkt dreimal hintereinander keine Variante, hört das ASI mit Umbauen auf und sagt das im Chat. `/kleidungtest info` zeigt in einer vierten Zeile, ob der Kleidungs-Code gepatcht ist (mit der ersten Stelle), welche Variante wirkt und den Stand von `player.img`.
+„Wirkt“ heißt: Modell 0 hat danach einen neuen Clump und die Figur dessen Geometrie (`CPedModelInfo::m_pRwObject`, Modellinfo über `0xA9B0C8`), der Kleidungs-Baukasten hat also wirklich etwas gebaut. Für jeden Versuch stehen im Log Dauer, Clump der Figur vorher/nachher, Clump von Modell 0 vorher/nachher und der Stand von `player.img` (Bild-ID `0xBC12F8`, Einträge im Verzeichnis `0xBC12C0`). Wirkt dreimal hintereinander keine Variante, hört das ASI mit Umbauen auf und sagt das im Chat. `/kleidungtest info` zeigt in einer vierten Zeile, ob der Kleidungs-Code gepatcht ist (mit der ersten Stelle), welche Variante wirkt und den Stand von `player.img`.
+
+**Jede Figur einzeln (ab 0.4.0).** Der Live-Test mit 0.3.0 hat gezeigt: SA-MP legt `RebuildPlayer` mit einem `ret` an `0x5A82C0` still; der nachgebaute Umbau wirkt (rund 10 ms). Er ist deshalb jetzt die erste Variante. Bei der fremden Figur meldete 0.3.0 „wirkt nicht“: Ihre Kleidungsdaten glichen dem zuletzt gebauten Stand (`PlayerClothes`), und `CreateSkinnedClump` baut dann nichts, sondern die Figur bekommt nur eine Kopie des schon gebauten Modells. Seit 0.4.0 ruft das ASI `ConstructPedModel` ohne alten Stand auf, damit jede Figur neu gebaut wird.
+
+Jeder Bau erzeugt neue Geometrie, Materialien und Texturen (gta-reversed `ClothesBuilder.cpp`: `ConstructGeometryArray`, `CopyTexture` mit `RwRasterCreate`/`RwTextureCreate`, `RpMaterialCreate`). `CPed::Dress` kopiert den Modell-Clump; die Kopie teilt sich die Geometrie nur mit dem Modell (mit Referenzzähler). Ersetzt der nächste Bau das Modell, behält die Figur ihre eigene Geometrie und ihre Texturen. Deshalb baut das ASI Figur für Figur: Modell 0 mit den Kleidungsdaten dieser Figur bauen, genau diese Figur anziehen, dann die nächste. Freigegeben wird, was das Spiel selbst freigibt (`DeleteRwObject` der Figur und des Modells); das ASI legt keine eigenen RenderWare-Objekte an.
+
+Bei jeder Prüfung vergleicht das ASI pro Figur ihr Soll-Outfit mit den Kleidungsdaten, mit ihrem Clump und mit der Geometrie, die es für sie gebaut hat (erste Geometrie über `RpClumpForAllAtomics` `0x749B70`). Teilt eine Figur ihre Geometrie mit einer Figur, die ein anderes Outfit tragen soll, wird sie neu gebaut. Nach jedem Umbau steht im Log für jede CJ-Figur Clump, Geometrie, erste Materialtextur und Outfit.
 
 **Nur umbauen, wenn nötig.** `RebuildPlayer` baut nicht nur die Figur um, sondern auch das gemeinsame Modell 0, aus dem jede neu erscheinende CJ-Figur kopiert wird. Das ASI merkt sich deshalb, welches Outfit das Modell gerade zeigt und welche Figuren schon vor dem letzten Umbau da waren. Eine CJ-Figur, die danach hereinstreamt oder respawnt, trägt das Outfit schon und wird nur übernommen („ohne Umbau“). Umgebaut werden Figuren, deren Kleidungsdaten nicht passen oder deren Modell älter ist.
 
