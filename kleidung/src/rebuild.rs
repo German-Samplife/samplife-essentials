@@ -61,6 +61,8 @@ pub fn zuruecksetzen() {
 
 pub struct Ergebnis {
     pub wirksam: Option<Variante>,
+    /// built while seated in a vehicle (only the variant without CPed::Dress)
+    pub im_fahrzeug: bool,
     pub ms: f32,
     pub rw_nachher: usize,
 }
@@ -92,6 +94,13 @@ pub fn umbauen(ped: usize, desc_ptr: usize, wer: &str) -> Ergebnis {
     if let Some(v) = wirksame_variante() {
         reihenfolge.retain(|&x| x != v);
         reihenfolge.insert(0, v);
+    }
+
+    // RebuildPlayer calls CPed::Dress (state IDLE for passengers, CWorld::Add): in a
+    // vehicle only the variant that rebuilds without it
+    let im_fahrzeug = Ped(ped).seated_in_vehicle();
+    if im_fahrzeug {
+        reihenfolge = vec![Variante::Nachgebaut];
     }
 
     let (image, entries) = game::player_img_state();
@@ -144,6 +153,11 @@ pub fn umbauen(ped: usize, desc_ptr: usize, wer: &str) -> Ergebnis {
                 *w = Some(v);
             }
         }
+        // in a vehicle only one variant runs; a failure there says nothing about the
+        // others, so don't count it and keep the working variant
+        None if im_fahrzeug => {
+            crate::log!("Im Fahrzeug hat der Umbau nicht gewirkt, die Figur wird nach dem Aussteigen umgebaut");
+        }
         None => {
             let n = FEHLSCHLAEGE.fetch_add(1, Ordering::SeqCst) + 1;
             crate::log!("Keine Variante hat Modell 0 neu gebaut ({n}. Mal in Folge)");
@@ -155,6 +169,7 @@ pub fn umbauen(ped: usize, desc_ptr: usize, wer: &str) -> Ergebnis {
 
     Ergebnis {
         wirksam,
+        im_fahrzeug,
         ms: start_all.elapsed().as_secs_f32() * 1000.0,
         rw_nachher: if Ped(ped).valid() { Ped(ped).rw_object() } else { 0 },
     }

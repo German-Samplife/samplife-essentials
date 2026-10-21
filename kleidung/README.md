@@ -49,15 +49,16 @@ Verhalten:
 [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn) ist ein Filterscript, das das Protokoll mit drei festen Outfits spricht. Es braucht die samp-cef-Server-Komponente und deren `cef.inc`.
 
 1. Zwei Tester installieren mit dem Essentials-Installer (samp-cef-Client ab `0x000300` und `samplife-kleidung.dll` in `GTA/cef/plugins/`) und verbinden.
-2. Filterscript laden: `/rcon loadfs kleidung_test`. Es fragt alle verbundenen Clients; bei jedem mit Plugin erscheint „[Kleidung] Plugin 0.5.0 gemeldet“. Fehlt die Zeile: `/kleidung frage`, dann `/kleidung info`. Steht dort „Plugin fehlt“, siehe Fehlersuche unten.
+2. Filterscript laden: `/rcon loadfs kleidung_test`. Es fragt alle verbundenen Clients; bei jedem mit Plugin erscheint „[Kleidung] Plugin <Version> gemeldet“. Fehlt die Zeile: `/kleidung frage`, dann `/kleidung info`. Steht dort „Plugin fehlt“, siehe Fehlersuche unten.
 3. Beide bekommen Skin 0: dauerhaft über einen Befehl des Gamemodes (bei German Samplife `/setskin [ID] 0`), nur bis zum nächsten Spawn mit `/kleidung skin`. Dann Tester A `/kleidung 1` und Tester B `/kleidung 2`.
 4. Prüfen:
    1. Jeder sieht sich und den anderen im eigenen Outfit (A schwarzes Unterhemd, Afro, Tarnhose; B roter Anzug, Cowboyhut).
    2. A wechselt auf `/kleidung 3` (Hoodie, Jogginghose, Cap, Tattoo am linken Oberarm): Beide sehen den Wechsel sofort, B bleibt unverändert.
    3. Respawn, weit weg und zurück (Streaming), Fahrzeug, Skin kurz wechseln und zurück auf 0: Jeder behält sein Outfit.
-   4. Ein dritter Spieler verbindet später: Er sieht A und B sofort richtig.
-   5. A gibt `/kleidung aus` ein: Alle sehen A als Standard-CJ. Verlässt A den Server und bekommt ein anderer seine ID, trägt der den Standard-CJ und nicht das Outfit von A.
-   6. Auf einem Server ohne Kleidung (oder ohne Filterscript) bleibt CJ unverändert.
+   4. Im Fahrzeug, als Fahrer und als Beifahrer: Outfit wechseln (`/kleidung 2`). Beide sehen den Wechsel sofort, die Figur bleibt sitzen, und das Fahrzeug lässt sich weiter fahren.
+   5. Ein dritter Spieler verbindet später: Er sieht A und B sofort richtig.
+   6. A gibt `/kleidung aus` ein: Alle sehen A als Standard-CJ. Verlässt A den Server und bekommt ein anderer seine ID, trägt der den Standard-CJ und nicht das Outfit von A.
+   7. Auf einem Server ohne Kleidung (oder ohne Filterscript) bleibt CJ unverändert.
 5. `/kleidunginfo` bei beiden ausführen und `samplife-kleidung.log` aus dem GTA-Ordner einsammeln.
 6. Zum Schluss `/rcon unloadfs kleidung_test`.
 
@@ -115,7 +116,9 @@ Bei jeder Prüfung vergleicht das Plugin pro Figur ihr Soll-Outfit mit den Kleid
 
 **Nur umbauen, wenn nötig.** `RebuildPlayer` baut nicht nur die Figur um, sondern auch das gemeinsame Modell 0, aus dem jede neu erscheinende CJ-Figur kopiert wird. Das Plugin merkt sich deshalb, welches Outfit das Modell gerade zeigt und welche Figuren schon vor dem letzten Umbau da waren. Eine CJ-Figur, die danach hereinstreamt oder respawnt, trägt das Outfit schon und wird nur übernommen („ohne Umbau“). Umgebaut werden Figuren, deren Kleidungsdaten nicht passen oder deren Modell älter ist.
 
-**Wann nicht.** `RebuildPlayer` setzt die Figur über `CPed::Dress` auf „steht“ und fügt sie neu in die Welt ein. Figuren im Fahrzeug (`bInVehicle`, Flags `+0x46C` Bit 8) und tote Figuren (`m_ePedState` `+0x530`, 54 bis 56) werden deshalb nicht umgebaut, sondern danach.
+**Im Fahrzeug (ab 0.5.1).** `CPed::Dress` setzt jede Figur außer dem Fahrer (`PEDSTATE_DRIVING`) auf „steht“, also auch Beifahrer, und fügt sie mit `CWorld::Add` neu in die Welt ein (gta-reversed `Ped.cpp`). Sitzt eine Figur fest im Fahrzeug (`bInVehicle`, Flags `+0x46C` Bit 8, und `m_ePedState` `+0x530` 50 bis 52: Fahrer, Beifahrer, Taxi-Fahrgast), baut das Plugin sie deshalb ohne `CWorld::Remove` und ohne `Dress` um: Nach `ConstructPedModel` ruft es nur `CPed::SetModelIndex` (`0x5E4880`), den Teil von `Dress`, der den neuen Clump anlegt, und gibt die Sitz-Animation mit `RpAnimBlendClumpGiveAssociations` zurück. Zustand und Platz in der Welt bleiben, wie sie sind. Im Fahrzeug läuft nur diese Variante; wirkt sie nicht, zählt das nicht als Fehlschlag, und die Figur wird nach dem Aussteigen normal umgebaut.
+
+**Wann nicht.** Beim Ein- und Aussteigen (`bInVehicle` gesetzt, aber noch nicht 50 bis 52) und bei toten Figuren (`m_ePedState` 54 bis 56) wartet das Plugin und baut sie danach um.
 
 ## Bekannte Risiken
 
