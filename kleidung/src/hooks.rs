@@ -1,4 +1,4 @@
-//! Entry points into the game thread. The test logic (`logic::frame`) runs once per
+//! Entry points into the game thread. The clothes logic (`logic::frame`) runs once per
 //! frame, from entry A if A runs, otherwise from entry B.
 //!
 //! A: the `call CGame::Process` inside Idle() at 0x53E981.

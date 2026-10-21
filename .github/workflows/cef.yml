@@ -1,4 +1,4 @@
-# Baut den samp-cef-Client mit dem Eingabemodus "nur Maus" (siehe cef/README.md).
+# Baut den samp-cef-Client mit dem Eingabemodus "nur Maus" und Server-Ereignissen für Client-Plugins (siehe cef/README.md).
 # Bei Änderungen an cef/ wird nur gebaut und geprüft; ein Tag wie cef-f14fe4f-sl1 legt das Release an.
 name: CEF
 
@@ -50,6 +50,7 @@ jobs:
           $kopf = (git -C samp-client-api rev-parse HEAD).Trim()
           if ($kopf -ne $env:CLIENT_API_COMMIT) { throw "Falscher Stand von samp-client-api: $kopf" }
           git -C quelle apply --verbose ../cef/nur-maus.patch
+          git -C quelle apply --verbose ../cef/plugin-ereignisse.patch
           git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
           git -C quelle diff --stat
           git -C samp-client-api diff --stat
@@ -142,6 +143,7 @@ jobs:
           # Die Änderung muss im Client stecken
           if (-not (Select-String -Path "$ziel/cef_client.dll" -Pattern "CPad::UpdateMouse hook" -SimpleMatch -Quiet)) { throw "cef_client.dll enthält den Nur-Maus-Modus nicht" }
           if (-not (Select-String -Path "$ziel/cef-renderer.exe" -Pattern "set_input_mode" -SimpleMatch -Quiet)) { throw "cef-renderer.exe kennt cef.set_input_mode nicht" }
+          if (-not (Select-String -Path "$ziel/cef_client.dll" -Pattern "cef_server_emitter" -SimpleMatch -Quiet)) { throw "cef_client.dll gibt Server-Ereignisse nicht an Plugins weiter" }
 
       - name: Paket zusammenstellen
         shell: pwsh
@@ -187,11 +189,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          samp-cef Client für SA-MP 0.3.7 R1/R3 mit dem Eingabemodus "nur Maus" (CEF_INPUT_MOUSE_ONLY, Client-Version 0x000200).
+          samp-cef Client für SA-MP 0.3.7 R1/R3 mit dem Eingabemodus "nur Maus" (CEF_INPUT_MOUSE_ONLY) und Server-Ereignissen für Client-Plugins (Client-Version 0x000300).
 
-          Gebaut von GitHub aus https://github.com/zottce/samp-cef/commit/$env:SAMP_CEF_COMMIT (GPL-3.0) mit ``cef/nur-maus.patch`` und https://github.com/zottce/samp-client-api/commit/$env:CLIENT_API_COMMIT mit ``cef/client-api-cursor.patch`` aus diesem Tag. Der Quelltext des Pakets ist genau das. CEF ist die offizielle windows32-Distribution aus ``cef-distribution.json`` (BSD).
+          Gebaut von GitHub aus https://github.com/zottce/samp-cef/commit/$env:SAMP_CEF_COMMIT (GPL-3.0) mit ``cef/nur-maus.patch`` und ``cef/plugin-ereignisse.patch`` und https://github.com/zottce/samp-client-api/commit/$env:CLIENT_API_COMMIT mit ``cef/client-api-cursor.patch`` aus diesem Tag. Der Quelltext des Pakets ist genau das. CEF ist die offizielle windows32-Distribution aus ``cef-distribution.json`` (BSD).
 
-          Funktioniert mit jedem samp-cef-Server ab f14fe4f; den Nur-Maus-Modus gibt es nur mit der Server-Seite aus demselben Patch (siehe cef/README.md).
+          Funktioniert mit jedem samp-cef-Server ab f14fe4f; den Nur-Maus-Modus gibt es nur mit der Server-Seite aus demselben Patch (siehe cef/README.md). Die Plugin-Ereignisse brauchen keine neue Server-Seite.
 
           Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
           "@
@@ -224,6 +226,7 @@ jobs:
           git -C samp-client-api checkout --quiet FETCH_HEAD
           test "$(git -C samp-client-api rev-parse HEAD)" = "$CLIENT_API_COMMIT"
           git -C quelle apply --verbose ../cef/nur-maus.patch
+          git -C quelle apply --verbose ../cef/plugin-ereignisse.patch
           git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
 
       - name: Rust (stable, i686-unknown-linux-gnu)
