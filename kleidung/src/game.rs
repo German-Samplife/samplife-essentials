@@ -56,9 +56,14 @@ pub const TEX_TORSO: usize = 0;
 pub const TEX_HEAD: usize = 1;
 pub const TEX_LEGS: usize = 2;
 pub const TEX_SHOES: usize = 3;
+// the parts below are named for reference; the server sends all 18 by position
+#[allow(dead_code)]
 pub const TEX_NECKLACE: usize = 13;
+#[allow(dead_code)]
 pub const TEX_BRACELET: usize = 14; // watch
+#[allow(dead_code)]
 pub const TEX_GLASSES: usize = 15;
+#[allow(dead_code)]
 pub const TEX_HATS: usize = 16;
 #[allow(dead_code)]
 pub const TEX_SPECIAL: usize = 17;
@@ -100,10 +105,6 @@ impl ClothesDesc {
         if let Some(model_part) = texture_dependency(texture_part) {
             self.model_keys[model_part] = model_key;
         }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.texture_keys.iter().all(|&k| k == 0)
     }
 }
 

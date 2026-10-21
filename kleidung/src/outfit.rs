@@ -1,97 +1,101 @@
-//! Test outfits. Texture/model names are the pairs MTA:SA ships for CJ
-//! (multitheftauto/mtasa-blue, Client/mods/deathmatch/logic/CClientPlayerClothes.cpp,
-//! m_DefaultClothes: index = eClothesTexturePart), all from models/player.img.
+//! Outfits: the clothes the server sends per player (`kleidung:spieler`) and the
+//! standard CJ for players the server hasn't sent anything for. Texture/model names
+//! are the pairs from models/player.img (MTA:SA, CClientPlayerClothes.cpp,
+//! m_DefaultClothes: index = eClothesTexturePart).
 
 use crate::game::{
-    self, ClothesDesc, CLOTHES_TEXTURE_TOTAL, TEX_BRACELET, TEX_GLASSES, TEX_HATS, TEX_HEAD,
-    TEX_LEGS, TEX_NECKLACE, TEX_SHOES, TEX_TORSO,
+    self, ClothesDesc, CLOTHES_TEXTURE_TOTAL, TEX_HEAD, TEX_LEGS, TEX_SHOES, TEX_TORSO,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum OutfitId {
-    Eins,
-    Zwei,
-    Standard,
-}
+/// Longest texture or model name in player.img is well below this; the game keys
+/// names with CKeyGen, so length only guards against garbage.
+const NAME_MAX: usize = 24;
 
-pub struct Part {
-    pub texture_part: usize,
-    pub texture: &'static str,
-    pub model: &'static str,
-}
-
-const fn part(texture_part: usize, texture: &'static str, model: &'static str) -> Part {
-    Part { texture_part, texture, model }
-}
-
-/// Outfit 1: black vest, afro, green camo work trousers, cowboy boots, gold chain, dark glasses
-const EINS: &[Part] = &[
-    part(TEX_TORSO, "vestblack", "vest"),
-    part(TEX_HEAD, "afro", "afro"),
-    part(TEX_LEGS, "worktrcamogrn", "worktr"),
-    part(TEX_SHOES, "cowboyboot", "biker"),
-    part(TEX_NECKLACE, "neckgold", "neck2"),
-    part(TEX_GLASSES, "glasses04dark", "glasses04"),
-];
-
-/// Outfit 2: red suit, bald, red suit trousers, black dress shoes, watch, cowboy hat
-const ZWEI: &[Part] = &[
-    part(TEX_TORSO, "suit1red", "suit1"),
-    part(TEX_HEAD, "bald", "head"),
-    part(TEX_LEGS, "suit1trred", "suit1tr"),
-    part(TEX_SHOES, "shoedressblk", "shoe"),
-    part(TEX_BRACELET, "watchgno", "watch"),
-    part(TEX_HATS, "cowboy", "cowboy"),
-];
+/// One outfit by name: (texture, model) per texture part, None = nothing worn there.
+/// Tattoos (parts 4 to 12) have no model; their model name is empty.
+pub type Teile = [Option<(String, String)>; CLOTHES_TEXTURE_TOTAL];
 
 /// CJ at the start of the single player game: white vest, jeans, sneakers, short hair
 /// (the clothes main.scm gives the player before the first rebuild).
-const STANDARD: &[Part] = &[
-    part(TEX_TORSO, "vest", "vest"),
-    part(TEX_HEAD, "player_face", "head"),
-    part(TEX_LEGS, "jeansdenim", "jeans"),
-    part(TEX_SHOES, "sneakerbincblk", "sneaker"),
+const STANDARD: &[(usize, &str, &str)] = &[
+    (TEX_TORSO, "vest", "vest"),
+    (TEX_HEAD, "player_face", "head"),
+    (TEX_LEGS, "jeansdenim", "jeans"),
+    (TEX_SHOES, "sneakerbincblk", "sneaker"),
 ];
 
-impl OutfitId {
-    pub fn parts(self) -> &'static [Part] {
-        match self {
-            OutfitId::Eins => EINS,
-            OutfitId::Zwei => ZWEI,
-            OutfitId::Standard => STANDARD,
+fn name_ok(name: &str) -> bool {
+    !name.is_empty() && name.len() <= NAME_MAX && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// Parses the 18 parts of `kleidung:spieler`: `textur/modell`, `textur` (tattoos, no
+/// model) or `-` (nothing). Anything else makes the whole outfit invalid.
+pub fn parse_teile<'a>(tokens: impl Iterator<Item = &'a str>) -> Result<Teile, String> {
+    let mut teile: Teile = Default::default();
+    let mut count = 0;
+
+    for (part, token) in tokens.enumerate() {
+        if part >= CLOTHES_TEXTURE_TOTAL {
+            return Err(format!("mehr als {CLOTHES_TEXTURE_TOTAL} Teile"));
         }
+
+        count += 1;
+
+        if token == "-" {
+            continue;
+        }
+
+        let (texture, model) = token.split_once('/').unwrap_or((token, ""));
+
+        if !name_ok(texture) || (token.contains('/') && !name_ok(model)) {
+            return Err(format!("Teil {part} ungültig: {token:?}"));
+        }
+
+        teile[part] = Some((texture.to_ascii_lowercase(), model.to_ascii_lowercase()));
     }
 
-    pub fn name(self) -> &'static str {
-        match self {
-            OutfitId::Eins => "Outfit 1",
-            OutfitId::Zwei => "Outfit 2",
-            OutfitId::Standard => "Standard-CJ",
-        }
+    if count != CLOTHES_TEXTURE_TOTAL {
+        return Err(format!("{count} statt {CLOTHES_TEXTURE_TOTAL} Teile"));
     }
 
-    pub fn beschreibung(self) -> &'static str {
-        match self {
-            OutfitId::Eins => "schwarzes Unterhemd, Afro, Tarnhose, Cowboystiefel, Goldkette, Sonnenbrille",
-            OutfitId::Zwei => "roter Anzug, Glatze, schwarze Schuhe, Uhr, Cowboyhut",
-            OutfitId::Standard => "weißes Unterhemd, Jeans, Turnschuhe",
-        }
-    }
+    Ok(teile)
 }
 
 /// Keys of one outfit, computed with the game's own CKeyGen::GetUppercaseKey.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct OutfitKeys {
     /// (texture key, model key) per texture part, 0/0 = nothing
     pub parts: [(u32, u32); CLOTHES_TEXTURE_TOTAL],
 }
 
+fn key(name: &str) -> u32 {
+    if name.is_empty() {
+        0
+    } else {
+        game::uppercase_key(name)
+    }
+}
+
 impl OutfitKeys {
-    pub fn compute(id: OutfitId) -> OutfitKeys {
+    /// Game thread only (calls into gta_sa.exe).
+    pub fn standard() -> OutfitKeys {
         let mut parts = [(0u32, 0u32); CLOTHES_TEXTURE_TOTAL];
 
-        for p in id.parts() {
-            parts[p.texture_part] = (game::uppercase_key(p.texture), game::uppercase_key(p.model));
+        for &(part, texture, model) in STANDARD {
+            parts[part] = (key(texture), key(model));
+        }
+
+        OutfitKeys { parts }
+    }
+
+    /// Game thread only (calls into gta_sa.exe).
+    pub fn from_teile(teile: &Teile) -> OutfitKeys {
+        let mut parts = [(0u32, 0u32); CLOTHES_TEXTURE_TOTAL];
+
+        for (part, teil) in teile.iter().enumerate() {
+            if let Some((texture, model)) = teil {
+                parts[part] = (key(texture), key(model));
+            }
         }
 
         OutfitKeys { parts }
@@ -113,5 +117,48 @@ impl OutfitKeys {
                     .map(|model_part| desc.model_keys[model_part] == model)
                     .unwrap_or(true)
         })
+    }
+
+    /// Short form for the log: torso texture key and how many parts are worn.
+    pub fn kurz(&self) -> String {
+        let worn = self.parts.iter().filter(|&&(texture, _)| texture != 0).count();
+        format!("Oberteil {:08x}, {worn} Teile", self.parts[TEX_TORSO].0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn achtzehn_teile() {
+        let text = "suit1red/suit1 bald/head suit1trred/suit1tr shoedressblk/shoe - - - - - - - - - - watchgno/watch - cowboy/cowboy -";
+        let teile = parse_teile(text.split_whitespace()).unwrap();
+        assert_eq!(teile[0], Some(("suit1red".into(), "suit1".into())));
+        assert_eq!(teile[4], None);
+        assert_eq!(teile[16], Some(("cowboy".into(), "cowboy".into())));
+    }
+
+    #[test]
+    fn tattoo_ohne_modell() {
+        let mut parts = vec!["-"; 18];
+        parts[4] = "4weed";
+        let teile = parse_teile(parts.into_iter()).unwrap();
+        assert_eq!(teile[4], Some(("4weed".into(), String::new())));
+    }
+
+    #[test]
+    fn falsche_anzahl() {
+        assert!(parse_teile(vec!["-"; 17].into_iter()).is_err());
+        assert!(parse_teile(vec!["-"; 19].into_iter()).is_err());
+    }
+
+    #[test]
+    fn ungueltige_namen() {
+        for falsch in ["vest/../x", "/vest", "vest/", "Wes te"] {
+            let mut parts = vec!["-"; 18];
+            parts[0] = falsch;
+            assert!(parse_teile(parts.into_iter()).is_err(), "{falsch}");
+        }
     }
 }

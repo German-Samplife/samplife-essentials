@@ -1,13 +1,13 @@
-# Machbarkeitstest: CJ-Kleidung (Skin 0) im SA-MP-Client ändern, siehe README.md.
+# CJ-Kleidung (Skin 0) je Spieler im SA-MP-Client, als samp-cef-Plugin, siehe README.md.
 # Gebaut wird nur von GitHub (.github/workflows/kleidung.yml) für i686-pc-windows-msvc.
 [package]
 name = "samplife-kleidung"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 publish = false
 
 [lib]
-# ergibt samplife_kleidung.dll, der Workflow benennt sie in samplife-kleidung.asi um
+# ergibt samplife_kleidung.dll, der Workflow benennt sie in samplife-kleidung.dll um (für GTA/cef/plugins/)
 name = "samplife_kleidung"
 crate-type = ["cdylib"]
 

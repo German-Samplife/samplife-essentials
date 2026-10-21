@@ -157,7 +157,7 @@ fn run() {
         }
 
         crate::log!(
-            "t+{seconds}s: samp.dll {} | 0x53E981 {} | Aufrufe A {} B {} | Logik über A {} über B {} | neu eingehakt {} | Einstieg B {} (Gerät {:#x}) | SA-MP erkannt: {} | /kleidungtest: {}",
+            "t+{seconds}s: samp.dll {} | 0x53E981 {} | Aufrufe A {} B {} | Logik über A {} über B {} | neu eingehakt {} | Einstieg B {} (Gerät {:#x}) | SA-MP erkannt: {} | /kleidunginfo: {} | samp-cef: {} | {}",
             samp_version().unwrap_or_else(|| "nicht geladen".to_owned()),
             site_text(),
             PROCESS_CALLS.load(Ordering::Relaxed),
@@ -168,7 +168,13 @@ fn run() {
             status_text(PRESENT_STATUS.load(Ordering::SeqCst)),
             PRESENT_DEVICE.load(Ordering::SeqCst),
             logic::samp_text(),
-            logic::command_text()
+            logic::command_text(),
+            match (crate::netz::plugin_aktiv(), crate::netz::verbunden()) {
+                (false, _) => "nicht als Plugin geladen",
+                (true, false) => "Plugin, nicht verbunden",
+                (true, true) => "Plugin, verbunden",
+            },
+            logic::outfit_text()
         );
     }
 

@@ -211,6 +211,13 @@ pub fn local_ped(ver: SampVersion) -> Option<usize> {
         .or_else(crate::game::world_player0_ped)
 }
 
+/// SA-MP player id of the local player (CPlayerPool::m_localInfo.m_nId).
+pub fn local_id() -> Option<u16> {
+    client_api::samp::players::local_player()?
+        .id()
+        .and_then(|id| u16::try_from(id).ok())
+}
+
 /// GTA peds (CPed*) of all streamed remote players, with their SA-MP player id.
 pub fn remote_peds() -> Vec<(u16, usize)> {
     let mut out = Vec::new();

@@ -1,4 +1,4 @@
-# Baut das ASI für den Machbarkeitstest CJ-Kleidung (siehe kleidung/README.md).
+# Baut das samp-cef-Plugin für die CJ-Kleidung (siehe kleidung/README.md).
 # Nur bauen und als Artefakt hochladen: kein Release, keine Tags.
 name: Kleidung
 
@@ -51,6 +51,10 @@ jobs:
           cargo --version
           cargo build --release --target i686-pc-windows-msvc
 
+      - name: Tests (Format von kleidung:spieler)
+        shell: bash
+        run: cargo test --release --target i686-pc-windows-msvc
+
       - name: Prüfen
         shell: pwsh
         run: |
@@ -63,18 +67,22 @@ jobs:
           $abh = & $dumpbin.FullName /dependents $dll | Out-String
           $abh
           if ($abh -match "VCRUNTIME140|MSVCP140|api-ms-win-crt") { throw "Die DLL braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
-          if (-not (Select-String -Path $dll -Pattern "kleidungtest" -SimpleMatch -Quiet)) { throw "Der Befehlsname fehlt in der DLL" }
+          $exporte = & $dumpbin.FullName /exports $dll | Out-String
+          foreach ($name in "cef_server_event", "cef_server_emitter", "cef_connect", "cef_disconnect") {
+            if ($exporte -notmatch "$name") { throw "Export $name fehlt, samp-cef würde das Plugin nicht ansprechen" }
+          }
 
       - name: Paket zusammenstellen
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force ../ausgabe | Out-Null
-          Copy-Item target/i686-pc-windows-msvc/release/samplife_kleidung.dll ../ausgabe/samplife-kleidung.asi
+          # gehört nach GTA/cef/plugins/, nicht neben gta_sa.exe (dort würde es kein Plugin)
+          Copy-Item target/i686-pc-windows-msvc/release/samplife_kleidung.dll ../ausgabe/samplife-kleidung.dll
           # Cargo.lock des Laufs, damit der Stand der Abhängigkeiten nachvollziehbar bleibt
           Copy-Item Cargo.lock ../ausgabe/Cargo.lock
-          $hash = (Get-FileHash ../ausgabe/samplife-kleidung.asi -Algorithm SHA256).Hash.ToLower()
-          "$hash  samplife-kleidung.asi" | Out-File -Encoding ascii ../ausgabe/SHA256SUMS.txt
+          $hash = (Get-FileHash ../ausgabe/samplife-kleidung.dll -Algorithm SHA256).Hash.ToLower()
+          "$hash  samplife-kleidung.dll" | Out-File -Encoding ascii ../ausgabe/SHA256SUMS.txt
           Get-ChildItem ../ausgabe | Format-Table Name, Length
           Get-Content ../ausgabe/SHA256SUMS.txt
 
