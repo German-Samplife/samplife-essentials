@@ -46,6 +46,10 @@ const CPLAYERPED_SIZE: usize = 0x7A4; // VALIDATE_SIZE(CPlayerPed, 0x7A4)
 const PEDSTATE_DIE: u32 = 54;
 const PEDSTATE_DEAD: u32 = 55;
 const PEDSTATE_DIE_BY_STEALTH: u32 = 56;
+// sitting in a vehicle: driver, passenger, taxi passenger (same enum, 50 to 52)
+const PEDSTATE_DRIVING: u32 = 50;
+const PEDSTATE_PASSENGER: u32 = 51;
+const PEDSTATE_TAXI_PASSENGER: u32 = 52;
 
 pub const MODEL_PLAYER: i16 = 0;
 
@@ -205,6 +209,8 @@ const RP_ANIM_EXTRACT: usize = 0x4D6BE0;
 const RP_ANIM_GIVE: usize = 0x4D6C30;
 const CPED_DELETE_RW_OBJECT: usize = 0x5DEBF0;
 const CPED_DRESS: usize = 0x5E0130;
+// gta-reversed Ped.cpp: SetModelIndex 0x5E4880 (CPlayerPed doesn't override it)
+const CPED_SET_MODEL_INDEX: usize = 0x5E4880;
 const CWORLD_REMOVE: usize = 0x563280;
 const CCLOTHES_CONSTRUCT_PED_MODEL: usize = 0x5A81E0;
 const PLAYER_CLOTHES: usize = 0xBC1C78;
@@ -256,6 +262,12 @@ pub fn clump_parts(clump: usize) -> (usize, usize) {
 
 /// `force`: pass no "old clothes" to ConstructPedModel, so CreateSkinnedClump always
 /// builds (with PlayerClothes it returns early when the clothes equal the last build).
+///
+/// A ped sitting in a vehicle is rebuilt without CWorld::Remove and CPed::Dress:
+/// Dress (gta-reversed Ped.cpp) would set every state except PEDSTATE_DRIVING to
+/// PEDSTATE_IDLE (passengers too) and CWorld::Add the ped. Instead only
+/// CPed::SetModelIndex, the part of Dress that creates the new clump; the ped keeps
+/// its state, its place in the world and, through GiveAssociations, its seat animation.
 pub fn rebuild_player_manual(ped: usize, desc_ptr: usize, force: bool) {
     unsafe {
         let extract: extern "C" fn(usize) -> usize = std::mem::transmute(RP_ANIM_EXTRACT);
@@ -265,8 +277,10 @@ pub fn rebuild_player_manual(ped: usize, desc_ptr: usize, force: bool) {
         let world_remove: extern "C" fn(usize) = std::mem::transmute(CWORLD_REMOVE);
         let construct: extern "C" fn(u32, usize, usize, bool) =
             std::mem::transmute(CCLOTHES_CONSTRUCT_PED_MODEL);
+        let set_model_index: extern "thiscall" fn(usize, u32) = std::mem::transmute(CPED_SET_MODEL_INDEX);
 
         let ped_view = Ped(ped);
+        let im_fahrzeug = ped_view.seated_in_vehicle();
         let assoc = extract(ped_view.rw_object());
 
         if let Some(intelligence) = read_ptr(ped + PED_INTELLIGENCE) {
@@ -280,10 +294,16 @@ pub fn rebuild_player_manual(ped: usize, desc_ptr: usize, force: bool) {
         }
 
         delete_rw(ped);
-        world_remove(ped);
+        if !im_fahrzeug {
+            world_remove(ped);
+        }
         let old_clothes = if force { 0 } else { PLAYER_CLOTHES };
         construct(ped_view.model() as u16 as u32, desc_ptr, old_clothes, false);
-        dress(ped);
+        if im_fahrzeug {
+            set_model_index(ped, ped_view.model() as u16 as u32);
+        } else {
+            dress(ped);
+        }
         give(ped_view.rw_object(), assoc);
 
         let desc = (desc_ptr as *const ClothesDesc).read_unaligned();
@@ -364,6 +384,12 @@ impl Ped {
         unsafe { ((self.0 + PED_STATE) as *const u32).read_unaligned() }
     }
 
+    /// Fully seated in a vehicle (not while getting in or out).
+    pub fn seated_in_vehicle(self) -> bool {
+        self.in_vehicle()
+            && matches!(self.state(), PEDSTATE_DRIVING | PEDSTATE_PASSENGER | PEDSTATE_TAXI_PASSENGER)
+    }
+
     pub fn dead(self) -> bool {
         matches!(self.state(), PEDSTATE_DIE | PEDSTATE_DEAD | PEDSTATE_DIE_BY_STEALTH)
     }
@@ -385,15 +411,14 @@ impl Ped {
         Some(unsafe { (desc as *const ClothesDesc).read_unaligned() })
     }
 
-    /// Why this ped can't be rebuilt right now (CPed::Dress, called by RebuildPlayer,
-    /// sets PEDSTATE_IDLE and re-adds the ped to the world, so no dead peds and no
-    /// peds in vehicles).
+    /// Why this ped can't be rebuilt right now: no dead peds, and in a vehicle only when
+    /// seated (rebuild_player_manual has its own way for that; getting in or out waits).
     pub fn rebuild_blocker(self) -> Option<Skip> {
         if self.rw_object() == 0 {
             return Some(Skip::NoModel);
         }
 
-        if self.in_vehicle() {
+        if self.in_vehicle() && !self.seated_in_vehicle() {
             return Some(Skip::InVehicle);
         }
 

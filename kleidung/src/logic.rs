@@ -151,6 +151,8 @@ struct State {
     model_shows: Option<OutfitKeys>,
     /// clumps of CJ peds that existed at our last rebuild (cloned from an older model clump)
     stale_rws: HashSet<usize>,
+    /// peds whose rebuild in a vehicle didn't work: rebuilt again once they're out
+    nach_aussteigen: HashSet<usize>,
     stats: Stats,
     last_result: ScanResult,
     diagnosed: bool,
@@ -176,6 +178,7 @@ impl State {
             force_scan: false,
             model_shows: None,
             stale_rws: HashSet::new(),
+            nach_aussteigen: HashSet::new(),
             stats: Stats::default(),
             last_result: ScanResult::default(),
             diagnosed: false,
@@ -374,6 +377,7 @@ impl State {
                 self.queue.clear();
                 self.model_shows = None;
                 self.stale_rws.clear();
+                self.nach_aussteigen.clear();
             }
         }
 
@@ -538,6 +542,14 @@ impl State {
                 continue;
             }
 
+            if self.nach_aussteigen.contains(&cj.ped) {
+                if Ped(cj.ped).in_vehicle() {
+                    result.wait_vehicle += 1;
+                    continue;
+                }
+                self.nach_aussteigen.remove(&cj.ped);
+            }
+
             match Ped(cj.ped).rebuild_blocker() {
                 Some(Skip::InVehicle) => result.wait_vehicle += 1,
                 Some(Skip::Dead) => result.wait_dead += 1,
@@ -554,6 +566,7 @@ impl State {
 
         self.peds.retain(|ped, _| seen.contains(ped));
         self.queue.retain(|ped| seen.contains(ped));
+        self.nach_aussteigen.retain(|ped| seen.contains(ped));
 
         if result != self.last_result {
             crate::log!(
@@ -609,7 +622,11 @@ impl State {
             self.write_target(target, desc_ptr);
 
             let wer = who(&cj);
-            crate::log!("Umbau {wer} {ped_addr:#x} -> {}", target.kurz());
+            crate::log!(
+                "Umbau {wer} {ped_addr:#x}{} -> {}",
+                if ped.seated_in_vehicle() { " (im Fahrzeug)" } else { "" },
+                target.kurz()
+            );
             let ergebnis = rebuild::umbauen(ped_addr, desc_ptr, &wer);
             let ms = ergebnis.ms;
 
@@ -618,11 +635,16 @@ impl State {
             self.stats.max_ms = self.stats.max_ms.max(ms);
 
             let (geo, _) = game::clump_parts(ergebnis.rw_nachher);
+            let im_fahrzeug_fehlgeschlagen = ergebnis.im_fahrzeug && ergebnis.wirksam.is_none();
 
             if let Some(entry) = self.peds.get_mut(&ped_addr) {
                 entry.rw = ergebnis.rw_nachher;
                 entry.geo = geo;
-                entry.applied = Some(target);
+                entry.applied = if im_fahrzeug_fehlgeschlagen { None } else { Some(target) };
+            }
+
+            if im_fahrzeug_fehlgeschlagen {
+                self.nach_aussteigen.insert(ped_addr);
             }
 
             if ergebnis.wirksam.is_some() {
