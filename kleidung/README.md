@@ -2,7 +2,7 @@
 
 `samplife-kleidung.dll` zieht im SA-MP-Client jede Figur mit Skin 0 (CJ) so an, wie der Server es für ihren Spieler vorgibt, **die eigene und die der anderen Spieler**, wie im Singleplayer mit Kleidung aus `models/player.img`. Der Server schickt die Outfits über samp-cef; das Plugin selbst entscheidet nichts.
 
-Stand: Das Plugin ist bereit für einen Test mit dem Server ([`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn)). Im Gamemode und im Installer ist es noch nicht.
+Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
 
 ## Voraussetzungen
 
@@ -12,7 +12,7 @@ Stand: Das Plugin ist bereit für einen Test mit dem Server ([`beispiel/kleidung
 
 ## Installation
 
-1. `samplife-kleidung.dll` aus dem Artefakt des Workflows [`Kleidung`](../.github/workflows/kleidung.yml) (Lauf öffnen, unten „Artifacts“, `samplife-kleidung`) nach **`GTA/cef/plugins/`** legen. Den Ordner `plugins` gibt es vorher nicht.
+1. Am einfachsten über den Essentials-Installer: Er legt `samplife-kleidung.dll` aus dem Release `kleidung-<version>` nach **`GTA/cef/plugins/`** und bringt den passenden samp-cef-Client mit. Von Hand: die DLL aus dem Release oder dem Artefakt des Workflows [`Kleidung`](../.github/workflows/kleidung.yml) dorthin legen. Den Ordner `plugins` gibt es vorher nicht.
 2. Nicht neben `gta_sa.exe` und nicht als `.asi`: Dann lädt der ASI Loader die Datei, samp-cef kennt sie nicht, und es kommen keine Daten vom Server an.
 3. Spiel wie immer über SA-MP starten und verbinden.
 
@@ -48,9 +48,9 @@ Verhalten:
 
 [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn) ist ein Filterscript, das das Protokoll mit drei festen Outfits spricht. Es braucht die samp-cef-Server-Komponente und deren `cef.inc`.
 
-1. Filterscript auf dem Testserver laden. Zwei Tester mit samp-cef-Client ab `0x000300` und `samplife-kleidung.dll` in `GTA/cef/plugins/` verbinden.
-2. Beim Verbinden erscheint „[Kleidung] Plugin 0.5.0 gemeldet“. Fehlt die Zeile: `/kleidung frage`, dann `/kleidung info`. Steht dort „Plugin fehlt“, siehe Fehlersuche unten.
-3. Beide geben `/kleidung skin` ein (Skin 0), dann Tester A `/kleidung 1` und Tester B `/kleidung 2`.
+1. Zwei Tester installieren mit dem Essentials-Installer (samp-cef-Client ab `0x000300` und `samplife-kleidung.dll` in `GTA/cef/plugins/`) und verbinden.
+2. Filterscript laden: `/rcon loadfs kleidung_test`. Es fragt alle verbundenen Clients; bei jedem mit Plugin erscheint „[Kleidung] Plugin 0.5.0 gemeldet“. Fehlt die Zeile: `/kleidung frage`, dann `/kleidung info`. Steht dort „Plugin fehlt“, siehe Fehlersuche unten.
+3. Beide bekommen Skin 0: dauerhaft über einen Befehl des Gamemodes (bei German Samplife `/setskin [ID] 0`), nur bis zum nächsten Spawn mit `/kleidung skin`. Dann Tester A `/kleidung 1` und Tester B `/kleidung 2`.
 4. Prüfen:
    1. Jeder sieht sich und den anderen im eigenen Outfit (A schwarzes Unterhemd, Afro, Tarnhose; B roter Anzug, Cowboyhut).
    2. A wechselt auf `/kleidung 3` (Hoodie, Jogginghose, Cap, Tattoo am linken Oberarm): Beide sehen den Wechsel sofort, B bleibt unverändert.
@@ -59,6 +59,7 @@ Verhalten:
    5. A gibt `/kleidung aus` ein: Alle sehen A als Standard-CJ. Verlässt A den Server und bekommt ein anderer seine ID, trägt der den Standard-CJ und nicht das Outfit von A.
    6. Auf einem Server ohne Kleidung (oder ohne Filterscript) bleibt CJ unverändert.
 5. `/kleidunginfo` bei beiden ausführen und `samplife-kleidung.log` aus dem GTA-Ordner einsammeln.
+6. Zum Schluss `/rcon unloadfs kleidung_test`.
 
 ## `/kleidunginfo`
 

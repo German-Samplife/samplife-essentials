@@ -1,5 +1,5 @@
 # Baut das samp-cef-Plugin für die CJ-Kleidung (siehe kleidung/README.md).
-# Nur bauen und als Artefakt hochladen: kein Release, keine Tags.
+# Bei Änderungen an kleidung/ wird nur gebaut und geprüft; ein Tag wie kleidung-0.5.0 legt das Release an.
 name: Kleidung
 
 on:
@@ -9,10 +9,12 @@ on:
     paths:
       - "kleidung/**"
       - ".github/workflows/kleidung.yml"
+    tags:
+      - "kleidung-*"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -90,3 +92,28 @@ jobs:
         with:
           name: samplife-kleidung
           path: ausgabe/
+
+      - name: Version im Quelltext muss zum Tag passen
+        if: startsWith(github.ref, 'refs/tags/kleidung-')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".Substring("kleidung-".Length)
+          $quelle = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $quelle) { throw "Tag $tag passt nicht zu Cargo.toml ($quelle)" }
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/kleidung-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dll = Get-Item ../ausgabe/samplife-kleidung.dll
+          $hash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLower()
+          $text = @"
+          samp-cef-Plugin für die CJ-Kleidung (Skin 0), gehört nach ``GTA/cef/plugins/``. Braucht den samp-cef-Client ab 0x000300 (cef/plugin-ereignisse.patch). Protokoll und Test siehe kleidung/README.md.
+
+          Gebaut von GitHub aus diesem Tag.
+
+          Für das Manifest (typ datei, ziel cef/plugins, dateiname samplife-kleidung.dll): SHA-256 ``$hash``, Größe $($dll.Length) Bytes.
+          "@
+          gh release create "${{ github.ref_name }}" ../ausgabe/samplife-kleidung.dll ../ausgabe/SHA256SUMS.txt --title "Kleidung ${{ github.ref_name }}" --notes $text --latest=false

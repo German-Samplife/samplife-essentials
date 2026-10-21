@@ -3,7 +3,13 @@
 // Spieler: samp-cef-Client ab 0x000300 (cef/plugin-ereignisse.patch) und
 // samplife-kleidung.dll in <GTA>/cef/plugins/.
 //
-// Spieler ohne Skin 0 sehen nichts davon; vorher z. B. /kleidung skin.
+// Laden per RCON: /rcon loadfs kleidung_test, entladen: /rcon unloadfs kleidung_test.
+// Beim Laden fragt es alle verbundenen Clients (kleidung:frage); wer das Plugin hat,
+// meldet sich mit kleidung:hallo. Beim Entladen vergessen alle Clients die Outfits.
+//
+// Spieler ohne Skin 0 sehen nichts davon; vorher z. B. /kleidung skin. Der Skin gilt
+// dann nur bis zum nächsten Spawn; dauerhaft setzt ihn ein Gamemode-Befehl
+// (bei German Samplife /setskin [ID] 0).
 //
 // Befehle:
 //   /kleidung skin   eigenen Skin auf 0 (CJ) setzen
@@ -37,7 +43,28 @@ static gPluginVersion[MAX_PLAYERS][16];
 public OnFilterScriptInit()
 {
 	cef_subscribe("kleidung:hallo", "KleidungHallo");
-	print("[Kleidung] Test-Filterscript geladen");
+
+	// Die Clients haben sich schon beim Verbinden gemeldet, bevor das Filterscript lief
+	for (new i = 0; i < MAX_PLAYERS; i++)
+	{
+		if (IsPlayerConnected(i))
+		{
+			cef_emit_event(i, "kleidung:frage");
+		}
+	}
+	print("[Kleidung] Test-Filterscript geladen, alle Clients gefragt");
+	return 1;
+}
+
+public OnFilterScriptExit()
+{
+	for (new i = 0; i < MAX_PLAYERS; i++)
+	{
+		if (IsPlayerConnected(i) && gOutfit[i] != -1)
+		{
+			KleidungAnAlleWeg(i);
+		}
+	}
 	return 1;
 }
 
