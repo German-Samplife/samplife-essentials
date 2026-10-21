@@ -1,5 +1,5 @@
 diff --git a/client/src/app.rs b/client/src/app.rs
-index ab92084..a73504f 100644
+index ab92084..656e3e4 100644
 --- a/client/src/app.rs
 +++ b/client/src/app.rs
 @@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
@@ -11,16 +11,17 @@ index ab92084..a73504f 100644
  use cef_sys::{cef_key_event_t, cef_key_event_type_t};
  
  use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
-@@ -31,7 +31,7 @@ use retour::GenericDetour;
+@@ -31,7 +31,8 @@ use retour::GenericDetour;
  
  const CEF_SERVER_PORT_OFFSET: u16 = 2;
  // 0x000200: input modes (SetInputMode / InputModeChanged, mouse only)
 -pub const CEF_PLUGIN_VERSION: i32 = 0x00_02_00;
++// 0x000300: server events for client plugins (cef_server_event, cef_server_emitter)
 +pub const CEF_PLUGIN_VERSION: i32 = 0x00_03_00;
  const CONNECT_BACKOFF_BASE: Duration = Duration::from_secs(1);
  const CONNECT_BACKOFF_MAX: Duration = Duration::from_secs(10);
  const AUDIO_SPATIAL_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
-@@ -499,6 +499,12 @@ pub fn mainloop() {
+@@ -499,6 +500,12 @@ pub fn mainloop() {
                  }
  
                  Event::EmitEvent(event, list) => {
@@ -33,10 +34,10 @@ index ab92084..a73504f 100644
                      let manager = app.manager.lock();
                      manager.trigger_event(&event, list);
                  }
-@@ -649,6 +655,21 @@ pub fn mainloop() {
+@@ -647,6 +654,21 @@ pub fn mainloop() {
+     }
+ }
  
- /// SA:MP chat input or a SA:MP dialog is open. In the mouse-only mode SA:MP
- /// then keeps mouse, ESC and its own cursor, as without a browser.
 +/// Arguments of a server event as one string, joined by spaces like `cef.emit` arguments
 +/// arrive on the server (browser/client.rs, "emit_event").
 +fn list_arguments(list: &List) -> String {
@@ -52,9 +53,9 @@ index ab92084..a73504f 100644
 +        .join(" ")
 +}
 +
+ /// SA:MP chat input or a SA:MP dialog is open. In the mouse-only mode SA:MP
+ /// then keeps mouse, ESC and its own cursor, as without a browser.
  fn samp_ui_active() -> bool {
-     inputs::Input::is_active()
-         || inputs::Dialog::get()
 diff --git a/client/src/external.rs b/client/src/external.rs
 index 9c86873..457e03a 100644
 --- a/client/src/external.rs
