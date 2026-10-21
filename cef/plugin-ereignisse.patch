@@ -1,0 +1,165 @@
+diff --git a/client/src/app.rs b/client/src/app.rs
+index ab92084..656e3e4 100644
+--- a/client/src/app.rs
++++ b/client/src/app.rs
+@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
+ 
+ use parking_lot::Mutex;
+ 
+-use cef::types::list::List;
++use cef::types::list::{List, ValueType};
+ use cef_sys::{cef_key_event_t, cef_key_event_type_t};
+ 
+ use winapi::shared::minwindef::{LPARAM, UINT, WPARAM};
+@@ -31,7 +31,8 @@ use retour::GenericDetour;
+ 
+ const CEF_SERVER_PORT_OFFSET: u16 = 2;
+ // 0x000200: input modes (SetInputMode / InputModeChanged, mouse only)
+-pub const CEF_PLUGIN_VERSION: i32 = 0x00_02_00;
++// 0x000300: server events for client plugins (cef_server_event, cef_server_emitter)
++pub const CEF_PLUGIN_VERSION: i32 = 0x00_03_00;
+ const CONNECT_BACKOFF_BASE: Duration = Duration::from_secs(1);
+ const CONNECT_BACKOFF_MAX: Duration = Duration::from_secs(10);
+ const AUDIO_SPATIAL_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
+@@ -499,6 +500,12 @@ pub fn mainloop() {
+                 }
+ 
+                 Event::EmitEvent(event, list) => {
++                    if crate::external::wants_server_events()
++                        && crate::external::server_event(&event, &list_arguments(&list))
++                    {
++                        continue;
++                    }
++
+                     let manager = app.manager.lock();
+                     manager.trigger_event(&event, list);
+                 }
+@@ -647,6 +654,21 @@ pub fn mainloop() {
+     }
+ }
+ 
++/// Arguments of a server event as one string, joined by spaces like `cef.emit` arguments
++/// arrive on the server (browser/client.rs, "emit_event").
++fn list_arguments(list: &List) -> String {
++    (0..list.len())
++        .map(|idx| match list.get_type(idx) {
++            ValueType::String => list.string(idx).to_string(),
++            ValueType::Bool => (if list.bool(idx) { 1 } else { 0 }).to_string(),
++            ValueType::Double => list.double(idx).to_string(),
++            ValueType::Integer => list.integer(idx).to_string(),
++            _ => "CEF_NULL".to_string(),
++        })
++        .collect::<Vec<_>>()
++        .join(" ")
++}
++
+ /// SA:MP chat input or a SA:MP dialog is open. In the mouse-only mode SA:MP
+ /// then keeps mouse, ESC and its own cursor, as without a browser.
+ fn samp_ui_active() -> bool {
+diff --git a/client/src/external.rs b/client/src/external.rs
+index 9c86873..457e03a 100644
+--- a/client/src/external.rs
++++ b/client/src/external.rs
+@@ -1,5 +1,5 @@
+ use std::collections::HashMap;
+-use std::ffi::CStr;
++use std::ffi::{CStr, CString};
+ use std::os::raw::{c_char, c_int};
+ use std::sync::{
+     Arc,
+@@ -24,6 +24,12 @@ static PLUGINS: StaticCell<ExternalManager> = StaticCell::new();
+ pub type BrowserReadyCallback = extern "C" fn(u32);
+ pub type EventCallback = extern "C" fn(*const c_char, *mut cef_list_value_t) -> c_int;
+ pub type CallbackList = Arc<Mutex<HashMap<String, EventCallback>>>;
++/// `cef_server_event(event, arguments)`: an event from the server, arguments joined by
++/// spaces like on the server side. Return `EXTERNAL_BREAK` to keep it from the browsers.
++pub type ServerEventCallback = extern "C" fn(*const c_char, *const c_char) -> c_int;
++/// Passed to `cef_server_emitter` once after loading: sends an event to the server, which
++/// gets it like `cef.emit` from a browser (`cef_subscribe` callback, arguments as one string).
++pub type ServerEmitter = unsafe extern "C" fn(event: *const c_char, arguments: *const c_char);
+ 
+ pub const EXTERNAL_CONTINUE: c_int = 0;
+ pub const EXTERNAL_BREAK: c_int = 1;
+@@ -47,6 +53,7 @@ struct ExtPlugin {
+     disconnect: Option<Symbol<'static, extern "C" fn()>>,
+     quit: Option<Symbol<'static, extern "C" fn()>>,
+     browser_created: Option<Symbol<'static, extern "C" fn(u32, i32)>>,
++    server_event: Option<Symbol<'static, ServerEventCallback>>,
+ }
+ 
+ // TODO: cef_emit_server_event, cef_emit_client_event
+@@ -133,6 +140,14 @@ pub fn initialize(event_tx: Sender<Event>, manager: Arc<Mutex<Manager>>) -> Call
+                             let browser_created = library
+                                 .get::<extern "C" fn(u32, i32)>(b"cef_browser_created")
+                                 .ok();
++                            let server_event =
++                                library.get::<ServerEventCallback>(b"cef_server_event").ok();
++
++                            if let Ok(server_emitter) =
++                                library.get::<extern "C" fn(ServerEmitter)>(b"cef_server_emitter")
++                            {
++                                server_emitter(cef_emit_server_event);
++                            }
+ 
+                             let plugin = ExtPlugin {
+                                 library: lib,
+@@ -143,6 +158,7 @@ pub fn initialize(event_tx: Sender<Event>, manager: Arc<Mutex<Manager>>) -> Call
+                                 disconnect,
+                                 quit,
+                                 browser_created,
++                                server_event,
+                             };
+ 
+                             external.plugins.push(plugin);
+@@ -242,6 +258,51 @@ pub fn browser_created(browser_id: u32, status_code: i32) {
+     }
+ }
+ 
++/// True if at least one plugin wants events from the server.
++pub fn wants_server_events() -> bool {
++    ExternalManager::get()
++        .is_some_and(|ext| ext.plugins.iter().any(|plugin| plugin.server_event.is_some()))
++}
++
++/// Hands an event from the server to the plugins. Returns true if one of them handled it
++/// with `EXTERNAL_BREAK`; the browsers don't get it then.
++pub fn server_event(event: &str, arguments: &str) -> bool {
++    let Some(ext) = ExternalManager::get() else {
++        return false;
++    };
++
++    let (Ok(event), Ok(arguments)) = (CString::new(event), CString::new(arguments)) else {
++        return false;
++    };
++
++    for plugin in &ext.plugins {
++        if let Some(func) = plugin.server_event.as_ref()
++            && func(event.as_ptr(), arguments.as_ptr()) == EXTERNAL_BREAK
++        {
++            return true;
++        }
++    }
++
++    false
++}
++
++unsafe extern "C" fn cef_emit_server_event(event: *const c_char, arguments: *const c_char) {
++    if event.is_null() {
++        return;
++    }
++
++    let event = unsafe { CStr::from_ptr(event) }.to_string_lossy().into_owned();
++    let arguments = if arguments.is_null() {
++        String::new()
++    } else {
++        unsafe { CStr::from_ptr(arguments) }.to_string_lossy().into_owned()
++    };
++
++    if let Some(external) = ExternalManager::get() {
++        let _ = external.event_tx.send(Event::EmitEventOnServer(event, arguments));
++    }
++}
++
+ unsafe extern "C" fn cef_create_browser(id: u32, url: *const c_char, hidden: bool, focused: bool) {
+     if url.is_null() {
+         return;

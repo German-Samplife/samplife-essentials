@@ -155,6 +155,10 @@ Derselbe Stand `f14fe4f` mit einer Änderung: Browser können zusätzlich im Mod
 
 GitHub baut das Paket mit [`.github/workflows/cef.yml`](.github/workflows/cef.yml) aus dem Original-Commit und den Patches in `cef/`. Ein Tag wie `cef-f14fe4f-sl1` legt das Release `samp-cef-client-<tag>.zip` mit SHA-256 an.
 
+## CJ-Kleidung
+
+Im Ordner [`kleidung/`](kleidung/README.md) liegt das samp-cef-Plugin `samplife-kleidung.dll` für `GTA/cef/plugins/`. Es zieht jede Figur mit Skin 0 (CJ) so an, wie der Server es für ihren Spieler über samp-cef schickt (`kleidung:spieler`), die eigene und die der anderen Spieler, so wie im Singleplayer. Dafür braucht es den samp-cef-Client mit [`cef/plugin-ereignisse.patch`](cef/README.md#server-ereignisse-für-client-plugins) (Client-Version `0x000300`). GitHub baut die Datei mit [`.github/workflows/kleidung.yml`](.github/workflows/kleidung.yml) bisher nur als Artefakt, ohne Release; im Manifest steht sie erst, wenn der Gamemode die Kleidung nutzt. Protokoll, Installation, Testablauf mit dem Filterscript [`kleidung/beispiel/kleidung_test.pwn`](kleidung/beispiel/kleidung_test.pwn) und Quellen stehen in [`kleidung/README.md`](kleidung/README.md).
+
 ## Lizenz
 
 Der Quelltext des Installers ist öffentlich einsehbar. Eine Lizenz dafür ist noch nicht festgelegt; bis dahin bleiben alle Rechte bei German Samplife. Die Pakete fremder Projekte stehen unter deren Lizenzen, siehe oben und in der Liste des Installers.

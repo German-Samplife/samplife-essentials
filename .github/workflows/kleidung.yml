@@ -1,0 +1,119 @@
+# Baut das samp-cef-Plugin für die CJ-Kleidung (siehe kleidung/README.md).
+# Bei Änderungen an kleidung/ wird nur gebaut und geprüft; ein Tag wie kleidung-0.5.0 legt das Release an.
+name: Kleidung
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "kleidung/**"
+      - ".github/workflows/kleidung.yml"
+    tags:
+      - "kleidung-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: kleidung
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (stable, i686-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: i686-pc-windows-msvc
+
+      - name: Cargo-Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            kleidung/target
+          key: kleidung-i686-pc-windows-msvc-${{ hashFiles('kleidung/Cargo.toml', 'kleidung/Cargo.lock') }}
+          restore-keys: |
+            kleidung-i686-pc-windows-msvc-
+
+      - name: Bauen
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo --version
+          cargo build --release --target i686-pc-windows-msvc
+
+      - name: Tests (Format von kleidung:spieler)
+        shell: bash
+        run: cargo test --release --target i686-pc-windows-msvc
+
+      - name: Prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dll = "target/i686-pc-windows-msvc/release/samplife_kleidung.dll"
+          if (-not (Test-Path $dll)) { throw "samplife_kleidung.dll fehlt" }
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
+          $kopf = & $dumpbin.FullName /headers $dll | Out-String
+          if ($kopf -notmatch "14C machine \(x86\)") { throw "Die DLL ist nicht 32 Bit" }
+          $abh = & $dumpbin.FullName /dependents $dll | Out-String
+          $abh
+          if ($abh -match "VCRUNTIME140|MSVCP140|api-ms-win-crt") { throw "Die DLL braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
+          $exporte = & $dumpbin.FullName /exports $dll | Out-String
+          foreach ($name in "cef_server_event", "cef_server_emitter", "cef_connect", "cef_disconnect") {
+            if ($exporte -notmatch "\b$name\b") { throw "Export $name fehlt, samp-cef würde das Plugin nicht ansprechen" }
+          }
+
+      - name: Paket zusammenstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force ../ausgabe | Out-Null
+          # gehört nach GTA/cef/plugins/, nicht neben gta_sa.exe (dort würde es kein Plugin)
+          Copy-Item target/i686-pc-windows-msvc/release/samplife_kleidung.dll ../ausgabe/samplife-kleidung.dll
+          # Cargo.lock des Laufs, damit der Stand der Abhängigkeiten nachvollziehbar bleibt
+          Copy-Item Cargo.lock ../ausgabe/Cargo.lock
+          $hash = (Get-FileHash ../ausgabe/samplife-kleidung.dll -Algorithm SHA256).Hash.ToLower()
+          "$hash  samplife-kleidung.dll" | Out-File -Encoding ascii ../ausgabe/SHA256SUMS.txt
+          Get-ChildItem ../ausgabe | Format-Table Name, Length
+          Get-Content ../ausgabe/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: samplife-kleidung
+          path: ausgabe/
+
+      - name: Version im Quelltext muss zum Tag passen
+        if: startsWith(github.ref, 'refs/tags/kleidung-')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".Substring("kleidung-".Length)
+          $quelle = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $quelle) { throw "Tag $tag passt nicht zu Cargo.toml ($quelle)" }
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/kleidung-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dll = Get-Item ../ausgabe/samplife-kleidung.dll
+          $hash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLower()
+          $text = @"
+          samp-cef-Plugin für die CJ-Kleidung (Skin 0), gehört nach ``GTA/cef/plugins/``. Braucht den samp-cef-Client ab 0x000300 (cef/plugin-ereignisse.patch). Protokoll und Test siehe kleidung/README.md.
+
+          Gebaut von GitHub aus diesem Tag.
+
+          Für das Manifest (typ datei, ziel cef/plugins, dateiname samplife-kleidung.dll): SHA-256 ``$hash``, Größe $($dll.Length) Bytes.
+          "@
+          gh release create "${{ github.ref_name }}" ../ausgabe/samplife-kleidung.dll ../ausgabe/SHA256SUMS.txt --title "Kleidung ${{ github.ref_name }}" --notes $text --latest=false

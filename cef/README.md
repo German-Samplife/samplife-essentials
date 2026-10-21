@@ -75,6 +75,24 @@ Neu in `proto/packets.proto` (und von Hand gleich in `messages/src/proto/packets
 | `SetInputMode` | 17 | Server → Client | `browser_id`, `mode` |
 | `InputModeChanged` | 18 | Client → Server | `browser_id`, `mode` |
 
+## Server-Ereignisse für Client-Plugins
+
+samp-cef lädt beim Start jede DLL in `GTA/cef/plugins/` als Client-Plugin (`client/src/external.rs`). Im Original bekommt so ein Plugin aber nur Ereignisse, die eine **Seite** mit `cef.emit` schickt, und kann selbst nichts an den Server schicken (dort steht nur `TODO: cef_emit_server_event`). Für die CJ-Kleidung ([`kleidung/`](../kleidung/README.md)) muss ein Plugin Daten vom Server bekommen, ohne dass eine Seite geladen ist. Das ergänzt [`plugin-ereignisse.patch`](plugin-ereignisse.patch), nur im Client:
+
+| Export im Plugin | Signatur | Wann |
+|---|---|---|
+| `cef_server_event` | `int (const char *event, const char *arguments)` | Für jedes Ereignis, das der Server mit `cef_emit_event` schickt, bevor es an die Seiten geht. Die Argumente kommen als ein UTF-8-Text, durch Leerzeichen getrennt, so wie umgekehrt der Server Ereignisse von Seiten bekommt. Rückgabe `1` (`EXTERNAL_BREAK`): Die Seiten bekommen das Ereignis nicht. `0`: weiter wie bisher. |
+| `cef_server_emitter` | `void (void (*emit)(const char *event, const char *arguments))` | Einmal direkt nach dem Laden der DLL. Mit `emit` schickt das Plugin ein Ereignis an den Server; dort kommt es an wie `cef.emit` von einer Seite (`cef_subscribe`-Callback, Argumente als ein Text). Vor dem Verbinden geht es verloren; `cef_connect` sagt, wann die Verbindung steht. |
+
+Beide Exporte sind freiwillig. Plugins ohne sie merken nichts, ältere Clients rufen sie nie auf. Der Client meldet sich mit `CEF_PLUGIN_VERSION` = `0x000300` (vorher `0x000200`); der Server prüft die Version nur für den Nur-Maus-Modus (ab `0x000200`), eine neue Server-Seite braucht es nicht.
+
+Ein Server-Ereignis, das kein Plugin wollte, kostet nur eine Abfrage: In Text umgewandelt wird nur, wenn mindestens ein Plugin `cef_server_event` hat.
+
+| Datei | Änderung |
+|---|---|
+| `client/src/external.rs` | Exporte `cef_server_event` und `cef_server_emitter` beim Laden suchen, `server_event`, `cef_emit_server_event` |
+| `client/src/app.rs` | Server-Ereignisse zuerst an die Plugins, `list_arguments`, `CEF_PLUGIN_VERSION` = `0x000300` |
+
 ## Umlaute bei der Eingabe
 
 Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. Auf deutschen Windows-Systemen wurden ä, ö, ü, ß, „ “ und – dadurch zu kyrillischen Buchstaben. Der Patch liest sie als Windows-1252 (`client/src/app.rs`, `win_event`). Zeichen, die Eingabemethoden als Unicode schicken, bleiben unverändert.
@@ -111,7 +129,7 @@ Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. A
 
 Das übernimmt GitHub mit [`.github/workflows/cef.yml`](../.github/workflows/cef.yml):
 
-1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die beiden Patches anwenden. `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
+1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
 2. DirectX SDK (Juni 2010, nur `Lib/x86`) und die CEF-Distribution aus `cef-distribution.json` holen (CEF 150, Prüfsumme wird geprüft).
 3. Mit Rust stable `cargo build --release --target i686-pc-windows-msvc` bauen, dazu die Tests von `cef-messages` und `cef-server-core`.
 4. Prüfen, dass die Dateien 32 Bit sind und die Änderung enthalten.
