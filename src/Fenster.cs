@@ -990,6 +990,7 @@ namespace SamplifeEssentials
             listeLaedt.Visibility = Visibility.Collapsed;
             listeRollen.Visibility = Visibility.Visible;
             knopfSpielen.IsEnabled = true;
+            knopfGruendlich.IsEnabled = true;
 
             if (zustand == "bereit" || zustand == "offline")
             {

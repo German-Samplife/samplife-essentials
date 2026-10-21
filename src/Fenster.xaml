@@ -395,7 +395,7 @@
                               <Run Text="{Binding Name, Mode=OneWay}"/><Run Text="{Binding Art, Mode=OneWay}" Foreground="{StaticResource Leise}" FontSize="13" FontWeight="Normal"/>
                             </TextBlock>
                             <TextBlock Text="{Binding Beschreibung}" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                            <TextBlock FontSize="12" Foreground="{StaticResource Leise}" Margin="0,3,0,0">
+                            <TextBlock FontSize="12" Foreground="{StaticResource Leise}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
                               <Run Text="{Binding QuelleVor, Mode=OneWay}"/><Hyperlink NavigateUri="{Binding Quelle}"><Run Text="{Binding Quelle, Mode=OneWay}"/></Hyperlink><Run Text="{Binding QuelleNach, Mode=OneWay}"/>
                             </TextBlock>
                           </StackPanel>
