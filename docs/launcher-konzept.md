@@ -71,6 +71,7 @@ Dateien, die nicht aus einem Paket stammen (eigene Mods, Skins, Einstellungen de
 | `server.anmeldung` | Adresse der Anmeldung, z. B. `https://www.german-samplife.de/api/launcher/start`. |
 | `launcher.version`, `url`, `sha256`, `groesse` | Aktuelle Fassung des Launchers für die Selbstaktualisierung. |
 | `optionale_komponenten[]` | Aufbau wie `komponenten[]`. Der Spieler wählt sie selbst. |
+| `updates` | Adresse der neuesten Updates aus der Community (`/api/updates`). Der Launcher zeigt sie in der Spalte „Neu auf dem Server“. |
 
 Gründe:
 
@@ -100,7 +101,7 @@ Gründe für die Anmeldung über die Website:
 
 - Am Client muss nichts geändert werden: kein neuer CEF-Client, kein Plugin.
 - Website und Gamemode teilen sich schon die MariaDB.
-- Website, Spielserver und Manifest liegen auf demselben Rechner, nur unter IPv4 (keine AAAA-Einträge). Der Launcher meldet sich ausdrücklich über IPv4 an. Damit sieht der Server dieselbe Adresse wie beim Spiel.
+- Website, Spielserver und Manifest liegen auf demselben Rechner, nur unter IPv4 (keine AAAA-Einträge). Anmeldung und Spiel laufen also über dieselbe Adresse. Die Website nimmt nur IPv4-Anmeldungen an.
 - Fällt die Website aus, fehlt auch der Login im Spiel, der eine CEF-Seite von dort ist. Die Anmeldung bringt also keinen neuen Ausfallgrund.
 
 **Grenzen:** Das ist kein Kopierschutz und kein Anti-Cheat. Wer die Anfrage nachbaut, kommt auch ohne Launcher herein. Gedacht ist der Weg für alle, die ehrlich spielen und aktuelle Dateien brauchen.

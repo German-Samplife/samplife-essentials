@@ -1,8 +1,8 @@
 using System.Reflection;
 
-[assembly: AssemblyTitle("Samplife Essentials Installer")]
-[assembly: AssemblyDescription("Richtet SampVoice und die Browser-Oberfläche (CEF) im GTA-Verzeichnis ein.")]
+[assembly: AssemblyTitle("Samplife Launcher")]
+[assembly: AssemblyDescription("Hält GTA San Andreas auf dem Stand von German Samplife und startet SA-MP.")]
 [assembly: AssemblyCompany("German Samplife")]
-[assembly: AssemblyProduct("Samplife Essentials Installer")]
-[assembly: AssemblyVersion("1.4.0.0")]
-[assembly: AssemblyFileVersion("1.4.0.0")]
+[assembly: AssemblyProduct("Samplife Launcher")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]

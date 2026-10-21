@@ -219,7 +219,10 @@ namespace SamplifeEssentials
             catch (Exception) { return false; }
         }
 
-        /// <summary>Name der installierten SA-MP-Version laut Liste, sonst leer.</summary>
+        /// <summary>
+        /// Name der installierten SA-MP-Version laut Liste, sonst leer. Zuerst ueber die Pruefsummen der Liste, sonst ueber
+        /// die Dateiversion der samp.dll (nur Versionen, die in der Liste stehen).
+        /// </summary>
         public static string SampVersion(string verzeichnis, Manifest manifest)
         {
             if (!HatSamp(verzeichnis)) return "";
@@ -229,6 +232,11 @@ namespace SamplifeEssentials
             foreach (var version in manifest.SampVersionen)
             {
                 if (version.Sha256 != "" && version.Sha256 == pruefsumme) return version.Name;
+            }
+            var dateiVersion = Spielstart.SampDateiVersion(verzeichnis);
+            foreach (var version in manifest.SampVersionen)
+            {
+                if (dateiVersion != "" && string.Equals(version.Name, dateiVersion, StringComparison.OrdinalIgnoreCase)) return version.Name;
             }
             return "";
         }

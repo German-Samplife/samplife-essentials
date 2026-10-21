@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="SamplifeEssentialsInstaller"/>
+  <assemblyIdentity version="1.0.0.0" name="SamplifeLauncher"/>
   <!-- Startet ohne Administratorrechte; nur wenn das GTA-Verzeichnis sie braucht, bietet das Programm einen Neustart an -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>

@@ -1,25 +1,31 @@
-# Samplife Essentials Installer
+# Samplife Launcher
 
-Der Installer für Spieler des SA-MP-Servers **German Samplife**. Er richtet die Erweiterungen, die man zum Spielen braucht, im GTA-San-Andreas-Verzeichnis ein: den Sprach-Chat SampVoice und, sobald der Server sie nutzt, die Browser-Oberfläche (CEF).
+Der Launcher für Spieler des SA-MP-Servers **German Samplife**. Er hält das GTA-San-Andreas-Verzeichnis bei jedem Start auf dem Stand des Servers (Sprach-Chat SampVoice, Browser-Oberfläche CEF, CJ-Kleidung und was der Server sonst braucht), startet SA-MP und verbindet direkt. Bis Version 1.4 hieß er Samplife Essentials Installer.
 
-**Download:** [Samplife Essentials Installer.exe](https://github.com/German-Samplife/samplife-essentials/releases/latest/download/Samplife.Essentials.Installer.exe) (aktuelle Fassung, alle Fassungen unter [Releases](https://github.com/German-Samplife/samplife-essentials/releases))
+**Download:** [Samplife Launcher.exe](https://github.com/German-Samplife/samplife-essentials/releases/latest/download/Samplife.Launcher.exe) (aktuelle Fassung, alle Fassungen unter [Releases](https://github.com/German-Samplife/samplife-essentials/releases)). Dieselbe Datei hängt auch als `Samplife.Essentials.Installer.exe` am Release, damit alte Links funktionieren.
 
 Eine einzelne Datei, keine Installation nötig. Sie läuft unter Windows 10 und 11 ohne Zusatzsoftware, weil sie das .NET Framework 4.8 benutzt, das dort zum System gehört.
 
-Der gesamte Quelltext des Installers liegt in diesem Repository. Die `.exe` in den Releases baut GitHub aus genau diesem Quelltext (siehe [`.github/workflows/release.yml`](.github/workflows/release.yml)).
+Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases baut GitHub aus genau diesem Quelltext (siehe [`.github/workflows/release.yml`](.github/workflows/release.yml)). Entscheidungen und offene Punkte stehen in [`docs/launcher-konzept.md`](docs/launcher-konzept.md).
 
 > **Windows SmartScreen:** Die `.exe` ist nicht signiert. Windows zeigt beim ersten Start „Der Computer wurde durch Windows geschützt". Über „Weitere Informationen" und „Trotzdem ausführen" geht es weiter.
 
 ## Was der Spieler sieht
 
-1. Der Installer sucht beim Start selbst nach dem GTA-Verzeichnis und fragt „Ist das dein GTA-Verzeichnis?". Der Spieler bestätigt mit „Ja, verwenden" oder wählt einen anderen Ordner. Bei mehreren Funden wählt er aus. Ohne diese Bestätigung lässt sich nichts installieren.
+1. **Erster Start:** Der Launcher sucht das GTA-Verzeichnis und fragt „Ist das dein GTA-Verzeichnis?". Der Spieler bestätigt mit „Ja, verwenden" oder wählt einen anderen Ordner. Ohne diese Bestätigung lädt der Launcher nichts.
    - Gesucht wird in den Einträgen von SA-MP, Rockstar und Steam, in der Liste zuletzt gestarteter Programme und in den obersten drei Ordnerebenen der Festplatten, höchstens acht Sekunden lang.
    - Vorgeschlagen werden nur Ordner, in denen neben `gta_sa.exe` auch die Ordner `models` und `data` liegen.
-2. Die SA-MP-Version erkennt der Installer an der `samp.dll` im Verzeichnis. Fehlt sie dort (zum Beispiel beim open.mp-Launcher) oder ist sie unbekannt, wählt der Spieler seine Version selbst aus. Der Installer sagt ihm dabei, welche Versionen die Erweiterungen brauchen und dass er im open.mp-Launcher dieselbe einstellen muss. Nennt die Liste nur eine einzige Version, entfällt die Auswahl; stattdessen steht dort als Hinweis, dass genau diese Version nötig ist.
-3. Die Liste zeigt, was installiert wird: Name, Beschreibung, Größe, Projektseite und Lizenz. Abwählen lässt sich nichts: Alles in der Liste gehört zum Spielen auf dem Server dazu.
-4. Nach dem Klick auf „Installieren" erscheint das Feld „Was gerade passiert". Jeder Schritt steht dort im Klartext, Downloads mit vollständiger Adresse und Fortschritt, zum Beispiel:
-   `Lade SampVoice von https://…/sampvoice-037-r3.zip herunter (0,4 MB von 0,7 MB)`
-5. Dasselbe steht danach in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
+   - Das bestätigte Verzeichnis merkt sich der Launcher unter `%LOCALAPPDATA%\German Samplife\Launcher\einstellungen.json`.
+2. **Name:** Der Spieler gibt seinen Namen im Spiel ein. Der Launcher prüft die Regeln von SA-MP und speichert ihn dort, wo SA-MP ihn liest (`HKEY_CURRENT_USER\Software\SAMP\PlayerName`).
+3. **Dateien:** Die Liste zeigt jede Komponente mit Name, Beschreibung, Projektseite, Lizenz und Zustand („aktuell", „neue Fassung", „noch nicht eingerichtet", „Datei fehlt oder ist verändert"). Pflicht-Komponenten haben einen gesperrten Haken, optionale wählt der Spieler selbst.
+4. **Rechts** stehen die neuesten Updates aus der Community. Ein Klick öffnet das Update auf der Website.
+5. **„Spielen":**
+   1. Der Launcher lädt, was fehlt oder veraltet ist, mit Fortschritt im Feld „Was gerade passiert".
+   2. Er sichert den geprüften Stand.
+   3. Er meldet den Spieler beim Server an und startet `samp.exe`, das direkt mit dem Server verbindet.
+   4. Danach schließt er sich.
+6. **„Gründlich prüfen"** rechnet die Prüfsumme jeder Datei nach und lädt neu, was nicht stimmt.
+7. Downloads und geschriebene Dateien stehen auch in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
 
 ## Was das Programm zusichert
 
@@ -28,6 +34,9 @@ Der gesamte Quelltext des Installers liegt in diesem Repository. Die `.exe` in d
 - **Es schreibt nur ins gewählte GTA-Verzeichnis.** Ein Archiv, das mit `..\` hinausschreiben will, stoppt die Installation.
 - **`gta_sa.exe`, `samp.dll`, `samp.exe` und `samp.saa` werden nie ersetzt.**
 - **Vorhandene Dateien werden vor dem Ersetzen gesichert**, nach `samplife-essentials-sicherung\<Datum_Uhrzeit>\`. Dateien, die schon aktuell sind, bleiben unangetastet.
+- **Es löscht nichts.** Fällt eine Komponente aus der Liste oder wählt der Spieler eine optionale ab, bleiben ihre Dateien liegen.
+- **Mods des Spielers fasst es nicht an.** Geprüft werden nur Dateien, die der Launcher selbst aus einem Paket abgelegt hat.
+- **Der geprüfte Stand wird gesichert** (`samplife-launcher\manifest.json` und `stand.json` im GTA-Verzeichnis, siehe unten). Ist der Server nicht erreichbar, startet der Launcher mit diesem Stand, wenn alle Dateien dazu passen.
 - **Keine Administratorrechte ohne Grund.** Nur wenn das GTA-Verzeichnis sie braucht (z. B. unter `C:\Program Files`), bietet das Programm einen Neustart als Administrator an.
 
 ## Die Liste der Komponenten (Manifest)
@@ -38,14 +47,14 @@ Was installiert wird, steht nicht im Programm, sondern in einer JSON-Datei auf d
 https://www.german-samplife.de/essentials/manifest.json
 ```
 
-Antwortet diese Adresse mit einem HTTP-Fehler oder gar nicht, fragt der Installer die frühere Adresse `https://samplife.isjustfucking.pro/essentials/manifest.json`. Installer bis 1.3.0 kennen nur die frühere Adresse; sie muss deshalb erreichbar bleiben, bis diese Fassungen nicht mehr im Umlauf sind.
+Antwortet diese Adresse mit einem HTTP-Fehler oder gar nicht, fragt der Launcher die frühere Adresse `https://samplife.isjustfucking.pro/essentials/manifest.json`. Installer bis 1.3.0 kennen nur die frühere Adresse; sie muss deshalb erreichbar bleiben, bis diese Fassungen nicht mehr im Umlauf sind.
 
 So lassen sich Versionen austauschen, ohne den Installer neu zu bauen und neu zu verteilen.
 
 - Die echte Liste liegt auf der Website des Servers unter der Adresse oben und wird dort gepflegt. Du kannst sie im Browser öffnen und nachlesen, was der Installer laden würde.
 - [`manifest.beispiel.json`](manifest.beispiel.json) zeigt alle Möglichkeiten des Formats; die Prüfsummen und Adressen darin sind Platzhalter.
 
-Stand der echten Liste: SampVoice 3.1 für SA-MP 0.3.7 R1 und R3, direkt von den GitHub-Releases des Projekts. Das Paket enthält `sampvoice.asi`, den ASI Loader (`vorbisFile.dll`, `vorbisHooked.dll`) und `bass.dll`, `bass_fx.dll`. Ein eigener ASI Loader steht deshalb nicht in der Liste: zwei Loader würden jede Erweiterung doppelt laden. CEF fehlt noch, weil es dafür keinen --zustand start|gefunden|laeuft|fertig|netz|ablauf`en, dauerhaft erreichbaren Download gibt.
+Stand der echten Liste: SampVoice 3.1 für SA-MP 0.3.7 R1 und R3, direkt von den GitHub-Releases des Projekts. Das Paket enthält `sampvoice.asi`, den ASI Loader (`vorbisFile.dll`, `vorbisHooked.dll`) und `bass.dll`, `bass_fx.dll`. Ein eigener ASI Loader steht deshalb nicht in der Liste: zwei Loader würden jede Erweiterung doppelt laden.
 
 | Feld | Bedeutung |
 |---|---|
@@ -54,7 +63,13 @@ Stand der echten Liste: SampVoice 3.1 für SA-MP 0.3.7 R1 und R3, direkt von den
 | `samp_versionen[]` | `name` jeder unterstützten SA-MP-Version, optional `sha256` der zugehörigen `samp.dll`. Mit Prüfsumme erkennt der Installer die Version selbst, ohne bietet er sie nur zur Auswahl an. |
 | `komponenten[].id`, `name`, `beschreibung` | Anzeige in der Liste. |
 | `komponenten[].quelle`, `lizenz` | Projektseite (wird verlinkt) und Lizenz. |
-| `komponenten[].pflicht` | Ab Installer 1.2.0 ohne Wirkung, weil nichts mehr abwählbar ist. Ältere Installer (1.0 und 1.1) sperren damit das Abwählen; deshalb steht es in der echten Liste auf `true`. |
+| `komponenten[].pflicht` | Ab Installer 1.2.0 ohne Wirkung: Alles in `komponenten` ist Pflicht. Ältere Installer (1.0 und 1.1) sperren damit das Abwählen; deshalb steht es in der echten Liste auf `true`. |
+| `optionale_komponenten[]` | Ab Launcher 2.0: Aufbau wie `komponenten[]`, der Spieler wählt selbst. Ältere Installer kennen die Liste nicht und laden sie nicht. |
+| `stand` | Ab Launcher 2.0: ganze Zahl, bei jeder Änderung an Paketen um 1 erhöhen. Der Launcher meldet sie bei der Anmeldung; der Gamemode verlangt mindestens `LAUNCHER_MINDESTSTAND`. |
+| `server.adresse`, `server.port` | Wohin `samp.exe` verbindet. |
+| `server.anmeldung` | Adresse, bei der sich der Launcher vor dem Start meldet (`POST`, JSON mit `name`, `stand`, `launcher`; Antwort `{"ok": true}` oder `{"fehler": "…"}`). Leer = keine Anmeldung. |
+| `updates` | Adresse der neuesten Updates aus der Community (`{"updates": [{"slug", "datum", "titel", "kurz", "url"}]}`). |
+| `launcher.version`, `url`, `sha256`, `groesse` | Aktuelle Fassung des Launchers. Ist sie höher als die laufende, aktualisiert sich der Launcher selbst. Ohne den Block gibt es keine Aktualisierung. |
 | `pakete[].url` | Adresse des Downloads, muss mit `https://` beginnen. |
 | `pakete[].sha256` | Prüfsumme der Datei, 64 Hex-Zeichen. |
 | `pakete[].groesse` | Größe in Bytes, für Anzeige und Fortschritt. |
@@ -85,7 +100,7 @@ Get-FileHash .\sampvoice-037-r3.zip -Algorithm SHA256
 bauen.cmd
 ```
 
-Das Script ruft den C#-Compiler auf, der zu Windows gehört (`%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe`). Es wird nichts heruntergeladen. Ergebnis: `ausgabe\Samplife Essentials Installer.exe`. Der Ordner `ausgabe` wird von Git ignoriert.
+Das Script ruft den C#-Compiler auf, der zu Windows gehört (`%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe`). Es wird nichts heruntergeladen. Ergebnis: `ausgabe\Samplife Launcher.exe`. Der Ordner `ausgabe` wird von Git ignoriert.
 
 Ist die alte `.exe` gerade geöffnet, lässt sie sich nicht überschreiben. Dann in einen anderen Ordner bauen: `bauen.cmd ausgabe-neu`.
 
@@ -93,10 +108,16 @@ Der Compiler versteht C# 5: kein `$"…"`, kein `?.`, keine Ausdruckskörper.
 
 | Datei | Inhalt |
 |---|---|
-| `src/Programm.cs` | Start, Aufrufparameter, Laden der Liste |
+| `src/Programm.cs` | Start, Aufrufparameter, Laden der Liste, Ablauf ohne Fenster |
 | `src/Manifest.cs` | Lesen und Prüfen der Liste |
 | `src/GtaVerzeichnis.cs` | GTA-Verzeichnis finden und prüfen, SA-MP-Version erkennen |
-| `src/Installation.cs` | Download, Prüfsumme, Entpacken, Sicherung, Protokoll |
+| `src/Installation.cs` | Download, Prüfsumme, Entpacken, Sicherung ersetzter Dateien, Protokoll |
+| `src/Stand.cs` | Sicherung des geprüften Stands, Abgleich der Dateien |
+| `src/Ablauf.cs` | „Spielen": abgleichen, laden, sichern, anmelden, starten |
+| `src/Spielstart.cs` | Name für SA-MP, Version der `samp.dll`, Anmeldung, Start von `samp.exe` |
+| `src/Aktualisierung.cs` | Selbstaktualisierung |
+| `src/Einstellungen.cs` | gemerktes Verzeichnis und optionale Komponenten |
+| `src/Neuigkeiten.cs` | Updates aus der Community für die rechte Spalte |
 | `src/Fenster.xaml`, `src/Fenster.cs` | Oberfläche |
 | `symbol.ico` | Programmsymbol |
 
@@ -120,16 +141,24 @@ Aufrufparameter für Tests:
 | `--samp <Version>` | SA-MP-Version vorgeben, falls sie nicht erkannt wird (für `--still`) |
 | `--suche <Datei.txt>` | nur suchen und die gefundenen Verzeichnisse in die Datei schreiben |
 | `--test` | erlaubt eine lokale Liste und http vom eigenen Rechner (`127.0.0.1`) |
-| `--still` | ohne Fenster alle verfügbaren Komponenten installieren; Rückgabe 0 bei Erfolg |
-| `--bildschirmfoto <Datei.png> --zustand <Name>` | Fenster als Bild speichern, ohne etwas zu installieren. Zustände: `start`, `gefunden`, `laeuft`, `fertig` (Beispieldaten), `netz` (Liste wirklich laden), `ablauf` (Start wie beim Spieler, Fund bestätigen, Version wählen) |
+| `--still` | ohne Fenster abgleichen, Fehlendes und Veraltetes laden, Stand sichern. Rückgabe: 0 Erfolg, 1 Laden fehlgeschlagen, 2 kein GTA-Verzeichnis, 3 weder Liste noch brauchbare Sicherung, 4 SA-MP fehlt oder falsche Version, 5 Name ungültig, 6 `samp.exe` startet nicht, 7 Selbstaktualisierung fehlgeschlagen, 10 selbst aktualisiert |
+| `--spielen` | mit `--still`: danach anmelden und `samp.exe` starten |
+| `--name <Name>` | Spielername für `--spielen` |
+| `--optional <id>` | optionale Komponente wählen (mehrfach möglich) |
+| `--gruendlich` | jede Datei per SHA-256 prüfen statt über Größe und Änderungszeit |
+| `--kein-neustart` | nach einer Selbstaktualisierung nicht neu starten (Rückgabe 10) |
+| `--bildschirmfoto <Datei.png> --zustand <Name>` | Fenster als Bild speichern, ohne etwas zu laden. Zustände: `start`, `gefunden`, `bereit`, `laeuft`, `fertig`, `offline` (Beispieldaten), `netz` (Liste wirklich laden), `ablauf` (Start wie beim Spieler, Fund bestätigen, Version wählen) |
 
 ## Veröffentlichen
 
 Eine neue Fassung entsteht durch einen Tag:
 
 1. Version in `src/Programm.cs` und `src/AssemblyInfo.cs` anheben und committen.
-2. Tag setzen und pushen, zum Beispiel `git tag v1.2.1 && git push origin v1.2.1`.
-3. GitHub baut die `.exe`, führt `test/pruefen.py` aus und hängt die Datei samt SHA-256 an das Release.
+2. Tag setzen und pushen, zum Beispiel `git tag v2.0.1 && git push origin v2.0.1`.
+3. GitHub baut die `.exe`, führt `test/pruefen.py` aus und hängt die Datei samt SHA-256 und Größe an das Release.
+4. Im Manifest (Repo samplife) den Block `launcher` mit Version, Adresse, SHA-256 und Größe aus dem Release eintragen. Erst dann aktualisieren sich laufende Launcher.
+
+Bei jedem Push auf einen anderen Branch als `main`, der den Launcher ändert, baut und prüft GitHub ebenfalls und legt Bildschirmfotos aller Zustände des Fensters als Artefakt `bildschirmfotos` ab.
 
 ## Pakete in diesem Repository
 
