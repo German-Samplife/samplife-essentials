@@ -292,7 +292,8 @@ def main():
                'Anmeldung mit Name, Stand und Launcher-Version')
         start = gestartet(gta)
         pruefe(start is not None and start.split('\n')[0].strip() == 'german-samplife.test:7777', 'samp.exe mit Adresse und Port gestartet')
-        pruefe(start is not None and os.path.normcase(start.split('\n')[1].strip()) == os.path.normcase(gta), 'Arbeitsordner ist das GTA-Verzeichnis')
+        # Windows nennt den Temp-Ordner mal kurz (RUNNER~1), mal lang; deshalb ueber samefile vergleichen
+        pruefe(start is not None and os.path.samefile(start.split('\n')[1].strip(), gta), 'Arbeitsordner ist das GTA-Verzeichnis')
         pruefe(registry_name() == 'Max_Mustermann', 'Name fuer SA-MP gesetzt (Test-Schluessel)')
 
         print('12. Zweiter Start: nichts zu laden')
@@ -345,6 +346,8 @@ def main():
             f.write(b' ')
         pruefe(spielen(gta, basis + 'weg.json') == 3, 'Rueckgabe 3, Pruefsumme der Sicherung stimmt nicht')
         pruefe(spielen(gta, url) == 0, 'mit Liste wieder in Ordnung')
+        # Noch ein Lauf: Danach ist auch die vorige Fassung (.alt) wieder stimmig
+        pruefe(spielen(gta, url) == 0, 'zweiter Lauf mit Liste')
         with open(os.path.join(gta, 'samplife-launcher', 'manifest.json'), 'ab') as f:
             f.write(b' ')
         pruefe(spielen(gta, basis + 'weg.json') == 0, 'mit der vorigen Sicherung (.alt) weiter')
