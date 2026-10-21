@@ -69,7 +69,7 @@ jobs:
           if ($abh -match "VCRUNTIME140|MSVCP140|api-ms-win-crt") { throw "Die DLL braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
           $exporte = & $dumpbin.FullName /exports $dll | Out-String
           foreach ($name in "cef_server_event", "cef_server_emitter", "cef_connect", "cef_disconnect") {
-            if ($exporte -notmatch "$name") { throw "Export $name fehlt, samp-cef würde das Plugin nicht ansprechen" }
+            if ($exporte -notmatch "\b$name\b") { throw "Export $name fehlt, samp-cef würde das Plugin nicht ansprechen" }
           }
 
       - name: Paket zusammenstellen
