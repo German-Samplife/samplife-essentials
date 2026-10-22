@@ -88,14 +88,14 @@ def samp_exe_bauen(ordner):
 
 
 def gta_exe_bauen(ordner):
-    """Ersatz fuer gta_sa.exe (32 Bit wie das Spiel): schreibt seine Parameter in gta-gestartet.txt und wartet bis zu
+    """Ersatz fuer gta_sa.exe (32 Bit wie das Spiel): schreibt seine Parameter, getrennt durch |, in gta-gestartet.txt und wartet bis zu
     zehn Sekunden darauf, dass eine samp.dll in den Prozess geladen wird; deren Pfad steht dann in gta-geladen.txt."""
     quelle = os.path.join(ordner, 'gta.cs')
     with open(quelle, 'w', encoding='utf-8') as f:
         f.write('using System; using System.Diagnostics; using System.IO; using System.Threading;\n'
                 'class Gta { static void Main(string[] a) {\n'
                 '  var hier = AppDomain.CurrentDomain.BaseDirectory;\n'
-                '  File.WriteAllText(Path.Combine(hier, "gta-gestartet.txt"), string.Join(" ", a));\n'
+                '  File.WriteAllText(Path.Combine(hier, "gta-gestartet.txt"), string.Join("|", a));\n'
                 '  for (var i = 0; i < 100; i++) {\n'
                 '    foreach (ProcessModule m in Process.GetCurrentProcess().Modules)\n'
                 '      if (m.ModuleName.Equals("samp.dll", StringComparison.OrdinalIgnoreCase)) {\n'
@@ -526,7 +526,7 @@ def main():
         gta = nur_gta(os.path.join(arbeit, 'laden1'))
         pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', appdaten) == 0, 'Rueckgabe 0')
         parameter = warten_auf(os.path.join(gta, 'gta-gestartet.txt'))
-        pruefe(parameter == '-c -n Max_Mustermann -h 127.0.0.1 -p 7777', 'gta_sa.exe mit den Parametern von SA-MP gestartet')
+        pruefe(parameter == '-c|-n|Max_Mustermann|-h|127.0.0.1|-p|7777', 'gta_sa.exe mit den Parametern von SA-MP gestartet')
         geladen = warten_auf(os.path.join(gta, 'gta-geladen.txt'))
         pruefe(gleiche_datei(geladen, openmp_dll), 'samp.dll des open.mp-Launchers geladen')
         pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll im GTA-Verzeichnis abgelegt')
@@ -535,8 +535,8 @@ def main():
         os.remove(os.path.join(gta, 'gta-gestartet.txt'))
         os.remove(os.path.join(gta, 'gta-geladen.txt'))
         pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', appdaten, '--passwort', 'geheim wort') == 0, 'Rueckgabe 0')
-        pruefe(warten_auf(os.path.join(gta, 'gta-gestartet.txt')) == '-c -n Max_Mustermann -h 127.0.0.1 -p 7777 -z "geheim wort"',
-               'Passwort mit -z an gta_sa.exe')
+        pruefe(warten_auf(os.path.join(gta, 'gta-gestartet.txt')) == '-c|-n|Max_Mustermann|-h|127.0.0.1|-p|7777|-z|geheim wort',
+               'Passwort mit -z an gta_sa.exe, als ein Parameter')
         gta = nur_gta(os.path.join(arbeit, 'laden-exe'))
         shutil.copy(samp_exe, os.path.join(gta, 'samp.exe'))
         open(os.path.join(gta, 'samp.dll'), 'wb').write(dll_daten)
