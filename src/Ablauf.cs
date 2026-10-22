@@ -39,6 +39,7 @@ namespace SamplifeEssentials
         public string SampVersion = "";
         public string Name = "";
         public string Passwort = "";       // Serverpasswort, nur fuer diesen Start, wird nirgends gespeichert
+        public string Kontopasswort = "";  // Passwort des Accounts: die Website meldet an, der Login im Spiel entfaellt
         public Manifest Manifest;
         public string ManifestJson = "";
         public bool AusSicherung;          // Liste kam aus der Sicherung, Nachladen ist nicht moeglich
@@ -151,8 +152,11 @@ namespace SamplifeEssentials
                     Spielstart.GtaEintragen(Gta, Testmodus);
                     if (Manifest.Anmeldung != "")
                     {
-                        Schritt("Melde " + Name + " beim Server an");
-                        var fehler = Spielstart.Anmelden(Manifest.Anmeldung, Name, Manifest.Stand, Testmodus);
+                        Schritt("Melde " + Name + " beim Server an" + (Kontopasswort != "" ? ", mit deinem Passwort" : ""));
+                        bool passwortFalsch;
+                        var fehler = Spielstart.Anmelden(Manifest.Anmeldung, Name, Manifest.Stand, Kontopasswort, Testmodus, out passwortFalsch);
+                        // Falsches Passwort: nicht starten, sondern Gelegenheit zum Korrigieren geben
+                        if (passwortFalsch) return Fehlschlag(ergebnis, fehler, 8);
                         if (fehler != "")
                         {
                             // Das Spiel startet trotzdem; ohne Anmeldung erklaert der Server selbst, was fehlt
@@ -169,7 +173,8 @@ namespace SamplifeEssentials
                     if (plan.Art == "dll")
                     {
                         Schritt("Starte GTA San Andreas mit SA-MP " + plan.Version + (plan.VonOpenMp ? " aus dem open.mp-Launcher" : "")
-                            + " und verbinde mit " + Manifest.ServerAdresse + ":" + Manifest.ServerPort);
+                            + " und verbinde mit " + Manifest.ServerAdresse + ":" + Manifest.ServerPort
+                            + (Passwort != "" ? ", mit Serverpasswort" : ""));
                         try { SampStart.Starten(Gta, Manifest.ServerAdresse, Manifest.ServerPort, Name, plan.Dll, Passwort); }
                         catch (Exception fehler)
                         {

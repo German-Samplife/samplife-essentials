@@ -25,7 +25,7 @@ Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases bau
    3. Er meldet den Spieler beim Server an und startet `samp.exe`, das direkt mit dem Server verbindet.
    4. Danach schließt er sich.
 6. **„Gründlich prüfen"** rechnet die Prüfsumme jeder Datei nach und lädt neu, was nicht stimmt.
-7. **Serverpasswort:** Verlangt der Server eins (der Launcher fragt ihn beim Start wie die Serverliste von SA-MP), erscheint unter dem Namen das Feld „Serverpasswort“. Es wird nicht gespeichert; der Launcher gibt es mit `-z` an `gta_sa.exe` weiter und startet in dem Fall immer über das Laden der `samp.dll`.
+7. **Passwort und Serverpasswort:** Neben dem Namen steht freiwillig das Passwort des Accounts. Der Launcher schickt es mit der Anmeldung an die Website; stimmt es, entfällt der Login im Spiel, stimmt es nicht, startet er nicht. Das Kästchen „Serverpasswort“ klappt ein Feld dafür auf; verlangt der Server eins (Abfrage wie die Serverliste von SA-MP), ist es schon angehakt. Der Launcher gibt das Serverpasswort mit `-z` an `gta_sa.exe` weiter und startet dann immer über das Laden der `samp.dll`. Beide Passwörter werden nicht gespeichert und nicht protokolliert.
 8. **„Verbinden" auf der Website:** Der Launcher trägt bei jedem Start die Adresse `samplife://` für den Windows-Benutzer ein (ohne Administratorrechte). Ein Link auf `samplife://verbinden` öffnet ihn; ist Verzeichnis und Name schon bekannt, prüft er und verbindet ohne weiteren Klick. Andere Adressen öffnen nur das Fenster.
 9. Downloads und geschriebene Dateien stehen auch in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
 
@@ -171,6 +171,7 @@ Aufrufparameter für Tests:
 | `--spielen` | mit `--still`: danach anmelden und `samp.exe` starten |
 | `--name <Name>` | Spielername für `--spielen` |
 | `--passwort <Passwort>` | Serverpasswort für `--spielen`; startet dann immer über `gta_sa.exe … -z` |
+| `--kontopasswort <Passwort>` | Passwort des Accounts für `--spielen`; geht mit der Anmeldung an die Website (Rückgabe 8, wenn es falsch ist) |
 | `--optional <id>` | optionale Komponente wählen (mehrfach möglich) |
 | `--gruendlich` | jede Datei per SHA-256 prüfen statt über Größe und Änderungszeit |
 | `--link <Adresse>` | so ruft Windows den Launcher über `samplife://` auf; nur `samplife://verbinden` startet direkt |

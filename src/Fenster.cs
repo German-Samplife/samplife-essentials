@@ -154,7 +154,7 @@ namespace SamplifeEssentials
         readonly Einstellungen einstellungen;
         readonly TextBox pfad, name;
         readonly TextBlock pfadSymbol, pfadStatus, listeStatus, prozent, fusszeile, pfadTitel, sucheText, titel, untertitel,
-            hinweisText, nameStatus, neuStatus, listeTitel;
+            hinweisText, nameStatus, neuStatus;
         readonly Button knopfSpielen, knopfAbbrechen, knopfProtokoll, knopfErneut, knopfDurchsuchen, knopfSuchen, knopfAnderer, knopfGruendlich;
         readonly FrameworkElement bereichAuswahl, bereichProtokoll, listeLaedt, listeRollen, bereichSuche, bereichPfad, hinweis;
         readonly ItemsControl fundListe;
@@ -166,8 +166,12 @@ namespace SamplifeEssentials
         readonly ScrollViewer protokollRollen;
         readonly Border balken;
         readonly Image titelbild;
-        readonly PasswordBox passwort;
-        readonly FrameworkElement bereichPasswort;
+        readonly PasswordBox passwort, kontopasswort;
+        readonly CheckBox serverpasswortHaken;
+        readonly FrameworkElement bereichPasswort, protokollFenster;
+        readonly Button knopfDateien;
+        // Die letzten drei Zeilen von „Was gerade passiert“; alles steht im Fenster hinter „Mehr anzeigen“
+        readonly ObservableCollection<ProtokollZeile> kurzZeilen = new ObservableCollection<ProtokollZeile>();
         bool titelbildGezeigt;
         bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
@@ -214,7 +218,6 @@ namespace SamplifeEssentials
             pfadSymbol = Finde<TextBlock>("PfadSymbol");
             pfadStatus = Finde<TextBlock>("PfadStatus");
             listeStatus = Finde<TextBlock>("ListeStatus");
-            listeTitel = Finde<TextBlock>("ListeTitel");
             prozent = Finde<TextBlock>("Prozent");
             fusszeile = Finde<TextBlock>("Fusszeile");
             titel = Finde<TextBlock>("Titel");
@@ -237,7 +240,26 @@ namespace SamplifeEssentials
             balken = Finde<Border>("Balken");
             titelbild = Finde<Image>("Titelbild");
             passwort = Finde<PasswordBox>("Passwort");
+            kontopasswort = Finde<PasswordBox>("Kontopasswort");
+            serverpasswortHaken = Finde<CheckBox>("ServerpasswortHaken");
             bereichPasswort = Finde<FrameworkElement>("BereichPasswort");
+            protokollFenster = Finde<FrameworkElement>("ProtokollFenster");
+            knopfDateien = Finde<Button>("KnopfDateien");
+            Finde<ItemsControl>("ProtokollKurz").ItemsSource = kurzZeilen;
+            serverpasswortHaken.Checked += delegate { bereichPasswort.Visibility = Visibility.Visible; passwort.Focus(); };
+            serverpasswortHaken.Unchecked += delegate { bereichPasswort.Visibility = Visibility.Collapsed; };
+            knopfDateien.Click += delegate { DateienUmschalten(); };
+            Finde<Button>("KnopfMehr").Click += delegate { protokollFenster.Visibility = Visibility.Visible; protokollRollen.ScrollToEnd(); };
+            Finde<Button>("KnopfFensterZu").Click += delegate { protokollFenster.Visibility = Visibility.Collapsed; };
+            protokollFenster.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
+            {
+                // Klick neben das Fenster schliesst es, wie auf der Website
+                if (e.OriginalSource == protokollFenster) protokollFenster.Visibility = Visibility.Collapsed;
+            };
+            Wurzel.KeyDown += delegate(object s, KeyEventArgs e)
+            {
+                if (e.Key == Key.Escape && protokollFenster.Visibility == Visibility.Visible) protokollFenster.Visibility = Visibility.Collapsed;
+            };
             pfadTitel = Finde<TextBlock>("PfadTitel");
             sucheText = Finde<TextBlock>("SucheText");
             knopfSuchen = Finde<Button>("KnopfSuchen");
@@ -486,12 +508,12 @@ namespace SamplifeEssentials
             var fehler = Spielstart.NamePruefen(name.Text.Trim());
             if (fehler == "")
             {
-                nameStatus.Text = "So heißt du auf dem Server.";
+                nameStatus.Text = "Passwort freiwillig: Damit entfällt der Login im Spiel.";
                 nameStatus.Foreground = Farben.Leise;
                 return true;
             }
             // Beim Tippen nicht gleich meckern, erst beim Klick auf „Spielen“
-            nameStatus.Text = laut || name.Text.Length > 0 ? fehler : "So, wie du auf dem Server heißt, z. B. Max_Mustermann";
+            nameStatus.Text = laut || name.Text.Length > 0 ? fehler : "Dein Name so, wie du auf dem Server heißt, z. B. Max_Mustermann";
             nameStatus.Foreground = laut ? Farben.Fehler : Farben.Leise;
             return false;
         }
@@ -561,6 +583,8 @@ namespace SamplifeEssentials
             if (manifest != null) DirektVersuchen();
             if (manifest == null)
             {
+                // Den Fehler zeigen, auch wenn die Liste sonst hinter „Was wird geladen?“ versteckt ist
+                if (bereichAuswahl.Visibility != Visibility.Visible) DateienUmschalten();
                 listeStatus.Foreground = Farben.Fehler;
                 listeStatus.Text = "Die Liste der Dateien konnte nicht geladen werden.\n" + fehlerText
                     + (verzeichnisGueltig ? "" : "\nBestätige oben dein GTA-Verzeichnis, dann versucht der Launcher es mit dem zuletzt geprüften Stand.");
@@ -758,14 +782,22 @@ namespace SamplifeEssentials
             catch (Exception) { }
         }
 
-        /// <summary>Zeigt das Feld fuer das Serverpasswort nur, wenn der Server eins verlangt.</summary>
+        /// <summary>„Was wird geladen?“: die Liste der Dateien ein- und ausblenden.</summary>
+        void DateienUmschalten()
+        {
+            var zeigen = bereichAuswahl.Visibility != Visibility.Visible;
+            bereichAuswahl.Visibility = zeigen ? Visibility.Visible : Visibility.Collapsed;
+            knopfDateien.Content = zeigen ? "Liste ausblenden" : "Was wird geladen?";
+        }
+
+        /// <summary>Verlangt der Server ein Passwort, ist das Kaestchen „Serverpasswort“ schon angehakt.</summary>
         async void PasswortAbfragen(string adresse, int port)
         {
             if (optionen.Bildschirmfoto != "" || adresse == "" || port <= 0) return;
             bool? verlangt;
             try { verlangt = await Task.Run(() => SampStart.VerlangtPasswort(adresse, port)); }
             catch (Exception) { return; }
-            bereichPasswort.Visibility = verlangt == true ? Visibility.Visible : Visibility.Collapsed;
+            if (verlangt == true && modus == Modus.Spielen) serverpasswortHaken.IsChecked = true;
         }
 
         /// <summary>Ueber samplife://verbinden gestartet: Ist alles bereit, startet der Launcher ohne Klick.</summary>
@@ -855,8 +887,8 @@ namespace SamplifeEssentials
             ++pruefRunde;
             abbruch = new CancellationTokenSource();
             zeilen.Clear();
+            kurzZeilen.Clear();
             FortschrittZeigen(0);
-            bereichAuswahl.Visibility = Visibility.Collapsed;
             bereichProtokoll.Visibility = Visibility.Visible;
             Sperren(true);
             knopfSpielen.IsEnabled = false;
@@ -871,7 +903,8 @@ namespace SamplifeEssentials
             var ablauf = new Ablauf
             {
                 Gta = Gta, SampVersion = sampVersion, Name = name.Text.Trim(), Manifest = manifest, ManifestJson = manifestJson,
-                Passwort = bereichPasswort.Visibility == Visibility.Visible ? passwort.Password : "",
+                Passwort = serverpasswortHaken.IsChecked == true ? passwort.Password : "",
+                Kontopasswort = kontopasswort.Password,
                 AusSicherung = ausSicherung, Optional = einstellungen.Optional, Gruendlich = nurPruefen, MitStart = !nurPruefen,
                 Testmodus = optionen.Testmodus
             };
@@ -925,7 +958,8 @@ namespace SamplifeEssentials
             }
             modus = Modus.Erneut;
             knopfSpielen.Content = "Zurück";
-            titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : "Das hat nicht geklappt";
+            if (ergebnis.Code == 8) kontopasswort.Clear();
+            titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : ergebnis.Code == 8 ? "Passwort stimmt nicht" : "Das hat nicht geklappt";
             untertitel.Text = ergebnis.Abgebrochen ? "Bereits geladene Dateien bleiben im GTA-Verzeichnis." : ergebnis.Fehler;
         }
 
@@ -933,7 +967,7 @@ namespace SamplifeEssentials
         {
             modus = Modus.Spielen;
             bereichProtokoll.Visibility = Visibility.Collapsed;
-            bereichAuswahl.Visibility = Visibility.Visible;
+            protokollFenster.Visibility = Visibility.Collapsed;
             knopfProtokoll.Visibility = Visibility.Collapsed;
             Sperren(false);
             titel.Text = "Bereit machen";
@@ -947,6 +981,8 @@ namespace SamplifeEssentials
             pfad.IsEnabled = !gesperrt;
             name.IsEnabled = !gesperrt;
             passwort.IsEnabled = !gesperrt;
+            kontopasswort.IsEnabled = !gesperrt;
+            serverpasswortHaken.IsEnabled = !gesperrt;
             knopfDurchsuchen.IsEnabled = !gesperrt;
             knopfSuchen.IsEnabled = !gesperrt;
             knopfGruendlich.IsEnabled = !gesperrt;
@@ -959,7 +995,7 @@ namespace SamplifeEssentials
         {
             modus = Modus.Laeuft;
             zeilen.Clear();
-            bereichAuswahl.Visibility = Visibility.Collapsed;
+            kurzZeilen.Clear();
             bereichProtokoll.Visibility = Visibility.Visible;
             Sperren(true);
             knopfSpielen.IsEnabled = false;
@@ -1009,6 +1045,9 @@ namespace SamplifeEssentials
                 zeile.Uebernehmen(m);
                 zeilen.Add(zeile);
                 protokollRollen.ScrollToEnd();
+                // Auf der Seite nur die letzten drei Zeilen
+                kurzZeilen.Add(zeile);
+                while (kurzZeilen.Count > 3) kurzZeilen.RemoveAt(0);
             }
             else zeile.Uebernehmen(m);
         }
@@ -1080,8 +1119,9 @@ namespace SamplifeEssentials
             knopfSpielen.IsEnabled = true;
             knopfGruendlich.IsEnabled = true;
 
-            if (zustand == "passwort") bereichPasswort.Visibility = Visibility.Visible;
-            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort")
+            if (zustand == "passwort") serverpasswortHaken.IsChecked = true;
+            if (zustand == "dateien") DateienUmschalten();
+            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 titel.Text = "Bereit zum Spielen";
@@ -1092,7 +1132,6 @@ namespace SamplifeEssentials
                 return;
             }
 
-            bereichAuswahl.Visibility = Visibility.Collapsed;
             bereichProtokoll.Visibility = Visibility.Visible;
             knopfSpielen.Content = "Einen Moment …";
             knopfSpielen.IsEnabled = false;
@@ -1121,6 +1160,7 @@ namespace SamplifeEssentials
             {
                 MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Download, Text = "Lade Browser-Oberfläche (CEF) herunter", Url = "https://github.com/German-Samplife/samplife-essentials/releases/download/cef-f14fe4f-sl4/samp-cef-client-cef-f14fe4f-sl4.zip", Erledigt = 63963136, Gesamt = 152101349 });
                 FortschrittZeigen(0.42);
+                if (zustand == "mehr") protokollFenster.Visibility = Visibility.Visible;
             }
         }
 

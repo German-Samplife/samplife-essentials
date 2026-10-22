@@ -49,7 +49,7 @@ jobs:
           New-Item -ItemType Directory -Force bilder | Out-Null
           # Kopfbild wie beim Spieler von der Website (liegt nicht im Repository); ohne Netz ohne Bild
           try { Invoke-WebRequest -Uri "https://www.german-samplife.de/hero/los-santos.jpg" -OutFile "$env:RUNNER_TEMP\titelbild.jpg" } catch { }
-          foreach ($zustand in "start", "gefunden", "bereit", "passwort", "laeuft", "fertig", "offline") {
+          foreach ($zustand in "start", "gefunden", "bereit", "passwort", "dateien", "laeuft", "mehr", "fertig", "offline") {
             Start-Process -Wait -FilePath "ausgabe\Samplife Launcher.exe" -ArgumentList "--bildschirmfoto", "bilder\$zustand.png", "--zustand", $zustand, "--titelbild", "`"$env:RUNNER_TEMP\titelbild.jpg`""
           }
           Get-ChildItem bilder

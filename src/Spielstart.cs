@@ -122,18 +122,19 @@ namespace SamplifeEssentials
         /// Meldet den Start beim Server an (Name, Stand, Launcher-Version). Der Gamemode laesst nur Spieler herein, die sich so
         /// angemeldet haben. Rueckgabe leer bei Erfolg, sonst der Grund.
         /// </summary>
-        public static string Anmelden(string url, string name, long stand, bool testmodus)
+        public static string Anmelden(string url, string name, long stand, string kontopasswort, bool testmodus, out bool passwortFalsch)
         {
+            passwortFalsch = false;
             Uri adresse;
             if (!Uri.TryCreate(url, UriKind.Absolute, out adresse)) return "Ungültige Adresse für die Anmeldung: " + url;
             if (adresse.Scheme != Uri.UriSchemeHttps && !(testmodus && adresse.Scheme == Uri.UriSchemeHttp && adresse.IsLoopback))
                 return "Die Anmeldung muss über eine verschlüsselte Verbindung (https) laufen.";
 
             var serialisierer = new JavaScriptSerializer();
-            var daten = Encoding.UTF8.GetBytes(serialisierer.Serialize(new Dictionary<string, object>
-            {
-                { "name", name }, { "stand", stand }, { "launcher", Programm.Version }
-            }));
+            var felder = new Dictionary<string, object> { { "name", name }, { "stand", stand }, { "launcher", Programm.Version } };
+            // Passwort des Accounts nur, wenn der Spieler es eingetragen hat: Die Website prueft es, und der Login im Spiel entfaellt
+            if (!string.IsNullOrEmpty(kontopasswort)) felder["passwort"] = kontopasswort;
+            var daten = Encoding.UTF8.GetBytes(serialisierer.Serialize(felder));
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var anfrage = (HttpWebRequest)WebRequest.Create(adresse);
             anfrage.Method = "POST";
@@ -156,7 +157,11 @@ namespace SamplifeEssentials
             {
                 var antwort = fehler.Response as HttpWebResponse;
                 if (antwort == null) return "Der Server ist für die Anmeldung nicht erreichbar: " + fehler.Message;
-                using (antwort) return Fehlertext(Auswerten(Lesen(antwort)), "Die Anmeldung wurde abgelehnt (HTTP " + (int)antwort.StatusCode + ").");
+                using (antwort)
+                {
+                    passwortFalsch = !string.IsNullOrEmpty(kontopasswort) && antwort.StatusCode == HttpStatusCode.Unauthorized;
+                    return Fehlertext(Auswerten(Lesen(antwort)), "Die Anmeldung wurde abgelehnt (HTTP " + (int)antwort.StatusCode + ").");
+                }
             }
             catch (Exception fehler)
             {

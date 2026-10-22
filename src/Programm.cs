@@ -24,6 +24,7 @@ namespace SamplifeEssentials
         public bool KeinNeustart;   // mit --still: nach einer Selbstaktualisierung nicht neu starten (Rueckgabe 10)
         public string Name = "";
         public string Passwort = "";    // Serverpasswort fuer --spielen
+        public string Kontopasswort = "";   // Passwort des Accounts fuer --spielen
         public List<string> Optional = new List<string>();
         public string NachAktualisierung = "";  // Version, auf die gerade aktualisiert wurde; verhindert eine zweite Runde
         public bool Direkt;         // ueber samplife://verbinden gestartet: pruefen und ohne Klick verbinden
@@ -80,6 +81,7 @@ namespace SamplifeEssentials
                     case "--kein-neustart": optionen.KeinNeustart = true; break;
                     case "--name": optionen.Name = naechstes; i++; break;
                     case "--passwort": optionen.Passwort = naechstes; i++; break;
+                    case "--kontopasswort": optionen.Kontopasswort = naechstes; i++; break;
                     case "--optional": optionen.Optional.Add(naechstes); i++; break;
                     case "--nach-aktualisierung": optionen.NachAktualisierung = naechstes; i++; break;
                     case "--link": optionen.Direkt = Spielstart.IstVerbindenLink(naechstes); i++; break;
@@ -186,7 +188,7 @@ namespace SamplifeEssentials
         /// Der Ablauf von „Spielen“ ohne Fenster, fuer automatische Tests. Rueckgabe:
         /// 0 Erfolg, 1 Laden fehlgeschlagen, 2 kein GTA-Verzeichnis, 3 weder Liste noch brauchbare Sicherung,
         /// 4 SA-MP fehlt oder falsche Version, 5 Name ungueltig, 6 samp.exe startet nicht, 7 Selbstaktualisierung
-        /// fehlgeschlagen, 10 selbst aktualisiert (mit --kein-neustart).
+        /// fehlgeschlagen, 8 Passwort des Accounts falsch, 10 selbst aktualisiert (mit --kein-neustart).
         /// </summary>
         static int StillAusfuehren(Optionen optionen)
         {
@@ -230,6 +232,7 @@ namespace SamplifeEssentials
                 {
                     Gta = gta, SampVersion = sampVersion, Name = optionen.Name != "" ? optionen.Name : Spielstart.GespeicherterName(optionen.Testmodus),
                     Passwort = optionen.Passwort,
+                    Kontopasswort = optionen.Kontopasswort,
                     Manifest = manifest, ManifestJson = json, AusSicherung = ausSicherung, Optional = optionen.Optional,
                     Gruendlich = optionen.Gruendlich, MitStart = optionen.Spielen, Testmodus = optionen.Testmodus
                 };

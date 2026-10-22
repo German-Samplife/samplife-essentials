@@ -60,9 +60,12 @@ class Stiller(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         laenge = int(self.headers.get('Content-Length', 0))
-        Stiller.anmeldungen.append(json.loads(self.rfile.read(laenge).decode('utf-8')))
+        daten = json.loads(self.rfile.read(laenge).decode('utf-8'))
+        Stiller.anmeldungen.append(daten)
         if self.path.endswith('abgelehnt'):
             code, antwort = 403, {'ok': False, 'fehler': 'Testserver lehnt ab'}
+        elif 'passwort' in daten and daten['passwort'] != 'richtig':
+            code, antwort = 401, {'ok': False, 'fehler': 'Name oder Passwort stimmt nicht.'}
         else:
             code, antwort = 200, {'ok': True, 'gueltig_bis': '2026-10-22T12:00:00Z'}
         daten = json.dumps(antwort).encode('utf-8')
@@ -418,6 +421,15 @@ def main():
         pruefe(spielen(gta, url4) == 0, 'Rueckgabe 0')
         pruefe(gestartet(gta) is not None, 'samp.exe gestartet')
         pruefe(len(Stiller.anmeldungen) > 0, 'Anmeldung versucht')
+
+        print('21b. Passwort des Accounts')
+        gta = spiel_anlegen(os.path.join(arbeit, 'konto'))
+        pruefe(spielen(gta, url, '--kontopasswort', 'falsch') == 8, 'falsches Passwort: Rueckgabe 8')
+        pruefe(gestartet(gta, 2) is None, 'kein Start')
+        pruefe(Stiller.anmeldungen[-1].get('passwort') == 'falsch', 'Passwort an die Anmeldung gegeben')
+        pruefe(spielen(gta, url, '--kontopasswort', 'richtig') == 0, 'richtiges Passwort: Rueckgabe 0')
+        pruefe(gestartet(gta) is not None, 'samp.exe gestartet')
+        pruefe(spielen(gta, url) == 0 and 'passwort' not in Stiller.anmeldungen[-1], 'ohne Passwort: Feld fehlt in der Anmeldung')
 
         print('22. Selbstaktualisierung')
         kopie = os.path.join(arbeit, 'kopie')
