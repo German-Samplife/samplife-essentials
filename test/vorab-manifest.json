@@ -1,7 +1,7 @@
 {
   "version": 1,
   "hinweis": "Vorab-Test des Samplife Launchers mit der Liste aus dem Repository, nicht von der Website.",
-  "stand": 1,
+  "stand": 2,
   "server": {
     "adresse": "german-samplife.de",
     "port": 7777,
@@ -96,6 +96,22 @@
           "typ": "datei",
           "ziel": "cef/plugins",
           "dateiname": "samplife-kleidung.dll"
+        }
+      ]
+    },
+    {
+      "id": "ladebild",
+      "name": "Ladebild",
+      "beschreibung": "Zeigt beim Start von GTA unser eigenes Ladebild statt des Bildes von SA-MP. Liegt als samplife-ladebild.asi und samplife-ladebild.jpg neben gta_sa.exe.",
+      "quelle": "https://github.com/German-Samplife/samplife-essentials/tree/main/ladebild",
+      "lizenz": "nicht festgelegt",
+      "pflicht": true,
+      "pakete": [
+        {
+          "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/ladebild-0.1.0/samplife-ladebild.zip",
+          "sha256": "e1663c7dcceeb3988ec4e3782e10a1c6ece4f54a415dda46f8d078e4e60e6deb",
+          "groesse": 593947,
+          "typ": "zip"
         }
       ]
     }
