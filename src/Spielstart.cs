@@ -159,7 +159,9 @@ namespace SamplifeEssentials
                 if (antwort == null) return "Der Server ist für die Anmeldung nicht erreichbar: " + fehler.Message;
                 using (antwort)
                 {
-                    passwortFalsch = !string.IsNullOrEmpty(kontopasswort) && antwort.StatusCode == HttpStatusCode.Unauthorized;
+                    // Mit Passwort des Accounts: falsch (401), gesperrt (403) oder zu viele Versuche (429) halten den Start an
+                    var code = (int)antwort.StatusCode;
+                    passwortFalsch = !string.IsNullOrEmpty(kontopasswort) && (code == 401 || code == 403 || code == 429);
                     return Fehlertext(Auswerten(Lesen(antwort)), "Die Anmeldung wurde abgelehnt (HTTP " + (int)antwort.StatusCode + ").");
                 }
             }

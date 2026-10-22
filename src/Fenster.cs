@@ -959,7 +959,7 @@ namespace SamplifeEssentials
             modus = Modus.Erneut;
             knopfSpielen.Content = "Zurück";
             if (ergebnis.Code == 8) kontopasswort.Clear();
-            titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : ergebnis.Code == 8 ? "Passwort stimmt nicht" : "Das hat nicht geklappt";
+            titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : ergebnis.Code == 8 ? "Anmeldung nicht möglich" : "Das hat nicht geklappt";
             untertitel.Text = ergebnis.Abgebrochen ? "Bereits geladene Dateien bleiben im GTA-Verzeichnis." : ergebnis.Fehler;
         }
 
