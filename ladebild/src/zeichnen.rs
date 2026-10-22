@@ -275,7 +275,7 @@ unsafe fn zeichne(geraet: &IDirect3DDevice9, textur: *mut IDirect3DTexture9, dec
         geraet.SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
         geraet.SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
         geraet.SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-        geraet.DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, ecken.as_ptr() as *const c_void, std::mem::size_of::<Ecke>() as u32);
+        geraet.DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, ecken.as_ptr() as *const winapi::ctypes::c_void, std::mem::size_of::<Ecke>() as u32);
         geraet.EndScene();
     }
 
