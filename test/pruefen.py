@@ -107,6 +107,17 @@ def gta_exe_bauen(ordner):
     return ziel
 
 
+def gleiche_datei(a, b):
+    """Windows nennt Pfade mal kurz (RUNNER~1), mal lang; deshalb ueber samefile vergleichen."""
+    try:
+        gleich = a is not None and os.path.samefile(a.strip(), b)
+    except OSError:
+        gleich = False
+    if not gleich:
+        print('          erwartet ' + b + ', erhalten ' + repr(a))
+    return gleich
+
+
 def warten_auf(datei, sekunden=15):
     ende = time.time() + sekunden
     while time.time() < ende:
@@ -517,7 +528,7 @@ def main():
         parameter = warten_auf(os.path.join(gta, 'gta-gestartet.txt'))
         pruefe(parameter == '-c -n Max_Mustermann -h 127.0.0.1 -p 7777', 'gta_sa.exe mit den Parametern von SA-MP gestartet')
         geladen = warten_auf(os.path.join(gta, 'gta-geladen.txt'))
-        pruefe(geladen is not None and os.path.normcase(geladen) == os.path.normcase(openmp_dll), 'samp.dll des open.mp-Launchers geladen')
+        pruefe(gleiche_datei(geladen, openmp_dll), 'samp.dll des open.mp-Launchers geladen')
         pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll im GTA-Verzeichnis abgelegt')
 
         print('27. samp_client: samp.dll in den Launcher-Ordner, vorhandene Dateien bleiben')
@@ -534,7 +545,7 @@ def main():
         pruefe(lesen(gta, 'SAMP', 'SAMP.img') == b'img', 'fehlende Dateien ins GTA-Verzeichnis gelegt')
         pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll im GTA-Verzeichnis')
         geladen = warten_auf(os.path.join(gta, 'gta-geladen.txt'))
-        pruefe(geladen is not None and os.path.normcase(geladen) == os.path.normcase(eigene_dll), 'eigene samp.dll geladen')
+        pruefe(gleiche_datei(geladen, eigene_dll), 'eigene samp.dll geladen')
         vorher = len([a for a in Stiller.abrufe if a.endswith('samp-r1.dll')])
         os.remove(os.path.join(gta, 'gta-geladen.txt'))
         pruefe(spielen(gta, url6, '--appdaten', appdaten) == 0, 'zweiter Start: Rueckgabe 0')
