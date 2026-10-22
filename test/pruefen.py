@@ -411,6 +411,46 @@ def main():
             befehl, protokoll = '', False
         pruefe(protokoll, 'als URL-Protokoll eingetragen (Test-Schema)')
         pruefe(os.path.normcase(EXE) in os.path.normcase(befehl) and '--link "%1"' in befehl, 'Befehl zeigt auf die .exe mit --link')
+
+        print('24. SA-MP mitliefern, wenn es fehlt')
+        samp_paket = zip_bauen({'samp.exe': lesen(samp_exe), 'samp.dll': b'samp-0.3.7-R1', 'samp.saa': b'saa',
+                                'SAMP/SAMP.img': b'img'})
+        boeses_samp = zip_bauen({'samp.dll': b'fremd'})
+        for name, daten in (('samp-client.zip', samp_paket), ('samp-boese.zip', boeses_samp)):
+            open(os.path.join(web, name), 'wb').write(daten)
+        url5 = launcher_manifest('mit-samp.json', spiel_liste, samp_client={
+            'id': 'samp', 'name': 'SA-MP 0.3.7-R1', 'pakete': [paket('samp-client.zip', samp_paket)]})
+
+        def ohne_samp(ordner):
+            os.makedirs(ordner)
+            open(os.path.join(ordner, 'gta_sa.exe'), 'wb').write(b'spiel')
+            return ordner
+
+        gta = ohne_samp(os.path.join(arbeit, 'ohne-samp'))
+        pruefe(spielen(gta, url5) == 0, 'Rueckgabe 0')
+        pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R1' and os.path.exists(os.path.join(gta, 'SAMP', 'SAMP.img')), 'SA-MP eingerichtet')
+        pruefe(gestartet(gta) is not None, 'samp.exe aus dem Paket gestartet')
+        stand = json.loads(lesen(gta, 'samplife-launcher', 'stand.json').decode('utf-8'))
+        pruefe('samp' not in [k['id'] for k in stand['komponenten']], 'SA-MP steht nicht im Stand (wird nie wieder ersetzt)')
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\German Samplife\Launcher-Test\SAMP') as schluessel:
+                gta_eintrag = winreg.QueryValueEx(schluessel, 'gta_sa_exe')[0]
+        except OSError:
+            gta_eintrag = ''
+        pruefe(os.path.normcase(gta_eintrag) == os.path.normcase(os.path.join(gta, 'gta_sa.exe')), 'gta_sa_exe fuer SA-MP eingetragen')
+        vorher = len([a for a in Stiller.abrufe if a.endswith('samp-client.zip')])
+        pruefe(spielen(gta, url5) == 0, 'zweiter Start: Rueckgabe 0')
+        pruefe(len([a for a in Stiller.abrufe if a.endswith('samp-client.zip')]) == vorher, 'SA-MP nicht noch einmal geladen')
+
+        print('25. Vorhandenes SA-MP wird nie ersetzt')
+        open(os.path.join(gta, 'samp.dll'), 'wb').write(b'samp-0.3.7-R3')
+        pruefe(spielen(gta, url5) == 4, 'andere Version: Rueckgabe 4')
+        pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R3', 'samp.dll unveraendert')
+        gta = ohne_samp(os.path.join(arbeit, 'ohne-samp2'))
+        boese_liste = launcher_manifest('samp-boese.json', [{'id': 'b', 'name': 'Boese', 'pakete': [paket('samp-boese.zip', boeses_samp)]}])
+        pruefe(starten(gta, boese_liste) == 1, 'andere Komponente darf samp.dll nicht ablegen: Rueckgabe 1')
+        pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll abgelegt')
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

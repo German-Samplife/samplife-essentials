@@ -47,12 +47,17 @@ namespace SamplifeEssentials
             var ergebnis = new AblaufErgebnis();
             try
             {
+                // Ohne samp.exe richtet der Launcher SA-MP selbst ein, wenn die Liste es anbietet. Eine vorhandene
+                // Installation ersetzt er nie, auch nicht eine andere Version.
+                var sampEinrichten = SampEinrichten();
+                if (sampEinrichten && SampVersion == "" && Manifest.SampVersionen.Count == 1) SampVersion = Manifest.SampVersionen[0].Name;
+
                 if (MitStart)
                 {
                     // Vor dem Laden pruefen, was ohnehin den Start verhindern wuerde
                     var name = Spielstart.NamePruefen(Name);
                     if (name != "") return Fehlschlag(ergebnis, name, 5);
-                    var grund = StartVoraussetzung();
+                    var grund = StartVoraussetzung(sampEinrichten);
                     if (grund != "") return Fehlschlag(ergebnis, grund, 4);
                 }
 
@@ -63,6 +68,11 @@ namespace SamplifeEssentials
                 Geprueft(pruefungen);
 
                 var noetig = new List<Komponente>();
+                if (sampEinrichten)
+                {
+                    noetig.Add(Manifest.SampClient);
+                    Schritt("Im GTA-Verzeichnis fehlt SA-MP. Der Launcher richtet " + Manifest.SampClient.Name + " ein.");
+                }
                 var neuerStand = new Stand { ManifestJson = ManifestJson, ManifestStand = Manifest.Stand, Geprueft = DateTime.UtcNow };
                 foreach (var pruefung in pruefungen)
                 {
@@ -92,8 +102,14 @@ namespace SamplifeEssentials
                         ergebnis.Code = 1;
                         return ergebnis;
                     }
-                    neuerStand.Komponenten.AddRange(installation.Staende);
+                    // SA-MP gehoert danach dem Spieler: nicht in den Stand, also nie wieder geprueft oder ersetzt
+                    foreach (var komponenteStand in installation.Staende)
+                    {
+                        if (!sampEinrichten || komponenteStand.Id != Manifest.SampClient.Id) neuerStand.Komponenten.Add(komponenteStand);
+                    }
                     ergebnis.Nachgeladen = noetig.Count;
+                    if (sampEinrichten && MitStart && GtaVerzeichnis.SampVersion(Gta, Manifest) == "")
+                        return Fehlschlag(ergebnis, "SA-MP wurde eingerichtet, die Version passt aber nicht zur Liste des Servers.", 4);
                 }
                 else
                 {
@@ -114,6 +130,7 @@ namespace SamplifeEssentials
                 {
                     abbruch.ThrowIfCancellationRequested();
                     Spielstart.NameSetzen(Name, Testmodus);
+                    Spielstart.GtaEintragen(Gta, Testmodus);
                     if (Manifest.Anmeldung != "")
                     {
                         Schritt("Melde " + Name + " beim Server an");
@@ -147,13 +164,21 @@ namespace SamplifeEssentials
             return ergebnis;
         }
 
+        /// <summary>Fehlt samp.exe und bietet die Liste SA-MP an, richtet der Launcher es selbst ein.</summary>
+        public bool SampEinrichten()
+        {
+            return Manifest.SampClient != null && !File.Exists(Path.Combine(Gta, Spielstart.SampExe))
+                && !File.Exists(Path.Combine(Gta, GtaVerzeichnis.SampDatei));
+        }
+
         /// <summary>Leer, wenn gestartet werden kann; sonst der Grund (Name, SA-MP-Version, samp.exe, Server).</summary>
-        public string StartVoraussetzung()
+        public string StartVoraussetzung(bool sampEinrichten)
         {
             var name = Spielstart.NamePruefen(Name);
             if (name != "") return name;
             if (Manifest.ServerAdresse == "" || Manifest.ServerPort <= 0)
                 return "Die Server-Liste nennt keinen Server. Lade den aktuellen Launcher von der Website.";
+            if (sampEinrichten) return "";
             if (!File.Exists(Path.Combine(Gta, Spielstart.SampExe)))
                 return "Im GTA-Verzeichnis fehlt samp.exe. Installiere SA-MP " + Benoetigt() + " in diesen Ordner.";
             if (SampVersion == "" || GtaVerzeichnis.SampVersion(Gta, Manifest) == "")

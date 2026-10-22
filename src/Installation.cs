@@ -50,7 +50,8 @@ namespace SamplifeEssentials
         public const string ProtokollDatei = "samplife-essentials-protokoll.txt";
         public const string SicherungsOrdner = "samplife-essentials-sicherung";
 
-        // Diese Dateien gehoeren zum Spiel bzw. zu SA-MP und werden nie ersetzt
+        // Diese Dateien gehoeren zum Spiel bzw. zu SA-MP und werden nie ersetzt. SA-MP darf nur das Paket samp_client
+        // ablegen, und nur dort, wo noch keine Datei liegt.
         static readonly string[] Geschuetzt = { "gta_sa.exe", "samp.dll", "samp.exe", "samp.saa" };
 
         readonly string gta;
@@ -299,7 +300,7 @@ namespace SamplifeEssentials
                     var relativ = eintrag.FullName.Replace('\\', '/').Substring(praefix.Length);
                     var zwischen = Path.Combine(temp, Guid.NewGuid().ToString("N") + ".datei");
                     eintrag.ExtractToFile(zwischen, true);
-                    Ablegen(zwischen, Path.Combine(paket.Ziel, relativ.Replace('/', Path.DirectorySeparatorChar)), paketStand);
+                    Ablegen(zwischen, Path.Combine(paket.Ziel, relativ.Replace('/', Path.DirectorySeparatorChar)), paketStand, komponente.IstSampClient);
                 }
             }
         }
@@ -314,7 +315,7 @@ namespace SamplifeEssentials
             }
             if (string.IsNullOrEmpty(name)) throw new InstallationsFehler("Für " + komponente.Name + " fehlt der Dateiname in der Liste.");
             Schritt("Lege " + name + " von " + komponente.Name + " in " + ZielOrdner(paket) + " ab");
-            Ablegen(datei, Path.Combine(paket.Ziel, name), paketStand);
+            Ablegen(datei, Path.Combine(paket.Ziel, name), paketStand, komponente.IstSampClient);
         }
 
         string ZielOrdner(Paket paket)
@@ -326,7 +327,7 @@ namespace SamplifeEssentials
         /// Schreibt eine Datei ins GTA-Verzeichnis. Vorhandene, abweichende Dateien werden vorher gesichert.
         /// Die Datei kommt mit Groesse, Aenderungszeit und Pruefsumme in die Liste des Pakets.
         /// </summary>
-        void Ablegen(string quelle, string relativ, PaketStand paketStand)
+        void Ablegen(string quelle, string relativ, PaketStand paketStand, bool sampErlaubt)
         {
             var ziel = Path.GetFullPath(Path.Combine(gta, relativ));
             // Ein Archiv darf nicht mit "..\" aus dem GTA-Verzeichnis herausschreiben
@@ -335,8 +336,9 @@ namespace SamplifeEssentials
             var anzeige = ziel.Substring(gta.Length + 1);
             foreach (var name in Geschuetzt)
             {
-                if (string.Equals(anzeige, name, StringComparison.OrdinalIgnoreCase))
-                    throw new InstallationsFehler("Ein Paket wollte " + name + " ersetzen. Das lässt der Launcher nicht zu.");
+                if (!string.Equals(anzeige, name, StringComparison.OrdinalIgnoreCase)) continue;
+                var neuesSamp = sampErlaubt && name != "gta_sa.exe" && !File.Exists(ziel);
+                if (!neuesSamp) throw new InstallationsFehler("Ein Paket wollte " + name + " ersetzen. Das lässt der Launcher nicht zu.");
             }
 
             var pruefsumme = GtaVerzeichnis.Sha256(quelle);

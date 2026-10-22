@@ -33,7 +33,7 @@ Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases bau
 - **Downloads nur über https**, auch nach Weiterleitungen.
 - **Jeder Download wird mit SHA-256 geprüft.** Stimmt die Prüfsumme nicht mit der Liste überein, wird nichts davon installiert.
 - **Es schreibt nur ins gewählte GTA-Verzeichnis.** Ein Archiv, das mit `..\` hinausschreiben will, stoppt die Installation.
-- **`gta_sa.exe`, `samp.dll`, `samp.exe` und `samp.saa` werden nie ersetzt.**
+- **`gta_sa.exe`, `samp.dll`, `samp.exe` und `samp.saa` werden nie ersetzt.** Fehlt SA-MP ganz, legt der Launcher es aus dem Paket `samp_client` an; eine vorhandene Installation, auch eine andere Version, bleibt unangetastet.
 - **Vorhandene Dateien werden vor dem Ersetzen gesichert**, nach `samplife-essentials-sicherung\<Datum_Uhrzeit>\`. Dateien, die schon aktuell sind, bleiben unangetastet.
 - **Es löscht nichts.** Fällt eine Komponente aus der Liste oder wählt der Spieler eine optionale ab, bleiben ihre Dateien liegen.
 - **Mods des Spielers fasst es nicht an.** Geprüft werden nur Dateien, die der Launcher selbst aus einem Paket abgelegt hat.
@@ -69,6 +69,7 @@ Stand der echten Liste: SampVoice 3.1 für SA-MP 0.3.7 R1 und R3, direkt von den
 | `stand` | Ab Launcher 2.0: ganze Zahl, bei jeder Änderung an Paketen um 1 erhöhen. Der Launcher meldet sie bei der Anmeldung; der Gamemode verlangt mindestens `LAUNCHER_MINDESTSTAND`. |
 | `server.adresse`, `server.port` | Wohin `samp.exe` verbindet. |
 | `server.anmeldung` | Adresse, bei der sich der Launcher vor dem Start meldet (`POST`, JSON mit `name`, `stand`, `launcher`; Antwort `{"ok": true}` oder `{"fehler": "…"}`). Leer = keine Anmeldung. |
+| `samp_client` | Ab Launcher 2.0: SA-MP selbst, Aufbau wie eine Komponente. Nur für GTA-Verzeichnisse, in denen weder `samp.exe` noch `samp.dll` liegt. Nur dieses Paket darf `samp.exe`, `samp.dll` und `samp.saa` ablegen, und nur dort, wo noch keine liegen. Danach gehört SA-MP dem Spieler: Der Launcher prüft und ersetzt es nie. Eigener Block, weil Installer 1.x jede Komponente installieren und an `samp.exe` scheitern würden. |
 | `bilder[]` | Adressen von Bildern aus dem Spiel für den Kopf des Fensters (JPG oder PNG, auf der Website). Der Launcher zeigt bei jedem Start eins davon und merkt sich geladene Bilder für den Start ohne Netz. Die Bilder liegen nicht in diesem Repository. |
 | `updates` | Adresse der neuesten Updates aus der Community (`{"updates": [{"slug", "datum", "titel", "kurz", "url"}]}`). |
 | `launcher.version`, `url`, `sha256`, `groesse` | Aktuelle Fassung des Launchers. Ist sie höher als die laufende, aktualisiert sich der Launcher selbst. Ohne den Block gibt es keine Aktualisierung. |

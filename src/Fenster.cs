@@ -436,6 +436,16 @@ namespace SamplifeEssentials
                     text += " · SA-MP " + sampVersion;
                     bereichVersion.Visibility = Visibility.Collapsed;
                 }
+                else if (manifest != null && manifest.SampClient != null && !GtaVerzeichnis.HatSamp(verzeichnis)
+                    && !File.Exists(Path.Combine(verzeichnis, Spielstart.SampExe)))
+                {
+                    // Kein SA-MP im Ordner: der Launcher bringt es beim Spielen mit
+                    sampVersion = manifest.SampVersionen.Count > 0 ? manifest.SampVersionen[0].Name : "";
+                    var groesse = Groesse(Manifest.PassendePakete(manifest.SampClient, sampVersion));
+                    text += " · SA-MP fehlt, der Launcher richtet " + manifest.SampClient.Name + " mit ein" + (groesse == "" ? "" : " (" + groesse + ")");
+                    farbe = Farben.Akzent; symbol = "\uE946";
+                    bereichVersion.Visibility = Visibility.Collapsed;
+                }
                 else if (manifest != null && manifest.SampVersionen.Count > 0)
                 {
                     // Nicht erkannt (keine samp.dll im Ordner oder eine andere Fassung): der Spieler waehlt selbst

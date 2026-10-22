@@ -79,6 +79,15 @@ namespace SamplifeEssentials
             }
         }
 
+        /// <summary>Wo SA-MP das Spiel sucht (wie „Einstellungen“ im SA-MP-Browser): das bestaetigte GTA-Verzeichnis.</summary>
+        public static void GtaEintragen(string gta, bool testmodus)
+        {
+            using (var schluessel = Registry.CurrentUser.CreateSubKey(testmodus ? TestSchluessel : SampSchluessel))
+            {
+                schluessel.SetValue("gta_sa_exe", Path.Combine(gta, GtaVerzeichnis.SpielDatei), RegistryValueKind.String);
+            }
+        }
+
         /// <summary>
         /// SA-MP-Version an der Dateiversion der samp.dll, so wie samp-cef sie erkennt: 0.3.7.0 ist R1, 0.3.7.2 ist R3,
         /// 0.3.8.0 ist 0.3.DL. Leer, wenn die Datei fehlt oder unbekannt ist.

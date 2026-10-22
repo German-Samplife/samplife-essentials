@@ -27,6 +27,7 @@ namespace SamplifeEssentials
         public string Lizenz;
         public bool Pflicht;
         public bool Optional;          // aus optionale_komponenten: der Spieler entscheidet selbst
+        public bool IstSampClient;     // aus samp_client: darf samp.exe, samp.dll und samp.saa ablegen, aber nur wenn sie fehlen
         public List<Paket> Pakete = new List<Paket>();
     }
 
@@ -60,6 +61,9 @@ namespace SamplifeEssentials
         public int ServerPort;
         public string Anmeldung = "";       // Adresse, bei der sich der Launcher vor dem Spielstart meldet
         public LauncherFassung Launcher;    // null = keine Selbstaktualisierung
+        // SA-MP selbst, nur fuer GTA-Verzeichnisse ohne samp.exe. Eigener Block statt in komponenten: Installer 1.x wuerden
+        // sonst versuchen, samp.exe zu schreiben, und mit einem Fehler abbrechen.
+        public Komponente SampClient;
         public string Updates = "";         // Adresse der neuesten Updates aus der Community, fuer die Spalte rechts
         public List<string> Bilder = new List<string>();  // Bilder aus dem Spiel fuer den Kopf des Fensters (Website)
 
@@ -128,6 +132,12 @@ namespace SamplifeEssentials
                 manifest.ServerAdresse = Text(server, "adresse");
                 manifest.ServerPort = (int)Zahl(server, "port");
                 manifest.Anmeldung = Text(server, "anmeldung");
+            }
+            var sampClient = Objekt(daten, "samp_client");
+            if (sampClient != null)
+            {
+                manifest.SampClient = KomponenteLesen(sampClient, false);
+                manifest.SampClient.IstSampClient = true;
             }
             var launcher = Objekt(daten, "launcher");
             if (launcher != null)
