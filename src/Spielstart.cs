@@ -20,6 +20,35 @@ namespace SamplifeEssentials
         // Regeln von SA-MP fuer Spielernamen
         static readonly Regex NameMuster = new Regex(@"^[A-Za-z0-9\[\]()$@._=]{3,20}$");
 
+        // Eigene Adresse fuer den Knopf „Verbinden“ auf der Website: samplife://verbinden oeffnet den Launcher, der prueft und
+        // direkt verbindet. Im Testmodus ein eigenes Schema, damit Tests die echte Verknuepfung nicht ueberschreiben.
+        public const string Schema = "samplife";
+        const string TestSchema = "samplife-test";
+
+        /// <summary>Traegt samplife:// fuer den Windows-Benutzer ein (ohne Administratorrechte) und zeigt auf diese .exe.</summary>
+        public static void AdresseEintragen(bool testmodus)
+        {
+            var exe = Aktualisierung.EigeneDatei;
+            using (var schluessel = Registry.CurrentUser.CreateSubKey(@"Software\Classes\" + (testmodus ? TestSchema : Schema)))
+            {
+                schluessel.SetValue("", "URL:Samplife Launcher");
+                schluessel.SetValue("URL Protocol", "");
+                using (var symbol = schluessel.CreateSubKey("DefaultIcon")) symbol.SetValue("", "\"" + exe + "\",0");
+                using (var befehl = schluessel.CreateSubKey(@"shell\open\command")) befehl.SetValue("", "\"" + exe + "\" --link \"%1\"");
+            }
+        }
+
+        /// <summary>
+        /// Nur genau „samplife://verbinden“ startet direkt. Alles andere, was eine Seite in den Link schreiben koennte,
+        /// oeffnet nur das Fenster.
+        /// </summary>
+        public static bool IstVerbindenLink(string link)
+        {
+            if (string.IsNullOrEmpty(link)) return false;
+            var ohneEnde = link.Trim().TrimEnd('/').ToLowerInvariant();
+            return ohneEnde == Schema + "://verbinden" || ohneEnde == TestSchema + "://verbinden";
+        }
+
         /// <summary>Leer, wenn der Name gueltig ist, sonst der Grund.</summary>
         public static string NamePruefen(string name)
         {

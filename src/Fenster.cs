@@ -14,6 +14,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Threading;
@@ -165,6 +166,9 @@ namespace SamplifeEssentials
         readonly ObservableCollection<Fund> funde = new ObservableCollection<Fund>();
         readonly ScrollViewer protokollRollen;
         readonly Border balken;
+        readonly Image titelbild;
+        bool titelbildGezeigt;
+        bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
         readonly ObservableCollection<ProtokollZeile> zeilen = new ObservableCollection<ProtokollZeile>();
         readonly ObservableCollection<Neuigkeit> neuigkeiten = new ObservableCollection<Neuigkeit>();
@@ -223,6 +227,7 @@ namespace SamplifeEssentials
             listeRollen = Finde<FrameworkElement>("ListeRollen");
             protokollRollen = Finde<ScrollViewer>("ProtokollRollen");
             balken = Finde<Border>("Balken");
+            titelbild = Finde<Image>("Titelbild");
             pfadTitel = Finde<TextBlock>("PfadTitel");
             sucheText = Finde<TextBlock>("SucheText");
             knopfSuchen = Finde<Button>("KnopfSuchen");
@@ -281,7 +286,13 @@ namespace SamplifeEssentials
                 if (abbruch != null) abbruch.Cancel();
             };
 
-            if (optionen.Bildschirmfoto == "") name.Text = Spielstart.GespeicherterName(optionen.Testmodus);
+            if (optionen.Bildschirmfoto == "")
+            {
+                name.Text = Spielstart.GespeicherterName(optionen.Testmodus);
+                // samplife:// bei jedem Start auf diese .exe zeigen lassen, damit „Verbinden“ auf der Website sie findet
+                try { Spielstart.AdresseEintragen(optionen.Testmodus); }
+                catch (Exception) { }
+            }
             var gemerkt = optionen.Gta != "" ? optionen.Gta : einstellungen.Gta;
             if (gemerkt != "" && GtaVerzeichnis.IstGtaVerzeichnis(gemerkt)) Uebernehmen(gemerkt);
             else VerzeichnisPruefen();
@@ -289,6 +300,9 @@ namespace SamplifeEssentials
             // in den Thread der Oberflaeche zurueckfuehrt
             Wurzel.Loaded += delegate
             {
+                // Sofort ein schon geladenes Bild zeigen; die Liste bringt spaeter weitere
+                if (optionen.Bildschirmfoto == "") TitelbildZeigen(Titelbild.Gespeichertes());
+                else if (optionen.Titelbild != "" && File.Exists(optionen.Titelbild)) TitelbildZeigen(File.ReadAllBytes(optionen.Titelbild));
                 if (!optionen.OhneNetz) ListeLaden();
                 if (!bestaetigt && (optionen.Bildschirmfoto == "" || optionen.Zustand == "ablauf")) VerzeichnisSuchen();
             };
@@ -533,6 +547,7 @@ namespace SamplifeEssentials
                 }
                 catch (Exception) { manifest = null; ausSicherung = false; }
             }
+            if (manifest != null) DirektVersuchen();
             if (manifest == null)
             {
                 listeStatus.Foreground = Farben.Fehler;
@@ -598,6 +613,7 @@ namespace SamplifeEssentials
                 versionen.Children.Add(knopf);
             }
             VerzeichnisPruefen();
+            TitelbildLaden(manifest.Bilder);
             if (manifest.Updates != "" && neuigkeiten.Count == 0) NeuigkeitenLaden(manifest.Updates);
             else if (manifest.Updates == "") neuStatus.Text = "Die Updates findest du in der Community auf unserer Website.";
         }
@@ -694,6 +710,57 @@ namespace SamplifeEssentials
                     ? "Es fehlen Dateien, und die Server-Liste ist gerade nicht erreichbar. Versuche es gleich noch einmal."
                     : "Vor dem Start lädt der Launcher " + (nachladen > 0 ? Installation.Groesse(nachladen) : "die fehlenden Dateien") + " nach.";
             }
+        }
+
+        /// <summary>
+        /// Laedt ein Bild aus der Liste, bevorzugt eins, das noch nicht gespeichert ist. Zeigt es nur, wenn noch keins zu sehen
+        /// ist; sonst liegt es fuer den naechsten Start bereit.
+        /// </summary>
+        async void TitelbildLaden(List<string> adressen)
+        {
+            if (optionen.Bildschirmfoto != "") return;
+            var url = Titelbild.Auswaehlen(adressen);
+            if (url == "") return;
+            var testmodus = optionen.Testmodus;
+            byte[] daten;
+            try { daten = await Task.Run(() => Titelbild.Laden(url, testmodus)); }
+            catch (Exception) { return; }
+            if (!titelbildGezeigt) TitelbildZeigen(daten);
+        }
+
+        void TitelbildZeigen(byte[] daten)
+        {
+            if (daten == null) return;
+            try
+            {
+                var bild = new BitmapImage();
+                bild.BeginInit();
+                bild.CacheOption = BitmapCacheOption.OnLoad;
+                bild.DecodePixelWidth = 1600;
+                bild.StreamSource = new MemoryStream(daten);
+                bild.EndInit();
+                bild.Freeze();
+                titelbild.Source = bild;
+                titelbildGezeigt = true;
+                // Fuer Bildschirmfotos sofort sichtbar, sonst sanft einblenden
+                if (optionen.Bildschirmfoto != "") titelbild.Opacity = 1;
+                else titelbild.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(450)));
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>Ueber samplife://verbinden gestartet: Ist alles bereit, startet der Launcher ohne Klick.</summary>
+        void DirektVersuchen()
+        {
+            if (!optionen.Direkt || direktVersucht || manifest == null) return;
+            direktVersucht = true;
+            if (modus == Modus.Spielen && bestaetigt && verzeichnisGueltig && !brauchtAdmin && NamePruefen(false))
+            {
+                Starten(false);
+                return;
+            }
+            untertitel.Text = "Bevor der Launcher dich direkt verbinden kann, bestätige dein GTA-Verzeichnis und gib deinen Namen ein. "
+                + "Dann auf „Spielen“.";
         }
 
         async void NeuigkeitenLaden(string url)

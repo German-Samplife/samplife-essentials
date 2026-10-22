@@ -25,7 +25,8 @@ Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases bau
    3. Er meldet den Spieler beim Server an und startet `samp.exe`, das direkt mit dem Server verbindet.
    4. Danach schließt er sich.
 6. **„Gründlich prüfen"** rechnet die Prüfsumme jeder Datei nach und lädt neu, was nicht stimmt.
-7. Downloads und geschriebene Dateien stehen auch in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
+7. **„Verbinden" auf der Website:** Der Launcher trägt bei jedem Start die Adresse `samplife://` für den Windows-Benutzer ein (ohne Administratorrechte). Ein Link auf `samplife://verbinden` öffnet ihn; ist Verzeichnis und Name schon bekannt, prüft er und verbindet ohne weiteren Klick. Andere Adressen öffnen nur das Fenster.
+8. Downloads und geschriebene Dateien stehen auch in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
 
 ## Was das Programm zusichert
 
@@ -68,6 +69,7 @@ Stand der echten Liste: SampVoice 3.1 für SA-MP 0.3.7 R1 und R3, direkt von den
 | `stand` | Ab Launcher 2.0: ganze Zahl, bei jeder Änderung an Paketen um 1 erhöhen. Der Launcher meldet sie bei der Anmeldung; der Gamemode verlangt mindestens `LAUNCHER_MINDESTSTAND`. |
 | `server.adresse`, `server.port` | Wohin `samp.exe` verbindet. |
 | `server.anmeldung` | Adresse, bei der sich der Launcher vor dem Start meldet (`POST`, JSON mit `name`, `stand`, `launcher`; Antwort `{"ok": true}` oder `{"fehler": "…"}`). Leer = keine Anmeldung. |
+| `bilder[]` | Adressen von Bildern aus dem Spiel für den Kopf des Fensters (JPG oder PNG, auf der Website). Der Launcher zeigt bei jedem Start eins davon und merkt sich geladene Bilder für den Start ohne Netz. Die Bilder liegen nicht in diesem Repository. |
 | `updates` | Adresse der neuesten Updates aus der Community (`{"updates": [{"slug", "datum", "titel", "kurz", "url"}]}`). |
 | `launcher.version`, `url`, `sha256`, `groesse` | Aktuelle Fassung des Launchers. Ist sie höher als die laufende, aktualisiert sich der Launcher selbst. Ohne den Block gibt es keine Aktualisierung. |
 | `pakete[].url` | Adresse des Downloads, muss mit `https://` beginnen. |
@@ -118,6 +120,7 @@ Der Compiler versteht C# 5: kein `$"…"`, kein `?.`, keine Ausdruckskörper.
 | `src/Aktualisierung.cs` | Selbstaktualisierung |
 | `src/Einstellungen.cs` | gemerktes Verzeichnis und optionale Komponenten |
 | `src/Neuigkeiten.cs` | Updates aus der Community für die rechte Spalte |
+| `src/Titelbild.cs` | Bild für den Kopf laden und zwischenspeichern |
 | `src/Fenster.xaml`, `src/Fenster.cs` | Oberfläche |
 | `symbol.ico` | Programmsymbol |
 
@@ -146,6 +149,9 @@ Aufrufparameter für Tests:
 | `--name <Name>` | Spielername für `--spielen` |
 | `--optional <id>` | optionale Komponente wählen (mehrfach möglich) |
 | `--gruendlich` | jede Datei per SHA-256 prüfen statt über Größe und Änderungszeit |
+| `--link <Adresse>` | so ruft Windows den Launcher über `samplife://` auf; nur `samplife://verbinden` startet direkt |
+| `--adresse-eintragen` | nur `samplife://` eintragen und beenden (mit `--test` als `samplife-test://`) |
+| `--titelbild <Datei>` | nur für Bildschirmfotos: Bild für den Kopf |
 | `--kein-neustart` | nach einer Selbstaktualisierung nicht neu starten (Rückgabe 10) |
 | `--bildschirmfoto <Datei.png> --zustand <Name>` | Fenster als Bild speichern, ohne etwas zu laden. Zustände: `start`, `gefunden`, `bereit`, `laeuft`, `fertig`, `offline` (Beispieldaten), `netz` (Liste wirklich laden), `ablauf` (Start wie beim Spieler, Fund bestätigen, Version wählen) |
 

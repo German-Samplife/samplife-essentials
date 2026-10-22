@@ -61,6 +61,7 @@ namespace SamplifeEssentials
         public string Anmeldung = "";       // Adresse, bei der sich der Launcher vor dem Spielstart meldet
         public LauncherFassung Launcher;    // null = keine Selbstaktualisierung
         public string Updates = "";         // Adresse der neuesten Updates aus der Community, fuer die Spalte rechts
+        public List<string> Bilder = new List<string>();  // Bilder aus dem Spiel fuer den Kopf des Fensters (Website)
 
         /// <summary>Pflicht-Komponenten und die optionalen, die der Spieler gewaehlt hat.</summary>
         public List<Komponente> Verwaltet(ICollection<string> optionalGewaehlt)
@@ -116,6 +117,11 @@ namespace SamplifeEssentials
 
             manifest.Stand = Zahl(daten, "stand");
             manifest.Updates = Text(daten, "updates");
+            object bilder;
+            if (daten.TryGetValue("bilder", out bilder) && bilder is IEnumerable && !(bilder is string))
+            {
+                foreach (var bild in (IEnumerable)bilder) if (bild is string && (string)bild != "") manifest.Bilder.Add((string)bild);
+            }
             var server = Objekt(daten, "server");
             if (server != null)
             {

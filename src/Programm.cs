@@ -25,6 +25,9 @@ namespace SamplifeEssentials
         public string Name = "";
         public List<string> Optional = new List<string>();
         public string NachAktualisierung = "";  // Version, auf die gerade aktualisiert wurde; verhindert eine zweite Runde
+        public bool Direkt;         // ueber samplife://verbinden gestartet: pruefen und ohne Klick verbinden
+        public bool AdresseEintragen;   // nur samplife:// eintragen und beenden (fuer Tests)
+        public string Titelbild = "";   // nur fuer Bildschirmfotos: Bilddatei fuer den Kopf
         public bool OhneNetz;       // Fenster ohne Laden der Liste (fuer Bildschirmfotos)
         public string Bildschirmfoto = "";
         public string Zustand = "start";
@@ -76,6 +79,9 @@ namespace SamplifeEssentials
                     case "--name": optionen.Name = naechstes; i++; break;
                     case "--optional": optionen.Optional.Add(naechstes); i++; break;
                     case "--nach-aktualisierung": optionen.NachAktualisierung = naechstes; i++; break;
+                    case "--link": optionen.Direkt = Spielstart.IstVerbindenLink(naechstes); i++; break;
+                    case "--adresse-eintragen": optionen.AdresseEintragen = true; break;
+                    case "--titelbild": optionen.Titelbild = naechstes; i++; break;
                     case "--bildschirmfoto": optionen.Bildschirmfoto = naechstes; i++; break;
                     case "--zustand": optionen.Zustand = naechstes; i++; break;
                     case "--suche": optionen.Suchergebnis = naechstes; i++; break;
@@ -93,6 +99,11 @@ namespace SamplifeEssentials
                 foreach (var fund in GtaVerzeichnis.Suchen(CancellationToken.None)) zeilen.Add(fund.Pfad + " | " + fund.Detail);
                 File.WriteAllLines(optionen.Suchergebnis, zeilen, Encoding.UTF8);
                 return 0;
+            }
+            if (optionen.AdresseEintragen)
+            {
+                try { Spielstart.AdresseEintragen(optionen.Testmodus); return 0; }
+                catch (Exception) { return 1; }
             }
             if (optionen.Still) return StillAusfuehren(optionen);
 

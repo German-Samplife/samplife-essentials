@@ -157,7 +157,7 @@ def main():
 
     def launcher_manifest(name, komponenten, **mehr):
         """Liste wie auf dem Server: nur R1, mit Stand und Server."""
-        daten = {'version': 1, 'stand': 3,
+        daten = {'version': 1, 'stand': 3, 'bilder': [basis + 'bild.jpg'], 'updates': basis + 'updates.json',
                  'samp_versionen': [{'name': '0.3.7-R1', 'sha256': sha(b'samp-0.3.7-R1')}],
                  'server': {'adresse': 'german-samplife.test', 'port': 7777, 'anmeldung': basis + 'api/launcher/start'},
                  'komponenten': komponenten}
@@ -397,6 +397,20 @@ def main():
         gleich = launcher_manifest('launcher-gleich.json', spiel_liste, launcher={
             'version': '2.0.0', 'url': basis + 'launcher-neu.bin', 'sha256': sha(neu), 'groesse': len(neu)})
         pruefe(starten(gta, gleich) == 0, 'gleiche Version: keine Aktualisierung')
+
+        print('23. Adresse samplife:// fuer den Knopf „Verbinden“')
+        pruefe(subprocess.run([EXE, '--adresse-eintragen', '--test'], timeout=60).returncode == 0, 'Rueckgabe 0')
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Classes\samplife-test\shell\open\command') as schluessel:
+                befehl = winreg.QueryValueEx(schluessel, '')[0]
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Classes\samplife-test') as schluessel:
+                winreg.QueryValueEx(schluessel, 'URL Protocol')
+                protokoll = True
+        except OSError:
+            befehl, protokoll = '', False
+        pruefe(protokoll, 'als URL-Protokoll eingetragen (Test-Schema)')
+        pruefe(os.path.normcase(EXE) in os.path.normcase(befehl) and '--link "%1"' in befehl, 'Befehl zeigt auf die .exe mit --link')
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

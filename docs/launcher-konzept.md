@@ -71,6 +71,7 @@ Dateien, die nicht aus einem Paket stammen (eigene Mods, Skins, Einstellungen de
 | `server.anmeldung` | Adresse der Anmeldung, z. B. `https://www.german-samplife.de/api/launcher/start`. |
 | `launcher.version`, `url`, `sha256`, `groesse` | Aktuelle Fassung des Launchers für die Selbstaktualisierung. |
 | `optionale_komponenten[]` | Aufbau wie `komponenten[]`. Der Spieler wählt sie selbst. |
+| `bilder[]` | Bilder aus dem Spiel für den Kopf des Fensters, von der Website geladen und zwischengespeichert (die Screenshots dürfen nicht ins öffentliche Repository). |
 | `updates` | Adresse der neuesten Updates aus der Community (`/api/updates`). Der Launcher zeigt sie in der Spalte „Neu auf dem Server“. |
 
 Gründe:
