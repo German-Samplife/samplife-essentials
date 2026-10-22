@@ -280,7 +280,7 @@
         </Grid>
         <StackPanel VerticalAlignment="Bottom" Margin="28,0,28,18">
           <TextBlock x:Name="Titel" Text="Bereit machen" FontFamily="{StaticResource Anzeige}" FontSize="34" FontWeight="Bold"/>
-          <TextBlock x:Name="Untertitel" Foreground="#C2C7D0" FontSize="15" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="700" HorizontalAlignment="Left"
+          <TextBlock x:Name="Untertitel" Foreground="#C2C7D0" FontSize="15" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="960" HorizontalAlignment="Left"
                      Text="Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt."/>
         </StackPanel>
       </Grid>
