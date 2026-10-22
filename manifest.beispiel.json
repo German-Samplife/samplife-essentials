@@ -1,6 +1,19 @@
 {
   "version": 1,
   "hinweis": "",
+  "stand": 1,
+  "server": {
+    "adresse": "german-samplife.de",
+    "port": 7777,
+    "anmeldung": "https://www.german-samplife.de/api/launcher/start"
+  },
+  "updates": "https://www.german-samplife.de/api/updates",
+  "launcher": {
+    "version": "2.0.0",
+    "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/v2.0.0/Samplife.Launcher.exe",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "groesse": 0
+  },
   "samp_versionen": [
     {
       "name": "0.3.7-R1",
@@ -59,6 +72,21 @@
           "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
           "groesse": 325058560,
           "typ": "zip"
+        }
+      ]
+    }
+  ],
+  "optionale_komponenten": [
+    {
+      "id": "beispiel-mod",
+      "name": "Beispiel für einen optionalen Mod",
+      "beschreibung": "Wählt der Spieler selbst; ohne Haken lädt der Launcher nichts davon.",
+      "pakete": [
+        {
+          "url": "https://example.com/beispiel-mod.zip",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "groesse": 0,
+          "ziel": "modloader/beispiel"
         }
       ]
     }

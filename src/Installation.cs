@@ -50,7 +50,8 @@ namespace SamplifeEssentials
         public const string ProtokollDatei = "samplife-essentials-protokoll.txt";
         public const string SicherungsOrdner = "samplife-essentials-sicherung";
 
-        // Diese Dateien gehoeren zum Spiel bzw. zu SA-MP und werden nie ersetzt
+        // Diese Dateien gehoeren zum Spiel bzw. zu SA-MP und werden nie ersetzt. SA-MP darf nur das Paket samp_client
+        // ablegen, und nur dort, wo noch keine Datei liegt.
         static readonly string[] Geschuetzt = { "gta_sa.exe", "samp.dll", "samp.exe", "samp.saa" };
 
         readonly string gta;
@@ -65,6 +66,9 @@ namespace SamplifeEssentials
         long bytesErledigt;
         string sicherung = "";
         Ergebnis ergebnis = new Ergebnis();
+
+        // Je installierter Komponente die Pakete und ihre Dateien, fuer die Sicherung des Stands
+        public readonly List<KomponenteStand> Staende = new List<KomponenteStand>();
 
         public Action<Meldung> Melden = delegate { };
         public Action<double> Fortschritt = delegate { };
@@ -87,7 +91,7 @@ namespace SamplifeEssentials
                 if (!GtaVerzeichnis.IstGtaVerzeichnis(gta))
                     throw new InstallationsFehler("In diesem Verzeichnis liegt keine gta_sa.exe.");
                 if (!GtaVerzeichnis.IstBeschreibbar(gta))
-                    throw new InstallationsFehler("In dieses Verzeichnis darf nicht geschrieben werden. Starte den Installer als Administrator.");
+                    throw new InstallationsFehler("In dieses Verzeichnis darf nicht geschrieben werden. Starte den Launcher als Administrator.");
 
                 var auftraege = new List<KeyValuePair<Komponente, Paket>>();
                 foreach (var komponente in auswahl)
@@ -109,8 +113,10 @@ namespace SamplifeEssentials
                 {
                     abbruch.ThrowIfCancellationRequested();
                     var datei = Herunterladen(auftrag.Key, auftrag.Value, abbruch);
-                    if (auftrag.Value.Typ == "zip") Entpacken(auftrag.Key, auftrag.Value, datei, abbruch);
-                    else DateiAblegen(auftrag.Key, auftrag.Value, datei);
+                    var paketStand = new PaketStand { Url = auftrag.Value.Url, Sha256 = auftrag.Value.Sha256 };
+                    if (auftrag.Value.Typ == "zip") Entpacken(auftrag.Key, auftrag.Value, datei, paketStand, abbruch);
+                    else DateiAblegen(auftrag.Key, auftrag.Value, datei, paketStand);
+                    StandVon(auftrag.Key).Pakete.Add(paketStand);
                 }
 
                 ergebnis.Erfolg = true;
@@ -136,7 +142,7 @@ namespace SamplifeEssentials
             }
             catch (UnauthorizedAccessException)
             {
-                ergebnis.Fehler = "Zugriff verweigert. Starte den Installer als Administrator.";
+                ergebnis.Fehler = "Zugriff verweigert. Starte den Launcher als Administrator.";
                 Fehlermeldung(ergebnis.Fehler);
             }
             catch (IOException fehler)
@@ -175,7 +181,7 @@ namespace SamplifeEssentials
             Notieren("Lade " + komponente.Name + " von " + paket.Url + " herunter");
 
             var anfrage = (HttpWebRequest)WebRequest.Create(adresse);
-            anfrage.UserAgent = "SamplifeEssentialsInstaller/" + Programm.Version;
+            anfrage.UserAgent = "SamplifeLauncher/" + Programm.Version;
             anfrage.AllowAutoRedirect = true;
             anfrage.Timeout = 30000;
             anfrage.ReadWriteTimeout = 30000;
@@ -262,7 +268,15 @@ namespace SamplifeEssentials
 
         // ---------------------------------------------------------------- Dateien
 
-        void Entpacken(Komponente komponente, Paket paket, string archivDatei, CancellationToken abbruch)
+        KomponenteStand StandVon(Komponente komponente)
+        {
+            foreach (var stand in Staende) if (stand.Id == komponente.Id) return stand;
+            var neu = new KomponenteStand { Id = komponente.Id };
+            Staende.Add(neu);
+            return neu;
+        }
+
+        void Entpacken(Komponente komponente, Paket paket, string archivDatei, PaketStand paketStand, CancellationToken abbruch)
         {
             var praefix = paket.ZipUnterordner.Replace('\\', '/').Trim('/');
             if (praefix != "") praefix += "/";
@@ -286,12 +300,12 @@ namespace SamplifeEssentials
                     var relativ = eintrag.FullName.Replace('\\', '/').Substring(praefix.Length);
                     var zwischen = Path.Combine(temp, Guid.NewGuid().ToString("N") + ".datei");
                     eintrag.ExtractToFile(zwischen, true);
-                    Ablegen(zwischen, Path.Combine(paket.Ziel, relativ.Replace('/', Path.DirectorySeparatorChar)));
+                    Ablegen(zwischen, Path.Combine(paket.Ziel, relativ.Replace('/', Path.DirectorySeparatorChar)), paketStand, komponente.IstSampClient);
                 }
             }
         }
 
-        void DateiAblegen(Komponente komponente, Paket paket, string datei)
+        void DateiAblegen(Komponente komponente, Paket paket, string datei, PaketStand paketStand)
         {
             var name = paket.Dateiname;
             if (name == "")
@@ -300,8 +314,30 @@ namespace SamplifeEssentials
                 if (Uri.TryCreate(paket.Url, UriKind.Absolute, out adresse)) name = Path.GetFileName(adresse.LocalPath);
             }
             if (string.IsNullOrEmpty(name)) throw new InstallationsFehler("Für " + komponente.Name + " fehlt der Dateiname in der Liste.");
+            if (paket.Ablage == "launcher")
+            {
+                LauncherAblegen(komponente, paket, datei, name);
+                return;
+            }
             Schritt("Lege " + name + " von " + komponente.Name + " in " + ZielOrdner(paket) + " ab");
-            Ablegen(datei, Path.Combine(paket.Ziel, name));
+            Ablegen(datei, Path.Combine(paket.Ziel, name), paketStand, komponente.IstSampClient);
+        }
+
+        /// <summary>
+        /// samp.dll aus samp_client in den Ordner des Launchers, nicht ins GTA-Verzeichnis: Von dort laedt der Launcher sie
+        /// ins Spiel (SampStart). Die Datei gehoert dem Launcher und darf ersetzt werden.
+        /// </summary>
+        void LauncherAblegen(Komponente komponente, Paket paket, string datei, string name)
+        {
+            if (!komponente.IstSampClient) throw new InstallationsFehler("Nur SA-MP darf außerhalb des GTA-Verzeichnisses abgelegt werden.");
+            var basis = Path.GetFullPath(Pfade.Launcher).TrimEnd(Path.DirectorySeparatorChar);
+            var ziel = Path.GetFullPath(Path.Combine(basis, paket.Ziel, name));
+            if (!ziel.StartsWith(basis + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new InstallationsFehler("Ein Paket wollte außerhalb des Launcher-Ordners schreiben (" + paket.Ziel + "). Die Installation wurde gestoppt.");
+            Directory.CreateDirectory(Path.GetDirectoryName(ziel));
+            File.Copy(datei, ziel, true);
+            ergebnis.Geschrieben++;
+            Datei("Lege " + name + " von " + komponente.Name + " in " + ziel + " ab");
         }
 
         string ZielOrdner(Paket paket)
@@ -309,26 +345,39 @@ namespace SamplifeEssentials
             return paket.Ziel == "" ? gta : Path.Combine(gta, paket.Ziel);
         }
 
-        /// <summary>Schreibt eine Datei ins GTA-Verzeichnis. Vorhandene, abweichende Dateien werden vorher gesichert.</summary>
-        void Ablegen(string quelle, string relativ)
+        /// <summary>
+        /// Schreibt eine Datei ins GTA-Verzeichnis. Vorhandene, abweichende Dateien werden vorher gesichert.
+        /// Die Datei kommt mit Groesse, Aenderungszeit und Pruefsumme in die Liste des Pakets.
+        /// </summary>
+        void Ablegen(string quelle, string relativ, PaketStand paketStand, bool sampErlaubt)
         {
             var ziel = Path.GetFullPath(Path.Combine(gta, relativ));
             // Ein Archiv darf nicht mit "..\" aus dem GTA-Verzeichnis herausschreiben
             if (!ziel.StartsWith(gta + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new InstallationsFehler("Ein Paket wollte außerhalb des GTA-Verzeichnisses schreiben (" + relativ + "). Die Installation wurde gestoppt.");
             var anzeige = ziel.Substring(gta.Length + 1);
+            // SA-MP legt nur ab, was fehlt: Vorhandenes (auch vom open.mp-Launcher kopiert) bleibt, wie es ist
+            if (sampErlaubt && File.Exists(ziel))
+            {
+                ergebnis.Unveraendert++;
+                Datei(anzeige + " liegt schon da und bleibt, wie es ist");
+                return;
+            }
             foreach (var name in Geschuetzt)
             {
-                if (string.Equals(anzeige, name, StringComparison.OrdinalIgnoreCase))
-                    throw new InstallationsFehler("Ein Paket wollte " + name + " ersetzen. Das lässt der Installer nicht zu.");
+                if (!string.Equals(anzeige, name, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!sampErlaubt || name == "gta_sa.exe")
+                    throw new InstallationsFehler("Ein Paket wollte " + name + " ersetzen. Das lässt der Launcher nicht zu.");
             }
 
+            var pruefsumme = GtaVerzeichnis.Sha256(quelle);
             if (File.Exists(ziel))
             {
-                if (GtaVerzeichnis.Sha256(ziel) == GtaVerzeichnis.Sha256(quelle))
+                if (GtaVerzeichnis.Sha256(ziel) == pruefsumme)
                 {
                     ergebnis.Unveraendert++;
                     Datei(anzeige + " ist bereits aktuell");
+                    Merken(paketStand, anzeige, ziel, pruefsumme);
                     return;
                 }
                 if (sicherung == "")
@@ -344,6 +393,13 @@ namespace SamplifeEssentials
             ergebnis.Geschrieben++;
             installiert.Add(anzeige);
             Datei("Schreibe " + anzeige);
+            Merken(paketStand, anzeige, ziel, pruefsumme);
+        }
+
+        static void Merken(PaketStand paketStand, string relativ, string ziel, string pruefsumme)
+        {
+            var info = new FileInfo(ziel);
+            paketStand.Dateien.Add(new DateiStand { Pfad = relativ, Groesse = info.Length, Geaendert = info.LastWriteTimeUtc.Ticks, Sha256 = pruefsumme });
         }
 
         // ---------------------------------------------------------------- Meldungen
@@ -389,7 +445,7 @@ namespace SamplifeEssentials
                 if (!Directory.Exists(gta)) return;
                 var datei = Path.Combine(gta, ProtokollDatei);
                 var kopf = new StringBuilder();
-                kopf.AppendLine("==== Samplife Essentials Installer " + Programm.Version + " – "
+                kopf.AppendLine("==== Samplife Launcher " + Programm.Version + " – "
                     + DateTime.Now.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture) + " ====");
                 kopf.AppendLine("SA-MP-Version: " + (sampVersion == "" ? "nicht erkannt" : sampVersion));
                 kopf.Append(protokoll);

@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "hinweis": "Vorab-Test des Samplife Launchers mit der Liste aus dem Repository, nicht von der Website.",
+  "stand": 2,
+  "server": {
+    "adresse": "german-samplife.de",
+    "port": 7777,
+    "anmeldung": "https://www.german-samplife.de/api/launcher/start"
+  },
+  "updates": "https://www.german-samplife.de/api/updates",
+  "bilder": [
+    "https://www.german-samplife.de/hero/los-santos.jpg",
+    "https://www.german-samplife.de/hero/san-fierro.jpg",
+    "https://www.german-samplife.de/hero/grove-street.jpg"
+  ],
+  "samp_versionen": [
+    {
+      "name": "0.3.7-R1",
+      "sha256": "7e30f3c9cd99d5e2932410f486e8139affa2dad19bd65ad9c328f6a4071943f7"
+    }
+  ],
+  "samp_client": {
+    "id": "samp",
+    "name": "SA-MP 0.3.7-R1",
+    "beschreibung": "Nur wenn im GTA-Verzeichnis kein SA-MP liegt: Der Launcher legt die fehlenden Dateien von SA-MP dorthin und lädt die samp.dll beim Start aus seinem eigenen Ordner ins Spiel, so wie der open.mp-Launcher.",
+    "quelle": "https://github.com/German-Samplife/samplife-essentials/releases/tag/samp-client-0.3.7-R1",
+    "lizenz": "Freeware des SA-MP-Teams",
+    "pflicht": true,
+    "pakete": [
+      {
+        "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/samp-client-0.3.7-R1/samp-client-0.3.7-R1-dateien.zip",
+        "sha256": "1c113fec55d9cdb26e61d5c8f917c4fad5ace244f75f9ccfda2058b2d19ecd26",
+        "groesse": 21836869,
+        "typ": "zip",
+        "zip_unterordner": "gta"
+      },
+      {
+        "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/samp-client-0.3.7-R1/samp.dll",
+        "sha256": "7e30f3c9cd99d5e2932410f486e8139affa2dad19bd65ad9c328f6a4071943f7",
+        "groesse": 2199552,
+        "typ": "datei",
+        "ablage": "launcher",
+        "ziel": "samp/0.3.7-R1",
+        "dateiname": "samp.dll"
+      }
+    ]
+  },
+  "komponenten": [
+    {
+      "id": "sampvoice",
+      "name": "SampVoice 3.1",
+      "beschreibung": "Sprach-Chat im Spiel: Wer in deiner Nähe steht, hört dich. Das Paket bringt den ASI Loader (vorbisFile.dll) und die Audio-Bibliothek BASS mit.",
+      "quelle": "https://github.com/German-Samplife/samplife-essentials/tree/main/sampvoice",
+      "lizenz": "MIT",
+      "pflicht": true,
+      "pakete": [
+        {
+          "samp": "0.3.7-R1",
+          "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/sampvoice-3.1-sl2/sampvoice-037-r1-samplife.zip",
+          "sha256": "1bcb18a5ab0dc47d54c1b957bdff9e04cb4743cb07f75fdaf146dcae89617e11",
+          "groesse": 893058,
+          "typ": "zip"
+        }
+      ]
+    },
+    {
+      "id": "cef",
+      "name": "Browser-Oberfläche (CEF)",
+      "beschreibung": "Zeigt Menüs und Anzeigen des Servers als moderne Oberfläche im Spiel. Enthält den Chromium-Kern (CEF 150), entpackt rund 339 MB.",
+      "quelle": "https://github.com/German-Samplife/samplife-essentials/tree/main/cef",
+      "lizenz": "GPL-3.0",
+      "pflicht": true,
+      "pakete": [
+        {
+          "samp": "0.3.7-R1",
+          "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/cef-f14fe4f-sl4/samp-cef-client-cef-f14fe4f-sl4.zip",
+          "sha256": "9d462e5b4d933a4fd9b1c4d3f465187ec9912069a75a11cd7ad3d9d643f99886",
+          "groesse": 152101349,
+          "typ": "zip"
+        }
+      ]
+    },
+    {
+      "id": "kleidung",
+      "name": "CJ-Kleidung",
+      "beschreibung": "Zeigt die Kleidung von CJ (Skin 0) bei dir und bei anderen Spielern so, wie der Server sie vorgibt. Wird als Erweiterung der Browser-Oberfläche in cef/plugins abgelegt.",
+      "quelle": "https://github.com/German-Samplife/samplife-essentials/tree/main/kleidung",
+      "lizenz": "nicht festgelegt",
+      "pflicht": true,
+      "pakete": [
+        {
+          "samp": "0.3.7-R1",
+          "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/kleidung-0.5.1/samplife-kleidung.dll",
+          "sha256": "13217ee08adc880d7d6315474e7217ad3e6bbed3349f89714c82ed30cc791827",
+          "groesse": 347648,
+          "typ": "datei",
+          "ziel": "cef/plugins",
+          "dateiname": "samplife-kleidung.dll"
+        }
+      ]
+    },
+    {
+      "id": "ladebild",
+      "name": "Ladebild",
+      "beschreibung": "Zeigt beim Start von GTA unser eigenes Ladebild statt des Bildes von SA-MP. Liegt als samplife-ladebild.asi und samplife-ladebild.jpg neben gta_sa.exe.",
+      "quelle": "https://github.com/German-Samplife/samplife-essentials/tree/main/ladebild",
+      "lizenz": "nicht festgelegt",
+      "pflicht": true,
+      "pakete": [
+        {
+          "url": "https://github.com/German-Samplife/samplife-essentials/releases/download/ladebild-0.1.0/samplife-ladebild.zip",
+          "sha256": "e1663c7dcceeb3988ec4e3782e10a1c6ece4f54a415dda46f8d078e4e60e6deb",
+          "groesse": 593947,
+          "typ": "zip"
+        }
+      ]
+    }
+  ]
+}

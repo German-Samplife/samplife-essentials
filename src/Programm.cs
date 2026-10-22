@@ -18,7 +18,18 @@ namespace SamplifeEssentials
         public string Gta = "";
         public string Samp = "";     // SA-MP-Version vorgeben, falls sie nicht erkannt wird
         public bool Testmodus;      // erlaubt eine lokale Liste und unverschluesselte Downloads vom eigenen Rechner
-        public bool Still;          // ohne Fenster installieren (fuer automatische Tests)
+        public bool Still;          // ohne Fenster abgleichen und laden (fuer automatische Tests)
+        public bool Spielen;        // mit --still: danach anmelden und samp.exe starten
+        public bool Gruendlich;     // mit --still: jede Datei per SHA-256 pruefen
+        public bool KeinNeustart;   // mit --still: nach einer Selbstaktualisierung nicht neu starten (Rueckgabe 10)
+        public string Name = "";
+        public string Passwort = "";    // Serverpasswort fuer --spielen
+        public string Kontopasswort = "";   // Passwort des Accounts fuer --spielen
+        public List<string> Optional = new List<string>();
+        public string NachAktualisierung = "";  // Version, auf die gerade aktualisiert wurde; verhindert eine zweite Runde
+        public bool Direkt;         // ueber samplife://verbinden gestartet: pruefen und ohne Klick verbinden
+        public bool AdresseEintragen;   // nur samplife:// eintragen und beenden (fuer Tests)
+        public string Titelbild = "";   // nur fuer Bildschirmfotos: Bilddatei fuer den Kopf
         public bool OhneNetz;       // Fenster ohne Laden der Liste (fuer Bildschirmfotos)
         public string Bildschirmfoto = "";
         public string Zustand = "start";
@@ -30,22 +41,30 @@ namespace SamplifeEssentials
             if (ManifestQuelle != Programm.StandardManifest) text += " --manifest \"" + ManifestQuelle + "\"";
             if (AusweichQuelle != Programm.AusweichManifest && AusweichQuelle != "") text += " --ausweich \"" + AusweichQuelle + "\"";
             if (Testmodus) text += " --test";
+            foreach (var id in Optional) text += " --optional \"" + id + "\"";
             return text;
         }
     }
 
     public static class Programm
     {
-        public const string Version = "1.4.0";
+        public const string Version = "2.0.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
 
+        // Die Parameter dieses Starts, fuer den Neustart nach einer Selbstaktualisierung
+        static string Argumente = "";
+
         [STAThread]
         public static int Main(string[] args)
         {
+            var teile = new List<string>();
+            foreach (var arg in args) teile.Add("\"" + arg.Replace("\"", "") + "\"");
+            Argumente = string.Join(" ", teile.ToArray());
             var optionen = new Optionen();
             var ausweichGesetzt = false;
+            var appDaten = "";
             for (var i = 0; i < args.Length; i++)
             {
                 var naechstes = i + 1 < args.Length ? args[i + 1] : "";
@@ -57,14 +76,31 @@ namespace SamplifeEssentials
                     case "--samp": optionen.Samp = naechstes; i++; break;
                     case "--test": optionen.Testmodus = true; break;
                     case "--still": optionen.Still = true; break;
+                    case "--spielen": optionen.Spielen = true; break;
+                    case "--gruendlich": optionen.Gruendlich = true; break;
+                    case "--kein-neustart": optionen.KeinNeustart = true; break;
+                    case "--name": optionen.Name = naechstes; i++; break;
+                    case "--passwort": optionen.Passwort = naechstes; i++; break;
+                    case "--kontopasswort": optionen.Kontopasswort = naechstes; i++; break;
+                    case "--optional": optionen.Optional.Add(naechstes); i++; break;
+                    case "--nach-aktualisierung": optionen.NachAktualisierung = naechstes; i++; break;
+                    case "--link": optionen.Direkt = Spielstart.IstVerbindenLink(naechstes); i++; break;
+                    case "--adresse-eintragen": optionen.AdresseEintragen = true; break;
+                    case "--titelbild": optionen.Titelbild = naechstes; i++; break;
+                    case "--appdaten": appDaten = naechstes; i++; break;
                     case "--bildschirmfoto": optionen.Bildschirmfoto = naechstes; i++; break;
                     case "--zustand": optionen.Zustand = naechstes; i++; break;
                     case "--suche": optionen.Suchergebnis = naechstes; i++; break;
                 }
             }
 
+            // Eigener Ordner statt %LOCALAPPDATA% nur fuer Tests
+            if (optionen.Testmodus && appDaten != "") Pfade.Lokal = appDaten;
+
             // Eine eigene Liste hat keinen Ersatz, ausser er wird ausdruecklich angegeben
             if (optionen.ManifestQuelle != StandardManifest && !ausweichGesetzt) optionen.AusweichQuelle = "";
+
+            Aktualisierung.AlteEntfernen();
 
             if (optionen.Suchergebnis != "")
             {
@@ -73,13 +109,18 @@ namespace SamplifeEssentials
                 File.WriteAllLines(optionen.Suchergebnis, zeilen, Encoding.UTF8);
                 return 0;
             }
-            if (optionen.Still) return StillInstallieren(optionen);
+            if (optionen.AdresseEintragen)
+            {
+                try { Spielstart.AdresseEintragen(optionen.Testmodus); return 0; }
+                catch (Exception) { return 1; }
+            }
+            if (optionen.Still) return StillAusfuehren(optionen);
 
             var anwendung = new Application();
             anwendung.ShutdownMode = ShutdownMode.OnMainWindowClose;
             anwendung.DispatcherUnhandledException += delegate(object s, DispatcherUnhandledExceptionEventArgs e)
             {
-                MessageBox.Show("Unerwarteter Fehler: " + e.Exception.Message, "Samplife Essentials Installer", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Unerwarteter Fehler: " + e.Exception.Message, "Samplife Launcher", MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
             };
 
@@ -130,7 +171,7 @@ namespace SamplifeEssentials
 
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var anfrage = (HttpWebRequest)WebRequest.Create(adresse);
-            anfrage.UserAgent = "SamplifeEssentialsInstaller/" + Version;
+            anfrage.UserAgent = "SamplifeLauncher/" + Version;
             anfrage.Timeout = 20000;
             using (var antwort = (HttpWebResponse)anfrage.GetResponse())
             {
@@ -143,24 +184,60 @@ namespace SamplifeEssentials
             }
         }
 
-        /// <summary>Installiert alle verfuegbaren Komponenten ohne Fenster. Rueckgabe 0 bei Erfolg.</summary>
-        static int StillInstallieren(Optionen optionen)
+        /// <summary>
+        /// Der Ablauf von „Spielen“ ohne Fenster, fuer automatische Tests. Rueckgabe:
+        /// 0 Erfolg, 1 Laden fehlgeschlagen, 2 kein GTA-Verzeichnis, 3 weder Liste noch brauchbare Sicherung,
+        /// 4 SA-MP fehlt oder falsche Version, 5 Name ungueltig, 6 samp.exe startet nicht, 7 Selbstaktualisierung
+        /// fehlgeschlagen, 8 Passwort des Accounts falsch, 10 selbst aktualisiert (mit --kein-neustart).
+        /// </summary>
+        static int StillAusfuehren(Optionen optionen)
         {
             try
             {
-                var manifest = Manifest.Lesen(ListeHolen(optionen));
                 var gta = optionen.Gta != "" ? optionen.Gta : GtaVerzeichnis.Finden();
                 if (!GtaVerzeichnis.IstGtaVerzeichnis(gta)) return 2;
+
+                Manifest manifest = null;
+                string json = null;
+                var ausSicherung = false;
+                try
+                {
+                    json = ListeHolen(optionen);
+                    manifest = Manifest.Lesen(json);
+                }
+                catch (ManifestFehler) { return 3; }
+                catch (Exception)
+                {
+                    var stand = Stand.Lesen(gta);
+                    if (stand == null) return 3;
+                    json = stand.ManifestJson;
+                    manifest = Manifest.Lesen(json);
+                    ausSicherung = true;
+                }
+
+                if (!ausSicherung && Aktualisierung.Noetig(manifest, optionen.NachAktualisierung))
+                {
+                    try { Aktualisierung.Ausfuehren(manifest.Launcher, optionen.Testmodus, delegate { }, CancellationToken.None); }
+                    catch (Exception) { return 7; }
+                    if (optionen.KeinNeustart) return 10;
+                    Aktualisierung.NeuStarten(Argumente, manifest.Launcher.Version);
+                    return 0;
+                }
+
                 var sampVersion = GtaVerzeichnis.SampVersion(gta, manifest);
                 if (sampVersion == "") sampVersion = optionen.Samp;
-                if (sampVersion == "" && manifest.SampVersionen.Count == 1) sampVersion = manifest.SampVersionen[0].Name;
-                var auswahl = new List<Komponente>();
-                foreach (var komponente in manifest.Komponenten)
+                if (sampVersion == "" && manifest.SampVersionen.Count == 1 && !optionen.Spielen) sampVersion = manifest.SampVersionen[0].Name;
+
+                var ablauf = new Ablauf
                 {
-                    if (Manifest.PassendePakete(komponente, sampVersion).Count > 0) auswahl.Add(komponente);
-                }
-                var ergebnis = new Installation(gta, sampVersion, auswahl, optionen.Testmodus).Ausfuehren(CancellationToken.None);
-                return ergebnis.Erfolg ? 0 : 1;
+                    Gta = gta, SampVersion = sampVersion, Name = optionen.Name != "" ? optionen.Name : Spielstart.GespeicherterName(optionen.Testmodus),
+                    Passwort = optionen.Passwort,
+                    Kontopasswort = optionen.Kontopasswort,
+                    Manifest = manifest, ManifestJson = json, AusSicherung = ausSicherung, Optional = optionen.Optional,
+                    Gruendlich = optionen.Gruendlich, MitStart = optionen.Spielen, Testmodus = optionen.Testmodus
+                };
+                var ergebnis = ablauf.Ausfuehren(CancellationToken.None);
+                return ergebnis.Erfolg ? 0 : ergebnis.Code;
             }
             catch (Exception)
             {
@@ -177,7 +254,10 @@ namespace SamplifeEssentials
             optionen.OhneNetz = !mitNetz;
             var fenster = new Fenster(optionen);
             if (!mitNetz && optionen.ManifestQuelle != StandardManifest)
-                fenster.ManifestSetzen(Manifest.Lesen(ManifestHolen(optionen.ManifestQuelle, true)));
+            {
+                var json = ManifestHolen(optionen.ManifestQuelle, true);
+                fenster.ManifestSetzen(Manifest.Lesen(json), json);
+            }
             // ausserhalb des sichtbaren Bildschirms, damit beim Erzeugen nichts aufblitzt
             fenster.Wurzel.WindowStartupLocation = WindowStartupLocation.Manual;
             fenster.Wurzel.Left = -20000;

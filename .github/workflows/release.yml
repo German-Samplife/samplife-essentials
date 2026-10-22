@@ -1,11 +1,20 @@
-# Baut den Installer aus dem Quelltext dieses Repositorys und hängt ihn an ein Release.
-# Auslöser: ein Tag wie v1.2.0. Von Hand startbar, dann wird nur gebaut und geprüft.
+# Baut den Launcher aus dem Quelltext dieses Repositorys und hängt ihn an ein Release.
+# Auslöser: ein Tag wie v2.0.0. Bei Pushes auf andere Branches (Änderungen am Launcher) und von Hand wird nur gebaut,
+# geprüft und es werden Bildschirmfotos des Fensters als Artefakt abgelegt.
 name: Release
 
 on:
   push:
     tags:
       - "v*"
+    branches-ignore:
+      - main
+    paths:
+      - "src/**"
+      - "test/**"
+      - "bauen.cmd"
+      - "app.manifest"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
@@ -33,19 +42,43 @@ jobs:
         shell: pwsh
         run: python test/pruefen.py
 
+      - name: Bildschirmfotos des Fensters
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force bilder | Out-Null
+          # Kopfbild: das eigene Ladebild (ladebild/ auf main), nicht die Platzhalter-Screenshots der Website, damit die
+          # Bilder auch für die Updates in der Community taugen; ohne Netz ohne Bild
+          try { Invoke-WebRequest -Uri "https://raw.githubusercontent.com/German-Samplife/samplife-essentials/main/ladebild/samplife-ladebild.jpg" -OutFile "$env:RUNNER_TEMP\titelbild.jpg" } catch { }
+          foreach ($zustand in "start", "gefunden", "bereit", "passwort", "dateien", "laeuft", "mehr", "fertig", "offline") {
+            Start-Process -Wait -FilePath "ausgabe\Samplife Launcher.exe" -ArgumentList "--bildschirmfoto", "bilder\$zustand.png", "--zustand", $zustand, "--titelbild", "`"$env:RUNNER_TEMP\titelbild.jpg`""
+          }
+          Get-ChildItem bilder
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bildschirmfotos
+          path: bilder/
+          if-no-files-found: ignore
+
       - name: Datei für das Release vorbereiten
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          # Leerzeichen im Dateinamen macht GitHub zu Punkten; gleich so benennen, damit der Link in der README stimmt
-          Copy-Item "ausgabe\Samplife Essentials Installer.exe" "release\Samplife.Essentials.Installer.exe"
-          $hash = (Get-FileHash "release\Samplife.Essentials.Installer.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  Samplife.Essentials.Installer.exe" | Out-File -Encoding ascii "release\SHA256SUMS.txt"
+          # Leerzeichen im Dateinamen macht GitHub zu Punkten; gleich so benennen, damit der Link in der README stimmt.
+          # Dieselbe Datei zusätzlich unter dem alten Namen: Links auf .../latest/download/Samplife.Essentials.Installer.exe
+          # führen so weiter auf eine Fassung, die funktioniert.
+          Copy-Item "ausgabe\Samplife Launcher.exe" "release\Samplife.Launcher.exe"
+          Copy-Item "ausgabe\Samplife Launcher.exe" "release\Samplife.Essentials.Installer.exe"
+          $hash = (Get-FileHash "release\Samplife.Launcher.exe" -Algorithm SHA256).Hash.ToLower()
+          $groesse = (Get-Item "release\Samplife.Launcher.exe").Length
+          "$hash  Samplife.Launcher.exe`n$hash  Samplife.Essentials.Installer.exe" | Out-File -Encoding ascii "release\SHA256SUMS.txt"
           "SHA256=$hash" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "GROESSE=$groesse" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
         with:
-          name: installer
+          name: launcher
           path: release/
 
       - name: Release anlegen
@@ -55,12 +88,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          Samplife Essentials Installer ${{ github.ref_name }}
+          Samplife Launcher ${{ github.ref_name }}
 
-          Herunterladen, starten, GTA-Verzeichnis bestätigen, auf „Installieren" klicken. Die Datei ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen" → „Trotzdem ausführen").
+          Herunterladen, starten, GTA-Verzeichnis bestätigen, Namen eingeben, auf „Spielen" klicken. Der Launcher hält deine Dateien auf dem Stand des Servers und verbindet dich direkt. Die Datei ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen" → „Trotzdem ausführen").
+
+          ``Samplife.Essentials.Installer.exe`` ist dieselbe Datei unter dem alten Namen, damit alte Links weiter funktionieren.
 
           Gebaut von GitHub aus dem Quelltext dieses Tags.
 
-          SHA-256: ``$env:SHA256``
+          SHA-256: ``$env:SHA256`` · Größe: $env:GROESSE Bytes (für den Block ``launcher`` im Manifest)
           "@
-          gh release create "${{ github.ref_name }}" "release/Samplife.Essentials.Installer.exe" "release/SHA256SUMS.txt" --title "Samplife Essentials Installer ${{ github.ref_name }}" --notes $text --latest
+          gh release create "${{ github.ref_name }}" "release/Samplife.Launcher.exe" "release/Samplife.Essentials.Installer.exe" "release/SHA256SUMS.txt" --title "Samplife Launcher ${{ github.ref_name }}" --notes $text --latest
