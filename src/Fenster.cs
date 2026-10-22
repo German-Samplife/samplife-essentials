@@ -166,6 +166,8 @@ namespace SamplifeEssentials
         readonly ScrollViewer protokollRollen;
         readonly Border balken;
         readonly Image titelbild;
+        readonly PasswordBox passwort;
+        readonly FrameworkElement bereichPasswort;
         bool titelbildGezeigt;
         bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
@@ -234,6 +236,8 @@ namespace SamplifeEssentials
             protokollRollen = Finde<ScrollViewer>("ProtokollRollen");
             balken = Finde<Border>("Balken");
             titelbild = Finde<Image>("Titelbild");
+            passwort = Finde<PasswordBox>("Passwort");
+            bereichPasswort = Finde<FrameworkElement>("BereichPasswort");
             pfadTitel = Finde<TextBlock>("PfadTitel");
             sucheText = Finde<TextBlock>("SucheText");
             knopfSuchen = Finde<Button>("KnopfSuchen");
@@ -618,6 +622,7 @@ namespace SamplifeEssentials
             }
             VerzeichnisPruefen();
             TitelbildLaden(manifest.Bilder);
+            PasswortAbfragen(manifest.ServerAdresse, manifest.ServerPort);
             if (manifest.Updates != "" && neuigkeiten.Count == 0) NeuigkeitenLaden(manifest.Updates);
             else if (manifest.Updates == "") neuStatus.Text = "Die Updates findest du in der Community auf unserer Website.";
         }
@@ -753,6 +758,16 @@ namespace SamplifeEssentials
             catch (Exception) { }
         }
 
+        /// <summary>Zeigt das Feld fuer das Serverpasswort nur, wenn der Server eins verlangt.</summary>
+        async void PasswortAbfragen(string adresse, int port)
+        {
+            if (optionen.Bildschirmfoto != "" || adresse == "" || port <= 0) return;
+            bool? verlangt;
+            try { verlangt = await Task.Run(() => SampStart.VerlangtPasswort(adresse, port)); }
+            catch (Exception) { return; }
+            bereichPasswort.Visibility = verlangt == true ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         /// <summary>Ueber samplife://verbinden gestartet: Ist alles bereit, startet der Launcher ohne Klick.</summary>
         void DirektVersuchen()
         {
@@ -856,6 +871,7 @@ namespace SamplifeEssentials
             var ablauf = new Ablauf
             {
                 Gta = Gta, SampVersion = sampVersion, Name = name.Text.Trim(), Manifest = manifest, ManifestJson = manifestJson,
+                Passwort = bereichPasswort.Visibility == Visibility.Visible ? passwort.Password : "",
                 AusSicherung = ausSicherung, Optional = einstellungen.Optional, Gruendlich = nurPruefen, MitStart = !nurPruefen,
                 Testmodus = optionen.Testmodus
             };
@@ -930,6 +946,7 @@ namespace SamplifeEssentials
         {
             pfad.IsEnabled = !gesperrt;
             name.IsEnabled = !gesperrt;
+            passwort.IsEnabled = !gesperrt;
             knopfDurchsuchen.IsEnabled = !gesperrt;
             knopfSuchen.IsEnabled = !gesperrt;
             knopfGruendlich.IsEnabled = !gesperrt;
@@ -1063,7 +1080,8 @@ namespace SamplifeEssentials
             knopfSpielen.IsEnabled = true;
             knopfGruendlich.IsEnabled = true;
 
-            if (zustand == "bereit" || zustand == "offline")
+            if (zustand == "passwort") bereichPasswort.Visibility = Visibility.Visible;
+            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 titel.Text = "Bereit zum Spielen";

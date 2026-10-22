@@ -25,8 +25,9 @@ Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases bau
    3. Er meldet den Spieler beim Server an und startet `samp.exe`, das direkt mit dem Server verbindet.
    4. Danach schließt er sich.
 6. **„Gründlich prüfen"** rechnet die Prüfsumme jeder Datei nach und lädt neu, was nicht stimmt.
-7. **„Verbinden" auf der Website:** Der Launcher trägt bei jedem Start die Adresse `samplife://` für den Windows-Benutzer ein (ohne Administratorrechte). Ein Link auf `samplife://verbinden` öffnet ihn; ist Verzeichnis und Name schon bekannt, prüft er und verbindet ohne weiteren Klick. Andere Adressen öffnen nur das Fenster.
-8. Downloads und geschriebene Dateien stehen auch in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
+7. **Serverpasswort:** Verlangt der Server eins (der Launcher fragt ihn beim Start wie die Serverliste von SA-MP), erscheint unter dem Namen das Feld „Serverpasswort“. Es wird nicht gespeichert; der Launcher gibt es mit `-z` an `gta_sa.exe` weiter und startet in dem Fall immer über das Laden der `samp.dll`.
+8. **„Verbinden" auf der Website:** Der Launcher trägt bei jedem Start die Adresse `samplife://` für den Windows-Benutzer ein (ohne Administratorrechte). Ein Link auf `samplife://verbinden` öffnet ihn; ist Verzeichnis und Name schon bekannt, prüft er und verbindet ohne weiteren Klick. Andere Adressen öffnen nur das Fenster.
+9. Downloads und geschriebene Dateien stehen auch in `samplife-essentials-protokoll.txt` im GTA-Verzeichnis.
 
 ## Was das Programm zusichert
 
@@ -169,6 +170,7 @@ Aufrufparameter für Tests:
 | `--still` | ohne Fenster abgleichen, Fehlendes und Veraltetes laden, Stand sichern. Rückgabe: 0 Erfolg, 1 Laden fehlgeschlagen, 2 kein GTA-Verzeichnis, 3 weder Liste noch brauchbare Sicherung, 4 SA-MP fehlt oder falsche Version, 5 Name ungültig, 6 `samp.exe` startet nicht, 7 Selbstaktualisierung fehlgeschlagen, 10 selbst aktualisiert |
 | `--spielen` | mit `--still`: danach anmelden und `samp.exe` starten |
 | `--name <Name>` | Spielername für `--spielen` |
+| `--passwort <Passwort>` | Serverpasswort für `--spielen`; startet dann immer über `gta_sa.exe … -z` |
 | `--optional <id>` | optionale Komponente wählen (mehrfach möglich) |
 | `--gruendlich` | jede Datei per SHA-256 prüfen statt über Größe und Änderungszeit |
 | `--link <Adresse>` | so ruft Windows den Launcher über `samplife://` auf; nur `samplife://verbinden` startet direkt |

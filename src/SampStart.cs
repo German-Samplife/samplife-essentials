@@ -53,11 +53,20 @@ namespace SamplifeEssentials
             return Path.Combine(Pfade.Launcher, "samp", version, GtaVerzeichnis.SampDatei);
         }
 
-        /// <summary>Startet gta_sa.exe mit Name, Adresse und Port und laedt die samp.dll hinein.</summary>
-        public static Process Starten(string gta, string adresse, int port, string name, string dll)
+        /// <summary>
+        /// Startet gta_sa.exe mit Name, Adresse, Port und (falls noetig) Serverpasswort und laedt die samp.dll hinein.
+        /// Das Passwort steht nur in den Parametern des Spiels, nirgends sonst.
+        /// </summary>
+        public static Process Starten(string gta, string adresse, int port, string name, string dll, string passwort)
         {
-            var start = new ProcessStartInfo(Path.Combine(gta, GtaVerzeichnis.SpielDatei),
-                "-c -n " + name + " -h " + Ipv4(adresse) + " -p " + port);
+            var parameter = "-c -n " + name + " -h " + Ipv4(adresse) + " -p " + port;
+            if (!string.IsNullOrEmpty(passwort))
+            {
+                // Wie der open.mp-Launcher: in Anfuehrungszeichen nur, wenn es Leerzeichen enthaelt
+                var wert = passwort.Replace("\"", "");
+                parameter += " -z " + (wert.Contains(" ") ? "\"" + wert + "\"" : wert);
+            }
+            var start = new ProcessStartInfo(Path.Combine(gta, GtaVerzeichnis.SpielDatei), parameter);
             start.WorkingDirectory = gta;
             start.UseShellExecute = false;
             var spiel = Process.Start(start);
@@ -70,6 +79,43 @@ namespace SamplifeEssentials
                 throw;
             }
             return spiel;
+        }
+
+        /// <summary>
+        /// Fragt den Server wie die Serverliste von SA-MP (Abfrage "i"), ob er ein Passwort verlangt. null, wenn er nicht
+        /// antwortet.
+        /// </summary>
+        public static bool? VerlangtPasswort(string adresse, int port)
+        {
+            try
+            {
+                var ip = IPAddress.Parse(Ipv4(adresse));
+                var anfrage = new byte[11];
+                Encoding.ASCII.GetBytes("SAMP").CopyTo(anfrage, 0);
+                ip.GetAddressBytes().CopyTo(anfrage, 4);
+                anfrage[8] = (byte)(port & 0xFF);
+                anfrage[9] = (byte)(port >> 8);
+                anfrage[10] = (byte)'i';
+                using (var udp = new UdpClient())
+                {
+                    udp.Client.ReceiveTimeout = 2500;
+                    var ziel = new IPEndPoint(ip, port);
+                    for (var versuch = 0; versuch < 2; versuch++)
+                    {
+                        udp.Send(anfrage, anfrage.Length, ziel);
+                        try
+                        {
+                            var absender = new IPEndPoint(IPAddress.Any, 0);
+                            var antwort = udp.Receive(ref absender);
+                            // Antwort: dieselben 11 Bytes, dann 1 Byte "Passwort ja/nein", Spieler, Plaetze, Name ...
+                            if (antwort.Length > 11 && antwort[10] == (byte)'i') return antwort[11] != 0;
+                        }
+                        catch (SocketException) { }
+                    }
+                }
+            }
+            catch (Exception) { }
+            return null;
         }
 
         static string Ipv4(string adresse)

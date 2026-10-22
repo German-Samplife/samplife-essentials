@@ -38,6 +38,7 @@ namespace SamplifeEssentials
         public string Gta;
         public string SampVersion = "";
         public string Name = "";
+        public string Passwort = "";       // Serverpasswort, nur fuer diesen Start, wird nirgends gespeichert
         public Manifest Manifest;
         public string ManifestJson = "";
         public bool AusSicherung;          // Liste kam aus der Sicherung, Nachladen ist nicht moeglich
@@ -159,11 +160,17 @@ namespace SamplifeEssentials
                             Melden(new Meldung { Nummer = naechsteNummer++, Art = MeldungArt.Warnung, Text = fehler, Fertig = true });
                         }
                     }
+                    // Mit Serverpasswort immer ueber gta_sa.exe: dort kommt es mit -z sicher an (wie beim open.mp-Launcher)
+                    if (Passwort != "" && plan.Art == "exe")
+                    {
+                        plan.Art = "dll";
+                        plan.Dll = Path.Combine(Gta, GtaVerzeichnis.SampDatei);
+                    }
                     if (plan.Art == "dll")
                     {
                         Schritt("Starte GTA San Andreas mit SA-MP " + plan.Version + (plan.VonOpenMp ? " aus dem open.mp-Launcher" : "")
                             + " und verbinde mit " + Manifest.ServerAdresse + ":" + Manifest.ServerPort);
-                        try { SampStart.Starten(Gta, Manifest.ServerAdresse, Manifest.ServerPort, Name, plan.Dll); }
+                        try { SampStart.Starten(Gta, Manifest.ServerAdresse, Manifest.ServerPort, Name, plan.Dll, Passwort); }
                         catch (Exception fehler)
                         {
                             return Fehlschlag(ergebnis, "SA-MP konnte nicht gestartet werden: " + fehler.Message, 6);

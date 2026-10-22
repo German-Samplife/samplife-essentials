@@ -380,6 +380,23 @@
               <TextBlock x:Name="NameStatus" Grid.Column="1" Foreground="{StaticResource Leise}" FontSize="13" Margin="14,0,0,0"
                          VerticalAlignment="Center" TextWrapping="Wrap" Text="So, wie du auf dem Server heißt, z. B. Max_Mustermann"/>
             </Grid>
+
+            <!-- Nur sichtbar, wenn der Server ein Passwort verlangt (Abfrage beim Start). Wird nicht gespeichert. -->
+            <StackPanel x:Name="BereichPasswort" Visibility="Collapsed">
+              <TextBlock Text="Serverpasswort" Foreground="{StaticResource Gedaempft}" FontSize="13" Margin="0,14,0,0"/>
+              <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="300"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Feld}">
+                  <PasswordBox x:Name="Passwort" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                               CaretBrush="White" VerticalContentAlignment="Center" Padding="14,0" FontSize="15"/>
+                </Border>
+                <TextBlock Grid.Column="1" Foreground="{StaticResource Leise}" FontSize="13" Margin="14,0,0,0" VerticalAlignment="Center"
+                           TextWrapping="Wrap" Text="Der Server ist gerade geschlossen. Das Passwort bekommst du vom Team."/>
+              </Grid>
+            </StackPanel>
           </StackPanel>
 
           <!-- Dateien -->

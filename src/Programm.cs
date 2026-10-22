@@ -23,6 +23,7 @@ namespace SamplifeEssentials
         public bool Gruendlich;     // mit --still: jede Datei per SHA-256 pruefen
         public bool KeinNeustart;   // mit --still: nach einer Selbstaktualisierung nicht neu starten (Rueckgabe 10)
         public string Name = "";
+        public string Passwort = "";    // Serverpasswort fuer --spielen
         public List<string> Optional = new List<string>();
         public string NachAktualisierung = "";  // Version, auf die gerade aktualisiert wurde; verhindert eine zweite Runde
         public bool Direkt;         // ueber samplife://verbinden gestartet: pruefen und ohne Klick verbinden
@@ -78,6 +79,7 @@ namespace SamplifeEssentials
                     case "--gruendlich": optionen.Gruendlich = true; break;
                     case "--kein-neustart": optionen.KeinNeustart = true; break;
                     case "--name": optionen.Name = naechstes; i++; break;
+                    case "--passwort": optionen.Passwort = naechstes; i++; break;
                     case "--optional": optionen.Optional.Add(naechstes); i++; break;
                     case "--nach-aktualisierung": optionen.NachAktualisierung = naechstes; i++; break;
                     case "--link": optionen.Direkt = Spielstart.IstVerbindenLink(naechstes); i++; break;
@@ -227,6 +229,7 @@ namespace SamplifeEssentials
                 var ablauf = new Ablauf
                 {
                     Gta = gta, SampVersion = sampVersion, Name = optionen.Name != "" ? optionen.Name : Spielstart.GespeicherterName(optionen.Testmodus),
+                    Passwort = optionen.Passwort,
                     Manifest = manifest, ManifestJson = json, AusSicherung = ausSicherung, Optional = optionen.Optional,
                     Gruendlich = optionen.Gruendlich, MitStart = optionen.Spielen, Testmodus = optionen.Testmodus
                 };

@@ -531,6 +531,20 @@ def main():
         pruefe(gleiche_datei(geladen, openmp_dll), 'samp.dll des open.mp-Launchers geladen')
         pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll im GTA-Verzeichnis abgelegt')
 
+        print('26b. Mit Serverpasswort')
+        os.remove(os.path.join(gta, 'gta-gestartet.txt'))
+        os.remove(os.path.join(gta, 'gta-geladen.txt'))
+        pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', appdaten, '--passwort', 'geheim wort') == 0, 'Rueckgabe 0')
+        pruefe(warten_auf(os.path.join(gta, 'gta-gestartet.txt')) == '-c -n Max_Mustermann -h 127.0.0.1 -p 7777 -z "geheim wort"',
+               'Passwort mit -z an gta_sa.exe')
+        gta = nur_gta(os.path.join(arbeit, 'laden-exe'))
+        shutil.copy(samp_exe, os.path.join(gta, 'samp.exe'))
+        open(os.path.join(gta, 'samp.dll'), 'wb').write(dll_daten)
+        pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', appdaten, '--passwort', 'geheim') == 0, 'samp.exe vorhanden: Rueckgabe 0')
+        pruefe(gleiche_datei(warten_auf(os.path.join(gta, 'gta-geladen.txt')), os.path.join(gta, 'samp.dll')),
+               'mit Passwort samp.dll aus dem GTA-Verzeichnis geladen statt samp.exe')
+        pruefe(not os.path.exists(os.path.join(gta, 'gestartet.txt')), 'samp.exe nicht gestartet')
+
         print('27. samp_client: samp.dll in den Launcher-Ordner, vorhandene Dateien bleiben')
         appdaten = os.path.join(arbeit, 'appdaten-eigen')
         url6 = lade_manifest('laden2.json', samp_client={'id': 'samp', 'name': 'SA-MP 0.3.7-R1', 'pakete': [
