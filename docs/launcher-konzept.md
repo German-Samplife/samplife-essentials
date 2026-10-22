@@ -194,7 +194,7 @@ Den echten Spielstart mit GTA prüfen Spieler auf Windows mit dem Testserver, ni
 
 ## Offen
 
-1. **SA-MP-Client mitliefern:** entschieden (22.10.): Fehlt SA-MP, richtet der Launcher es aus dem Block `samp_client` im Manifest ein, ohne je eine vorhandene Installation zu ersetzen. Offen ist nur noch die Quelle der Dateien von 0.3.7-R1.
+1. **SA-MP-Client mitliefern:** entschieden (22.10.). Ohne `samp.exe` startet der Launcher wie der open.mp-Launcher: `gta_sa.exe` starten und die `samp.dll` laden, aus seinem eigenen Ordner oder dem des open.mp-Launchers. Fehlt beides, richtet er `samp_client` ein (Release `samp-client-0.3.7-R1`, Dateien unverändert aus dem Archiv des open.mp-Launchers). Eine vorhandene SA-MP-Installation ersetzt er nie. Siehe README, „Wie SA-MP startet“.
 2. **Eigene Modelle unter R1.** Neue Objekte gehen unter 0.3.7-R1 nur, indem vorhandene Modelle ersetzt werden, zum Beispiel über einen Ordner für modloader. Welche Technik, welche IDs, und wie das mit Mods der Spieler zusammengeht, braucht ein eigenes Konzept. Das Paketformat (`ziel`, `zip_unterordner`) reicht dafür schon.
 3. **Wann `LAUNCHER_PFLICHT` eingeschaltet wird** (vor oder nach dem Start am 23.10.).
 4. **Zwischenspeicher für Pakete.** Ohne ihn lädt eine einzige beschädigte CEF-Datei das ganze Paket (rund 150 MB) neu. Ein Zwischenspeicher unter `%LOCALAPPDATA%` würde das vermeiden, kostet aber denselben Platz noch einmal.
