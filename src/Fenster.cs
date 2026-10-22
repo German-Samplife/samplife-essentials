@@ -200,6 +200,13 @@ namespace SamplifeEssentials
             {
                 if (symbol != null) Wurzel.Icon = BitmapFrame.Create(symbol, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
             }
+            // Mitgebrachte Schriften wie auf der Website; ohne sie bleibt es bei Segoe UI
+            var schriften = Schriften.Bereitstellen();
+            if (schriften != null)
+            {
+                Wurzel.FontFamily = new FontFamily(schriften, "./#Inter, Segoe UI");
+                Wurzel.Resources["Anzeige"] = new FontFamily(schriften, "./#Inter Display, ./#Inter, Segoe UI");
+            }
 
             pfad = Finde<TextBox>("Pfad");
             name = Finde<TextBox>("Name");

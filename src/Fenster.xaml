@@ -5,9 +5,9 @@
         Background="#08090E" Foreground="#F1F3F6" FontFamily="Inter, Segoe UI" FontSize="15"
         UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Ideal">
   <Window.Resources>
-    <!-- Farben, Rundungen und Bausteine wie auf der Website (DESIGN.md im Repo samplife). Inter wird benutzt, wenn sie
-         installiert ist, sonst Segoe UI. -->
-    <FontFamily x:Key="Anzeige">Inter Tight, Inter, Segoe UI</FontFamily>
+    <!-- Farben, Rundungen und Bausteine wie auf der Website (DESIGN.md im Repo samplife). Die Schriften Inter und
+         Inter Display bringt der Launcher mit (Schriften.cs); geht das nicht, gilt Segoe UI. -->
+    <FontFamily x:Key="Anzeige">Inter Display, Inter, Segoe UI</FontFamily>
     <SolidColorBrush x:Key="Flaeche" Color="#06FFFFFF"/>
     <SolidColorBrush x:Key="Flaeche2" Color="#0DFFFFFF"/>
     <SolidColorBrush x:Key="FlaecheHover" Color="#12FFFFFF"/>
@@ -265,11 +265,11 @@
         <Grid Margin="28,16,0,0" VerticalAlignment="Top">
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <Border Width="36" Height="36" CornerRadius="12" Background="{StaticResource Akzent}">
-              <TextBlock Text="S" FontFamily="{StaticResource Anzeige}" FontSize="19" FontWeight="Bold" Foreground="White"
+              <TextBlock Text="S" FontFamily="{DynamicResource Anzeige}" FontSize="19" FontWeight="Bold" Foreground="White"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="German Samplife" FontFamily="{StaticResource Anzeige}" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Text="German Samplife" FontFamily="{DynamicResource Anzeige}" FontSize="17" FontWeight="SemiBold"/>
               <TextBlock x:Name="VersionText" Text="Launcher" Foreground="#C2C7D0" FontSize="12"/>
             </StackPanel>
           </StackPanel>
@@ -279,7 +279,7 @@
           </StackPanel>
         </Grid>
         <StackPanel VerticalAlignment="Bottom" Margin="28,0,28,18">
-          <TextBlock x:Name="Titel" Text="Bereit machen" FontFamily="{StaticResource Anzeige}" FontSize="34" FontWeight="Bold"/>
+          <TextBlock x:Name="Titel" Text="Bereit machen" FontFamily="{DynamicResource Anzeige}" FontSize="34" FontWeight="Bold"/>
           <TextBlock x:Name="Untertitel" Foreground="#C2C7D0" FontSize="15" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="960" HorizontalAlignment="Left"
                      Text="Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt."/>
         </StackPanel>
@@ -475,7 +475,7 @@
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock Text="Neu auf dem Server" FontFamily="{StaticResource Anzeige}" FontSize="20" FontWeight="SemiBold" Margin="12,0,12,8"/>
+            <TextBlock Text="Neu auf dem Server" FontFamily="{DynamicResource Anzeige}" FontSize="20" FontWeight="SemiBold" Margin="12,0,12,8"/>
             <Grid Grid.Row="1">
               <TextBlock x:Name="NeuStatus" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="12,6,12,0"
                          Text="Lade die neuesten Updates …"/>

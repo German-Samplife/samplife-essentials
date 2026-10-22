@@ -122,6 +122,8 @@ Der Compiler versteht C# 5: kein `$"…"`, kein `?.`, keine Ausdruckskörper.
 | `src/Einstellungen.cs` | gemerktes Verzeichnis und optionale Komponenten |
 | `src/Neuigkeiten.cs` | Updates aus der Community für die rechte Spalte |
 | `src/Titelbild.cs` | Bild für den Kopf laden und zwischenspeichern |
+| `src/Schriften.cs` | mitgebrachte Schriften bereitstellen |
+| `src/Pfade.cs` | Ordner außerhalb des GTA-Verzeichnisses |
 | `src/Fenster.xaml`, `src/Fenster.cs` | Oberfläche |
 | `symbol.ico` | Programmsymbol |
 
@@ -153,6 +155,7 @@ Aufrufparameter für Tests:
 | `--link <Adresse>` | so ruft Windows den Launcher über `samplife://` auf; nur `samplife://verbinden` startet direkt |
 | `--adresse-eintragen` | nur `samplife://` eintragen und beenden (mit `--test` als `samplife-test://`) |
 | `--titelbild <Datei>` | nur für Bildschirmfotos: Bild für den Kopf |
+| `--appdaten <Ordner>` | mit `--test`: eigener Ordner statt `%LOCALAPPDATA%` (Einstellungen, Bilder, Schriften) |
 | `--kein-neustart` | nach einer Selbstaktualisierung nicht neu starten (Rückgabe 10) |
 | `--bildschirmfoto <Datei.png> --zustand <Name>` | Fenster als Bild speichern, ohne etwas zu laden. Zustände: `start`, `gefunden`, `bereit`, `laeuft`, `fertig`, `offline` (Beispieldaten), `netz` (Liste wirklich laden), `ablauf` (Start wie beim Spieler, Fund bestätigen, Version wählen) |
 
@@ -194,6 +197,10 @@ GitHub baut das Paket mit [`.github/workflows/cef.yml`](.github/workflows/cef.ym
 ## CJ-Kleidung
 
 Im Ordner [`kleidung/`](kleidung/README.md) liegt das samp-cef-Plugin `samplife-kleidung.dll` für `GTA/cef/plugins/`. Es zieht jede Figur mit Skin 0 (CJ) so an, wie der Server es für ihren Spieler über samp-cef schickt (`kleidung:spieler`), die eigene und die der anderen Spieler, so wie im Singleplayer. Dafür braucht es den samp-cef-Client mit [`cef/plugin-ereignisse.patch`](cef/README.md#server-ereignisse-für-client-plugins) (Client-Version `0x000300`). GitHub baut die Datei mit [`.github/workflows/kleidung.yml`](.github/workflows/kleidung.yml) bisher nur als Artefakt, ohne Release; im Manifest steht sie erst, wenn der Gamemode die Kleidung nutzt. Protokoll, Installation, Testablauf mit dem Filterscript [`kleidung/beispiel/kleidung_test.pwn`](kleidung/beispiel/kleidung_test.pwn) und Quellen stehen in [`kleidung/README.md`](kleidung/README.md).
+
+## Schriften
+
+Der Launcher bringt Inter und Inter Display mit (`schriften/`, aus [rsms/inter v4.1](https://github.com/rsms/inter/releases/tag/v4.1), SIL Open Font License 1.1, siehe [`LIZENZEN/Inter-OFL-1.1.txt`](LIZENZEN/Inter-OFL-1.1.txt)). Inter Display steht für die Überschriften an Stelle von Inter Tight der Website, weil es Inter Tight nur als variable Schrift gibt und WPF davon nur eine Stärke zeigt.
 
 ## Lizenz
 

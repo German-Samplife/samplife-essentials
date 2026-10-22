@@ -62,6 +62,7 @@ namespace SamplifeEssentials
             Argumente = string.Join(" ", teile.ToArray());
             var optionen = new Optionen();
             var ausweichGesetzt = false;
+            var appDaten = "";
             for (var i = 0; i < args.Length; i++)
             {
                 var naechstes = i + 1 < args.Length ? args[i + 1] : "";
@@ -82,11 +83,15 @@ namespace SamplifeEssentials
                     case "--link": optionen.Direkt = Spielstart.IstVerbindenLink(naechstes); i++; break;
                     case "--adresse-eintragen": optionen.AdresseEintragen = true; break;
                     case "--titelbild": optionen.Titelbild = naechstes; i++; break;
+                    case "--appdaten": appDaten = naechstes; i++; break;
                     case "--bildschirmfoto": optionen.Bildschirmfoto = naechstes; i++; break;
                     case "--zustand": optionen.Zustand = naechstes; i++; break;
                     case "--suche": optionen.Suchergebnis = naechstes; i++; break;
                 }
             }
+
+            // Eigener Ordner statt %LOCALAPPDATA% nur fuer Tests
+            if (optionen.Testmodus && appDaten != "") Pfade.Lokal = appDaten;
 
             // Eine eigene Liste hat keinen Ersatz, ausser er wird ausdruecklich angegeben
             if (optionen.ManifestQuelle != StandardManifest && !ausweichGesetzt) optionen.AusweichQuelle = "";

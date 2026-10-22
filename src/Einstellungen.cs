@@ -21,8 +21,7 @@ namespace SamplifeEssentials
         {
             get
             {
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "German Samplife", "Launcher", "einstellungen.json");
+                return Path.Combine(Pfade.Launcher, "einstellungen.json");
             }
         }
 
