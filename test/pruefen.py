@@ -87,6 +87,36 @@ def samp_exe_bauen(ordner):
     return ziel
 
 
+def gta_exe_bauen(ordner):
+    """Ersatz fuer gta_sa.exe (32 Bit wie das Spiel): schreibt seine Parameter in gta-gestartet.txt und wartet bis zu
+    zehn Sekunden darauf, dass eine samp.dll in den Prozess geladen wird; deren Pfad steht dann in gta-geladen.txt."""
+    quelle = os.path.join(ordner, 'gta.cs')
+    with open(quelle, 'w', encoding='utf-8') as f:
+        f.write('using System; using System.Diagnostics; using System.IO; using System.Threading;\n'
+                'class Gta { static void Main(string[] a) {\n'
+                '  var hier = AppDomain.CurrentDomain.BaseDirectory;\n'
+                '  File.WriteAllText(Path.Combine(hier, "gta-gestartet.txt"), string.Join(" ", a));\n'
+                '  for (var i = 0; i < 100; i++) {\n'
+                '    foreach (ProcessModule m in Process.GetCurrentProcess().Modules)\n'
+                '      if (m.ModuleName.Equals("samp.dll", StringComparison.OrdinalIgnoreCase)) {\n'
+                '        File.WriteAllText(Path.Combine(hier, "gta-geladen.txt"), m.FileName); return; }\n'
+                '    Thread.Sleep(100); } } }\n')
+    csc = os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Microsoft.NET', 'Framework', 'v4.0.30319', 'csc.exe')
+    ziel = os.path.join(ordner, 'gta_sa.exe')
+    subprocess.run([csc, '/nologo', '/platform:x86', '/out:' + ziel, quelle], check=True, stdout=subprocess.DEVNULL)
+    return ziel
+
+
+def warten_auf(datei, sekunden=15):
+    ende = time.time() + sekunden
+    while time.time() < ende:
+        if os.path.exists(datei):
+            time.sleep(0.2)
+            return open(datei, encoding='utf-8').read()
+        time.sleep(0.2)
+    return None
+
+
 def gestartet(gta, warten=10):
     """Inhalt von gestartet.txt, sobald die nachgebaute samp.exe gelaufen ist, sonst None."""
     datei = os.path.join(gta, 'gestartet.txt')
@@ -366,7 +396,8 @@ def main():
         gta = spiel_anlegen(os.path.join(arbeit, 'spiel5'), samp=b'samp-0.3.7-R3')
         pruefe(spielen(gta, url) == 4, 'SA-MP R3 statt R1: Rueckgabe 4')
         gta = spiel_anlegen(os.path.join(arbeit, 'spiel6'), mit_exe=False)
-        pruefe(spielen(gta, url) == 4, 'ohne samp.exe: Rueckgabe 4')
+        os.remove(os.path.join(gta, 'samp.dll'))
+        pruefe(spielen(gta, url, '--appdaten', os.path.join(arbeit, 'appdaten-leer')) == 4, 'ohne SA-MP und ohne samp_client: Rueckgabe 4')
         pruefe(not os.path.exists(os.path.join(gta, 'sampvoice.asi')), 'nichts geladen, bevor der Start moeglich ist')
 
         print('21. Anmeldung abgelehnt: Spiel startet trotzdem')
@@ -451,6 +482,70 @@ def main():
         boese_liste = launcher_manifest('samp-boese.json', [{'id': 'b', 'name': 'Boese', 'pakete': [paket('samp-boese.zip', boeses_samp)]}])
         pruefe(starten(gta, boese_liste) == 1, 'andere Komponente darf samp.dll nicht ablegen: Rueckgabe 1')
         pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll abgelegt')
+
+        # Start wie beim open.mp-Launcher: gta_sa.exe starten und samp.dll laden. Als samp.dll dient eine Kopie der
+        # 32-Bit-version.dll von Windows; die Liste nennt deren Pruefsumme als 0.3.7-R1.
+        gta_exe = gta_exe_bauen(werkzeug)
+        dll_daten = lesen(os.environ.get('WINDIR', r'C:\Windows'), 'SysWOW64', 'version.dll')
+        open(os.path.join(web, 'samp-r1.dll'), 'wb').write(dll_daten)
+        geteilt = zip_bauen({'gta/SAMP/SAMP.img': b'img', 'gta/samp.saa': b'saa vom paket', 'gta/sampgui.png': b'png'})
+        open(os.path.join(web, 'samp-geteilt.zip'), 'wb').write(geteilt)
+
+        def lade_manifest(name, **mehr):
+            daten = {'version': 1, 'stand': 3,
+                     'samp_versionen': [{'name': '0.3.7-R1', 'sha256': sha(dll_daten)}],
+                     'server': {'adresse': '127.0.0.1', 'port': 7777, 'anmeldung': basis + 'api/launcher/start'},
+                     'komponenten': spiel_liste}
+            daten.update(mehr)
+            with open(os.path.join(web, name), 'w', encoding='utf-8') as f:
+                json.dump(daten, f)
+            return basis + name
+
+        def nur_gta(ordner):
+            os.makedirs(ordner)
+            shutil.copy(gta_exe, os.path.join(ordner, 'gta_sa.exe'))
+            open(os.path.join(ordner, 'vorbisFile.dll'), 'wb').write(b'alte fassung')
+            return ordner
+
+        print('26. samp.dll des open.mp-Launchers laden')
+        appdaten = os.path.join(arbeit, 'appdaten-openmp')
+        os.makedirs(os.path.join(appdaten, 'mp.open.launcher', 'samp', '0.3.7-R1'))
+        openmp_dll = os.path.join(appdaten, 'mp.open.launcher', 'samp', '0.3.7-R1', 'samp.dll')
+        open(openmp_dll, 'wb').write(dll_daten)
+        gta = nur_gta(os.path.join(arbeit, 'laden1'))
+        pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', appdaten) == 0, 'Rueckgabe 0')
+        parameter = warten_auf(os.path.join(gta, 'gta-gestartet.txt'))
+        pruefe(parameter == '-c -n Max_Mustermann -h 127.0.0.1 -p 7777', 'gta_sa.exe mit den Parametern von SA-MP gestartet')
+        geladen = warten_auf(os.path.join(gta, 'gta-geladen.txt'))
+        pruefe(geladen is not None and os.path.normcase(geladen) == os.path.normcase(openmp_dll), 'samp.dll des open.mp-Launchers geladen')
+        pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll im GTA-Verzeichnis abgelegt')
+
+        print('27. samp_client: samp.dll in den Launcher-Ordner, vorhandene Dateien bleiben')
+        appdaten = os.path.join(arbeit, 'appdaten-eigen')
+        url6 = lade_manifest('laden2.json', samp_client={'id': 'samp', 'name': 'SA-MP 0.3.7-R1', 'pakete': [
+            paket('samp-geteilt.zip', geteilt, zip_unterordner='gta'),
+            paket('samp-r1.dll', dll_daten, typ='datei', ablage='launcher', ziel='samp/0.3.7-R1', dateiname='samp.dll')]})
+        gta = nur_gta(os.path.join(arbeit, 'laden2'))
+        open(os.path.join(gta, 'samp.saa'), 'wb').write(b'eigene saa')
+        pruefe(spielen(gta, url6, '--appdaten', appdaten) == 0, 'Rueckgabe 0')
+        eigene_dll = os.path.join(appdaten, 'German Samplife', 'Launcher', 'samp', '0.3.7-R1', 'samp.dll')
+        pruefe(os.path.exists(eigene_dll) and lesen(eigene_dll) == dll_daten, 'samp.dll im Launcher-Ordner')
+        pruefe(lesen(gta, 'samp.saa') == b'eigene saa', 'vorhandene samp.saa unveraendert')
+        pruefe(lesen(gta, 'SAMP', 'SAMP.img') == b'img', 'fehlende Dateien ins GTA-Verzeichnis gelegt')
+        pruefe(not os.path.exists(os.path.join(gta, 'samp.dll')), 'keine samp.dll im GTA-Verzeichnis')
+        geladen = warten_auf(os.path.join(gta, 'gta-geladen.txt'))
+        pruefe(geladen is not None and os.path.normcase(geladen) == os.path.normcase(eigene_dll), 'eigene samp.dll geladen')
+        vorher = len([a for a in Stiller.abrufe if a.endswith('samp-r1.dll')])
+        os.remove(os.path.join(gta, 'gta-geladen.txt'))
+        pruefe(spielen(gta, url6, '--appdaten', appdaten) == 0, 'zweiter Start: Rueckgabe 0')
+        pruefe(len([a for a in Stiller.abrufe if a.endswith('samp-r1.dll')]) == vorher, 'SA-MP nicht noch einmal geladen')
+        pruefe(warten_auf(os.path.join(gta, 'gta-geladen.txt')) is not None, 'wieder geladen')
+
+        print('28. Liste: Ablage nur fuer samp_client')
+        gta = nur_gta(os.path.join(arbeit, 'laden3'))
+        url7 = lade_manifest('laden3.json', komponenten=[{'id': 'x', 'name': 'X', 'pakete': [
+            paket('samp-r1.dll', dll_daten, typ='datei', ablage='launcher', ziel='samp/0.3.7-R1', dateiname='samp.dll')]}])
+        pruefe(starten(gta, url7, '--appdaten', os.path.join(arbeit, 'appdaten-x')) == 3, 'Liste abgelehnt: Rueckgabe 3')
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

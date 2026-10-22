@@ -162,7 +162,6 @@ namespace SamplifeEssentials
         readonly StackPanel versionen;
         readonly TextBlock versionPflicht, versionHinweis, versionTitel;
         bool nurEineVersion;
-        string vonHandGewaehlt = "";
         readonly ObservableCollection<Fund> funde = new ObservableCollection<Fund>();
         readonly ScrollViewer protokollRollen;
         readonly Border balken;
@@ -437,41 +436,32 @@ namespace SamplifeEssentials
                 var text = "gta_sa.exe gefunden";
                 var farbe = Farben.Erfolg;
                 var symbol = "\uE73E";
-                if (manifest != null) sampVersion = GtaVerzeichnis.SampVersion(verzeichnis, manifest);
-                if (sampVersion != "")
+                bereichVersion.Visibility = Visibility.Collapsed;
+                if (manifest != null)
                 {
-                    text += " · SA-MP " + sampVersion;
-                    bereichVersion.Visibility = Visibility.Collapsed;
-                }
-                else if (manifest != null && manifest.SampClient != null && !GtaVerzeichnis.HatSamp(verzeichnis)
-                    && !File.Exists(Path.Combine(verzeichnis, Spielstart.SampExe)))
-                {
-                    // Kein SA-MP im Ordner: der Launcher bringt es beim Spielen mit
-                    sampVersion = manifest.SampVersionen.Count > 0 ? manifest.SampVersionen[0].Name : "";
-                    var groesse = Groesse(Manifest.PassendePakete(manifest.SampClient, sampVersion));
-                    text += " · SA-MP fehlt, der Launcher richtet " + manifest.SampClient.Name + " mit ein" + (groesse == "" ? "" : " (" + groesse + ")");
-                    farbe = Farben.Akzent; symbol = "\uE946";
-                    bereichVersion.Visibility = Visibility.Collapsed;
-                }
-                else if (manifest != null && manifest.SampVersionen.Count > 0)
-                {
-                    // Nicht erkannt (keine samp.dll im Ordner oder eine andere Fassung): der Spieler waehlt selbst
-                    sampVersion = vonHandGewaehlt;
-                    if (!File.Exists(Path.Combine(verzeichnis, Spielstart.SampExe)))
+                    // Wie SA-MP startet, entscheidet derselbe Plan wie beim Klick auf „Spielen“ (Ablauf.Planen)
+                    var plan = Ablauf.Planen(verzeichnis, manifest);
+                    sampVersion = plan.Version;
+                    switch (plan.Art)
                     {
-                        text += " · aber kein SA-MP. Installiere SA-MP " + manifest.SampVersionen[0].Name + " in diesen Ordner.";
-                        farbe = Farben.Warnung; symbol = "\uE7BA";
+                        case "exe":
+                            text += " · SA-MP " + plan.Version;
+                            break;
+                        case "dll":
+                            text += " · SA-MP " + plan.Version + (plan.VonOpenMp ? " aus dem open.mp-Launcher" : "");
+                            break;
+                        case "einrichten":
+                            var groesse = Groesse(Manifest.PassendePakete(manifest.SampClient, plan.Version));
+                            text += " · SA-MP fehlt, der Launcher richtet " + manifest.SampClient.Name + " mit ein"
+                                + (groesse == "" ? "" : " (" + groesse + ")");
+                            farbe = Farben.Akzent; symbol = "\uE946";
+                            break;
+                        default:
+                            text += " · " + plan.Grund;
+                            farbe = Farben.Warnung; symbol = "\uE7BA";
+                            break;
                     }
-                    else if (sampVersion == "")
-                    {
-                        text += " · SA-MP-Version bitte unten wählen";
-                        farbe = Farben.Warnung; symbol = "\uE7BA";
-                    }
-                    else if (nurEineVersion) text += " · benötigt SA-MP " + sampVersion + ", siehe unten";
-                    else text += " · SA-MP " + sampVersion + " (von dir gewählt)";
-                    bereichVersion.Visibility = Visibility.Visible;
                 }
-                else bereichVersion.Visibility = Visibility.Collapsed;
                 if (brauchtAdmin) text += " · Schreiben ist hier nur als Administrator möglich";
                 PfadMeldung(symbol, farbe, text);
             }
@@ -598,7 +588,6 @@ namespace SamplifeEssentials
             listeRollen.Visibility = Visibility.Visible;
             if (manifest.Hinweis != "") fusszeile.Text = manifest.Hinweis;
             versionen.Children.Clear();
-            vonHandGewaehlt = "";
             var namen = new List<string>();
             foreach (var version in manifest.SampVersionen) namen.Add(version.Name);
             var unterstuetzt = string.Join(" oder ", namen.ToArray());
@@ -606,7 +595,6 @@ namespace SamplifeEssentials
             if (nurEineVersion)
             {
                 // Nichts zu waehlen: die eine Version gilt
-                vonHandGewaehlt = namen[0];
                 versionTitel.Text = "Wichtig: Du brauchst SA-MP " + unterstuetzt;
                 versionTitel.Foreground = Farben.Warnung;
                 versionPflicht.Text = "Der Server läuft ausschließlich mit SA-MP " + unterstuetzt + ".";
@@ -625,8 +613,7 @@ namespace SamplifeEssentials
             foreach (var version in manifest.SampVersionen)
             {
                 var knopf = new RadioButton { Content = version.Name, GroupName = "SampVersion", Style = (Style)Wurzel.FindResource("Wahlknopf") };
-                var versionName = version.Name;
-                knopf.Checked += delegate { vonHandGewaehlt = versionName; VerzeichnisPruefen(); };
+                knopf.Checked += delegate { VerzeichnisPruefen(); };
                 versionen.Children.Add(knopf);
             }
             VerzeichnisPruefen();

@@ -16,6 +16,7 @@ namespace SamplifeEssentials
         public string Ziel;            // Unterordner im GTA-Verzeichnis, leer = Wurzel
         public string ZipUnterordner;  // nur diesen Ordner aus dem Archiv entpacken, leer = alles
         public string Dateiname;       // Name der Zieldatei bei Typ "datei"
+        public string Ablage;          // "" = GTA-Verzeichnis, "launcher" = Ordner des Launchers (nur samp_client, nur Typ datei)
     }
 
     public class Komponente
@@ -113,6 +114,13 @@ namespace SamplifeEssentials
             foreach (var eintrag in Liste(daten, "komponenten")) manifest.Komponenten.Add(KomponenteLesen(eintrag, false));
             foreach (var eintrag in Liste(daten, "optionale_komponenten")) manifest.OptionaleKomponenten.Add(KomponenteLesen(eintrag, true));
             if (manifest.Komponenten.Count == 0) throw new ManifestFehler("Die Liste enthält keine Komponenten.");
+            foreach (var komponente in manifest.Alle())
+            {
+                foreach (var paket in komponente.Pakete)
+                {
+                    if (paket.Ablage != "") throw new ManifestFehler("Nur samp_client darf außerhalb des GTA-Verzeichnisses ablegen (" + komponente.Name + ").");
+                }
+            }
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var komponente in manifest.Alle())
             {
@@ -138,6 +146,7 @@ namespace SamplifeEssentials
             {
                 manifest.SampClient = KomponenteLesen(sampClient, false);
                 manifest.SampClient.IstSampClient = true;
+                if (manifest.SampVersionen.Count == 0) throw new ManifestFehler("Zu samp_client fehlt die Angabe samp_versionen.");
             }
             var launcher = Objekt(daten, "launcher");
             if (launcher != null)
@@ -186,6 +195,9 @@ namespace SamplifeEssentials
                 paket.Ziel = Text(p, "ziel");
                 paket.ZipUnterordner = Text(p, "zip_unterordner");
                 paket.Dateiname = Text(p, "dateiname");
+                paket.Ablage = Text(p, "ablage");
+                if (paket.Ablage != "" && (paket.Ablage != "launcher" || paket.Typ != "datei"))
+                    throw new ManifestFehler("Die Ablage \"" + paket.Ablage + "\" bei " + komponente.Name + " gibt es nicht.");
                 if (paket.Typ != "zip" && paket.Typ != "datei")
                     throw new ManifestFehler("Unbekannter Pakettyp \"" + paket.Typ + "\" bei " + komponente.Name + ".");
                 if (paket.Sha256.Length != 64)

@@ -18,6 +18,17 @@ namespace SamplifeEssentials
         public int Nachgeladen;            // Komponenten, die geladen wurden
     }
 
+    /// <summary>Wie SA-MP gestartet wird (Ablauf.SampPlanen).</summary>
+    public class SampPlan
+    {
+        public string Art = "";        // "exe": samp.exe im GTA-Verzeichnis, "dll": gta_sa.exe starten und samp.dll laden,
+                                       // "einrichten": erst samp_client laden, "": geht nicht (Grund)
+        public string Dll = "";        // bei "dll": die samp.dll, die geladen wird
+        public string Version = "";
+        public bool VonOpenMp;         // die samp.dll stammt aus dem Ordner des open.mp-Launchers
+        public string Grund = "";
+    }
+
     /// <summary>
     /// Was beim Klick auf „Spielen“ passiert: Dateien mit der Liste abgleichen, Fehlendes und Veraltetes laden, den
     /// geprueften Stand sichern, beim Server anmelden und samp.exe starten. Laeuft synchron im Hintergrund-Thread.
@@ -47,17 +58,18 @@ namespace SamplifeEssentials
             var ergebnis = new AblaufErgebnis();
             try
             {
-                // Ohne samp.exe richtet der Launcher SA-MP selbst ein, wenn die Liste es anbietet. Eine vorhandene
-                // Installation ersetzt er nie, auch nicht eine andere Version.
-                var sampEinrichten = SampEinrichten();
-                if (sampEinrichten && SampVersion == "" && Manifest.SampVersionen.Count == 1) SampVersion = Manifest.SampVersionen[0].Name;
+                // Wie SA-MP startet: samp.exe, samp.dll laden oder erst einrichten. Eine vorhandene Installation im
+                // GTA-Verzeichnis ersetzt der Launcher nie, auch nicht eine andere Version.
+                var plan = SampPlanen();
+                var sampEinrichten = plan.Art == "einrichten";
+                if (SampVersion == "") SampVersion = plan.Version;
 
                 if (MitStart)
                 {
                     // Vor dem Laden pruefen, was ohnehin den Start verhindern wuerde
                     var name = Spielstart.NamePruefen(Name);
                     if (name != "") return Fehlschlag(ergebnis, name, 5);
-                    var grund = StartVoraussetzung(sampEinrichten);
+                    var grund = StartVoraussetzung(plan);
                     if (grund != "") return Fehlschlag(ergebnis, grund, 4);
                 }
 
@@ -71,7 +83,8 @@ namespace SamplifeEssentials
                 if (sampEinrichten)
                 {
                     noetig.Add(Manifest.SampClient);
-                    Schritt("Im GTA-Verzeichnis fehlt SA-MP. Der Launcher richtet " + Manifest.SampClient.Name + " ein.");
+                    Schritt("Im GTA-Verzeichnis fehlt SA-MP. Der Launcher richtet " + Manifest.SampClient.Name + " ein; "
+                        + "vorhandene Dateien bleiben, wie sie sind.");
                 }
                 var neuerStand = new Stand { ManifestJson = ManifestJson, ManifestStand = Manifest.Stand, Geprueft = DateTime.UtcNow };
                 foreach (var pruefung in pruefungen)
@@ -108,8 +121,12 @@ namespace SamplifeEssentials
                         if (!sampEinrichten || komponenteStand.Id != Manifest.SampClient.Id) neuerStand.Komponenten.Add(komponenteStand);
                     }
                     ergebnis.Nachgeladen = noetig.Count;
-                    if (sampEinrichten && MitStart && GtaVerzeichnis.SampVersion(Gta, Manifest) == "")
-                        return Fehlschlag(ergebnis, "SA-MP wurde eingerichtet, die Version passt aber nicht zur Liste des Servers.", 4);
+                    if (sampEinrichten)
+                    {
+                        plan = SampPlanen();
+                        if (plan.Art != "exe" && plan.Art != "dll")
+                            return Fehlschlag(ergebnis, "SA-MP wurde eingerichtet, passt aber nicht zur Liste des Servers.", 4);
+                    }
                 }
                 else
                 {
@@ -142,11 +159,24 @@ namespace SamplifeEssentials
                             Melden(new Meldung { Nummer = naechsteNummer++, Art = MeldungArt.Warnung, Text = fehler, Fertig = true });
                         }
                     }
-                    Schritt("Starte SA-MP und verbinde mit " + Manifest.ServerAdresse + ":" + Manifest.ServerPort);
-                    try { Spielstart.Starten(Gta, Manifest.ServerAdresse, Manifest.ServerPort); }
-                    catch (Exception fehler)
+                    if (plan.Art == "dll")
                     {
-                        return Fehlschlag(ergebnis, "samp.exe konnte nicht gestartet werden: " + fehler.Message, 6);
+                        Schritt("Starte GTA San Andreas mit SA-MP " + plan.Version + (plan.VonOpenMp ? " aus dem open.mp-Launcher" : "")
+                            + " und verbinde mit " + Manifest.ServerAdresse + ":" + Manifest.ServerPort);
+                        try { SampStart.Starten(Gta, Manifest.ServerAdresse, Manifest.ServerPort, Name, plan.Dll); }
+                        catch (Exception fehler)
+                        {
+                            return Fehlschlag(ergebnis, "SA-MP konnte nicht gestartet werden: " + fehler.Message, 6);
+                        }
+                    }
+                    else
+                    {
+                        Schritt("Starte SA-MP und verbinde mit " + Manifest.ServerAdresse + ":" + Manifest.ServerPort);
+                        try { Spielstart.Starten(Gta, Manifest.ServerAdresse, Manifest.ServerPort); }
+                        catch (Exception fehler)
+                        {
+                            return Fehlschlag(ergebnis, "samp.exe konnte nicht gestartet werden: " + fehler.Message, 6);
+                        }
                     }
                     ergebnis.Gestartet = true;
                 }
@@ -164,32 +194,71 @@ namespace SamplifeEssentials
             return ergebnis;
         }
 
-        /// <summary>Fehlt samp.exe und bietet die Liste SA-MP an, richtet der Launcher es selbst ein.</summary>
-        public bool SampEinrichten()
+        /// <summary>
+        /// Wie SA-MP startet. Liegt im GTA-Verzeichnis eine samp.dll, entscheidet sie: passende Version mit samp.exe
+        /// startet ueber samp.exe, ohne samp.exe wird sie geladen, eine andere Version haelt den Start an (sie wird nie
+        /// ersetzt). Ohne samp.dll im GTA-Verzeichnis: eigene Kopie oder die des open.mp-Launchers laden, sonst
+        /// samp_client einrichten.
+        /// </summary>
+        public SampPlan SampPlanen()
         {
-            return Manifest.SampClient != null && !File.Exists(Path.Combine(Gta, Spielstart.SampExe))
-                && !File.Exists(Path.Combine(Gta, GtaVerzeichnis.SampDatei));
+            return Planen(Gta, Manifest);
         }
 
-        /// <summary>Leer, wenn gestartet werden kann; sonst der Grund (Name, SA-MP-Version, samp.exe, Server).</summary>
-        public string StartVoraussetzung(bool sampEinrichten)
+        public static SampPlan Planen(string gta, Manifest manifest)
+        {
+            var plan = new SampPlan();
+            var gtaDll = Path.Combine(gta, GtaVerzeichnis.SampDatei);
+            if (File.Exists(gtaDll))
+            {
+                plan.Version = GtaVerzeichnis.SampVersionVonDatei(gtaDll, manifest);
+                if (plan.Version == "")
+                {
+                    var andere = Spielstart.SampDateiVersion(gtaDll);
+                    plan.Grund = "Im GTA-Verzeichnis liegt SA-MP " + (andere == "" ? "in einer anderen Version" : andere)
+                        + ". Der Server läuft nur mit SA-MP " + Benoetigt(manifest) + ". Der Launcher ersetzt dein SA-MP nicht; "
+                        + "entferne samp.dll und samp.exe aus dem GTA-Verzeichnis, dann richtet er die passende Version selbst ein.";
+                    return plan;
+                }
+                if (File.Exists(Path.Combine(gta, Spielstart.SampExe))) plan.Art = "exe";
+                else { plan.Art = "dll"; plan.Dll = gtaDll; }
+                return plan;
+            }
+            string version;
+            bool vonOpenMp;
+            var dll = SampStart.DllFinden(manifest, out version, out vonOpenMp);
+            if (dll != "")
+            {
+                plan.Art = "dll";
+                plan.Dll = dll;
+                plan.Version = version;
+                plan.VonOpenMp = vonOpenMp;
+                return plan;
+            }
+            if (manifest.SampClient != null)
+            {
+                plan.Art = "einrichten";
+                plan.Version = manifest.SampVersionen.Count > 0 ? manifest.SampVersionen[0].Name : "";
+                return plan;
+            }
+            plan.Grund = "Im GTA-Verzeichnis fehlt SA-MP " + Benoetigt(manifest) + ". Installiere es in diesen Ordner.";
+            return plan;
+        }
+
+        /// <summary>Leer, wenn gestartet werden kann; sonst der Grund (Name, Server, SA-MP).</summary>
+        public string StartVoraussetzung(SampPlan plan)
         {
             var name = Spielstart.NamePruefen(Name);
             if (name != "") return name;
             if (Manifest.ServerAdresse == "" || Manifest.ServerPort <= 0)
                 return "Die Server-Liste nennt keinen Server. Lade den aktuellen Launcher von der Website.";
-            if (sampEinrichten) return "";
-            if (!File.Exists(Path.Combine(Gta, Spielstart.SampExe)))
-                return "Im GTA-Verzeichnis fehlt samp.exe. Installiere SA-MP " + Benoetigt() + " in diesen Ordner.";
-            if (SampVersion == "" || GtaVerzeichnis.SampVersion(Gta, Manifest) == "")
-                return "Im GTA-Verzeichnis liegt nicht SA-MP " + Benoetigt() + ". Der Server läuft nur mit dieser Version.";
-            return "";
+            return plan.Art == "" ? plan.Grund : "";
         }
 
-        string Benoetigt()
+        static string Benoetigt(Manifest manifest)
         {
             var namen = new List<string>();
-            foreach (var version in Manifest.SampVersionen) namen.Add(version.Name);
+            foreach (var version in manifest.SampVersionen) namen.Add(version.Name);
             return namen.Count == 0 ? "0.3.7-R1" : string.Join(" oder ", namen.ToArray());
         }
 

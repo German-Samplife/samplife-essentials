@@ -92,11 +92,10 @@ namespace SamplifeEssentials
         /// SA-MP-Version an der Dateiversion der samp.dll, so wie samp-cef sie erkennt: 0.3.7.0 ist R1, 0.3.7.2 ist R3,
         /// 0.3.8.0 ist 0.3.DL. Leer, wenn die Datei fehlt oder unbekannt ist.
         /// </summary>
-        public static string SampDateiVersion(string gta)
+        public static string SampDateiVersion(string datei)
         {
             try
             {
-                var datei = Path.Combine(gta, GtaVerzeichnis.SampDatei);
                 if (!File.Exists(datei)) return "";
                 var info = FileVersionInfo.GetVersionInfo(datei);
                 var haupt = info.FileMinorPart & 0xFF;

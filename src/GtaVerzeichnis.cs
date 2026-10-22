@@ -226,14 +226,21 @@ namespace SamplifeEssentials
         public static string SampVersion(string verzeichnis, Manifest manifest)
         {
             if (!HatSamp(verzeichnis)) return "";
+            return SampVersionVonDatei(Path.Combine(verzeichnis, SampDatei), manifest);
+        }
+
+        /// <summary>Wie SampVersion, fuer eine samp.dll an beliebiger Stelle (eigene Kopie, open.mp-Launcher).</summary>
+        public static string SampVersionVonDatei(string datei, Manifest manifest)
+        {
+            if (!File.Exists(datei)) return "";
             string pruefsumme;
-            try { pruefsumme = Sha256(Path.Combine(verzeichnis, SampDatei)); }
+            try { pruefsumme = Sha256(datei); }
             catch (Exception) { return ""; }
             foreach (var version in manifest.SampVersionen)
             {
                 if (version.Sha256 != "" && version.Sha256 == pruefsumme) return version.Name;
             }
-            var dateiVersion = Spielstart.SampDateiVersion(verzeichnis);
+            var dateiVersion = Spielstart.SampDateiVersion(datei);
             foreach (var version in manifest.SampVersionen)
             {
                 if (dateiVersion != "" && string.Equals(version.Name, dateiVersion, StringComparison.OrdinalIgnoreCase)) return version.Name;

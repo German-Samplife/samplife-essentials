@@ -314,8 +314,30 @@ namespace SamplifeEssentials
                 if (Uri.TryCreate(paket.Url, UriKind.Absolute, out adresse)) name = Path.GetFileName(adresse.LocalPath);
             }
             if (string.IsNullOrEmpty(name)) throw new InstallationsFehler("Für " + komponente.Name + " fehlt der Dateiname in der Liste.");
+            if (paket.Ablage == "launcher")
+            {
+                LauncherAblegen(komponente, paket, datei, name);
+                return;
+            }
             Schritt("Lege " + name + " von " + komponente.Name + " in " + ZielOrdner(paket) + " ab");
             Ablegen(datei, Path.Combine(paket.Ziel, name), paketStand, komponente.IstSampClient);
+        }
+
+        /// <summary>
+        /// samp.dll aus samp_client in den Ordner des Launchers, nicht ins GTA-Verzeichnis: Von dort laedt der Launcher sie
+        /// ins Spiel (SampStart). Die Datei gehoert dem Launcher und darf ersetzt werden.
+        /// </summary>
+        void LauncherAblegen(Komponente komponente, Paket paket, string datei, string name)
+        {
+            if (!komponente.IstSampClient) throw new InstallationsFehler("Nur SA-MP darf außerhalb des GTA-Verzeichnisses abgelegt werden.");
+            var basis = Path.GetFullPath(Pfade.Launcher).TrimEnd(Path.DirectorySeparatorChar);
+            var ziel = Path.GetFullPath(Path.Combine(basis, paket.Ziel, name));
+            if (!ziel.StartsWith(basis + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new InstallationsFehler("Ein Paket wollte außerhalb des Launcher-Ordners schreiben (" + paket.Ziel + "). Die Installation wurde gestoppt.");
+            Directory.CreateDirectory(Path.GetDirectoryName(ziel));
+            File.Copy(datei, ziel, true);
+            ergebnis.Geschrieben++;
+            Datei("Lege " + name + " von " + komponente.Name + " in " + ziel + " ab");
         }
 
         string ZielOrdner(Paket paket)
@@ -334,11 +356,18 @@ namespace SamplifeEssentials
             if (!ziel.StartsWith(gta + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new InstallationsFehler("Ein Paket wollte außerhalb des GTA-Verzeichnisses schreiben (" + relativ + "). Die Installation wurde gestoppt.");
             var anzeige = ziel.Substring(gta.Length + 1);
+            // SA-MP legt nur ab, was fehlt: Vorhandenes (auch vom open.mp-Launcher kopiert) bleibt, wie es ist
+            if (sampErlaubt && File.Exists(ziel))
+            {
+                ergebnis.Unveraendert++;
+                Datei(anzeige + " liegt schon da und bleibt, wie es ist");
+                return;
+            }
             foreach (var name in Geschuetzt)
             {
                 if (!string.Equals(anzeige, name, StringComparison.OrdinalIgnoreCase)) continue;
-                var neuesSamp = sampErlaubt && name != "gta_sa.exe" && !File.Exists(ziel);
-                if (!neuesSamp) throw new InstallationsFehler("Ein Paket wollte " + name + " ersetzen. Das lässt der Launcher nicht zu.");
+                if (!sampErlaubt || name == "gta_sa.exe")
+                    throw new InstallationsFehler("Ein Paket wollte " + name + " ersetzen. Das lässt der Launcher nicht zu.");
             }
 
             var pruefsumme = GtaVerzeichnis.Sha256(quelle);
