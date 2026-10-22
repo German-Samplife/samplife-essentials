@@ -1,0 +1,112 @@
+# Baut das Ladebild-ASI (siehe ladebild/README.md).
+# Bei Änderungen an ladebild/ wird nur gebaut und geprüft; ein Tag wie ladebild-0.1.0 legt das Release an.
+name: Ladebild
+
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - "ladebild/**"
+      - ".github/workflows/ladebild.yml"
+    tags:
+      - "ladebild-*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bauen:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ladebild
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (stable, i686-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: i686-pc-windows-msvc
+
+      - name: Cargo-Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ladebild/target
+          key: ladebild-i686-pc-windows-msvc-${{ hashFiles('ladebild/Cargo.toml', 'ladebild/Cargo.lock') }}
+          restore-keys: |
+            ladebild-i686-pc-windows-msvc-
+
+      - name: Bauen
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo build --release --target i686-pc-windows-msvc
+
+      - name: Prüfen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dll = "target/i686-pc-windows-msvc/release/samplife_ladebild.dll"
+          if (-not (Test-Path $dll)) { throw "samplife_ladebild.dll fehlt" }
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -match "Hostx86\\x86" } | Select-Object -First 1
+          $kopf = & $dumpbin.FullName /headers $dll | Out-String
+          if ($kopf -notmatch "14C machine \(x86\)") { throw "Die DLL ist nicht 32 Bit" }
+          $abh = & $dumpbin.FullName /dependents $dll | Out-String
+          $abh
+          if ($abh -match "VCRUNTIME140|MSVCP140|api-ms-win-crt") { throw "Die DLL braucht die VC++-Laufzeit, sollte statisch gelinkt sein" }
+          if ($abh -match "d3dx9") { throw "Die DLL darf kein d3dx9 brauchen, das fehlt bei vielen Spielern" }
+
+      - name: Paket zusammenstellen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force ../ausgabe/paket | Out-Null
+          # Beides gehört neben gta_sa.exe: Der ASI Loader lädt dort *.asi, das ASI liest das Bild von dort
+          Copy-Item target/i686-pc-windows-msvc/release/samplife_ladebild.dll ../ausgabe/paket/samplife-ladebild.asi
+          Copy-Item samplife-ladebild.jpg ../ausgabe/paket/samplife-ladebild.jpg
+          Compress-Archive -Path ../ausgabe/paket/* -DestinationPath ../ausgabe/samplife-ladebild.zip -Force
+          Copy-Item Cargo.lock ../ausgabe/Cargo.lock
+          $hash = (Get-FileHash ../ausgabe/samplife-ladebild.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  samplife-ladebild.zip" | Out-File -Encoding ascii ../ausgabe/SHA256SUMS.txt
+          Get-ChildItem ../ausgabe, ../ausgabe/paket | Format-Table Name, Length
+          Get-Content ../ausgabe/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: samplife-ladebild
+          path: ausgabe/
+
+      - name: Version im Quelltext muss zum Tag passen
+        if: startsWith(github.ref, 'refs/tags/ladebild-')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".Substring("ladebild-".Length)
+          $quelle = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $quelle) { throw "Tag $tag passt nicht zu Cargo.toml ($quelle)" }
+
+      - name: Release anlegen
+        if: startsWith(github.ref, 'refs/tags/ladebild-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = Get-Item ../ausgabe/samplife-ladebild.zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $text = @"
+          Eigenes Ladebild beim Start von GTA: ``samplife-ladebild.asi`` und ``samplife-ladebild.jpg``, beide neben ``gta_sa.exe``. Siehe ladebild/README.md.
+
+          Gebaut von GitHub aus diesem Tag.
+
+          Für das Manifest (typ zip): SHA-256 ``$hash``, Größe $($zip.Length) Bytes.
+          "@
+          gh release create "${{ github.ref_name }}" ../ausgabe/samplife-ladebild.zip ../ausgabe/SHA256SUMS.txt --title "Ladebild ${{ github.ref_name }}" --notes $text --latest=false

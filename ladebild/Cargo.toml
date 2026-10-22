@@ -1,0 +1,22 @@
+# Eigenes Ladebild beim Start von GTA statt des Bildes von SA-MP, siehe README.md.
+# Gebaut wird nur von GitHub (.github/workflows/ladebild.yml) für i686-pc-windows-msvc.
+[package]
+name = "samplife-ladebild"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# ergibt samplife_ladebild.dll, der Workflow benennt sie in samplife-ladebild.asi um (für den ASI Loader im GTA-Verzeichnis)
+name = "samplife_ladebild"
+crate-type = ["cdylib"]
+
+[dependencies]
+winapi = { version = "0.3.9", features = ["minwindef", "winnt", "memoryapi", "processthreadsapi", "libloaderapi", "d3d9", "d3d9types", "d3d9caps", "windef", "wingdi", "sysinfoapi", "minwinbase"] }
+jpeg-decoder = { version = "0.3", default-features = false }
+
+[profile.release]
+opt-level = 2
+codegen-units = 1
+lto = true
+debug = false
