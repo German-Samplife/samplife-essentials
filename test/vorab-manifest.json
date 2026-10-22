@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "hinweis": "Testserver: verbindet mit german-samplife.de:7799, nicht mit dem Live-Server.",
+  "hinweis": "Vorab-Test des Samplife Launchers mit der Liste aus dem Repository, nicht von der Website.",
   "stand": 1,
   "server": {
     "adresse": "german-samplife.de",
-    "port": 7799,
+    "port": 7777,
     "anmeldung": "https://www.german-samplife.de/api/launcher/start"
   },
   "updates": "https://www.german-samplife.de/api/updates",
