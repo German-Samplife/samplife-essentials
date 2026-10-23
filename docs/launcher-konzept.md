@@ -119,20 +119,22 @@ Bei Anschlüssen, die Web und Spiel über verschiedene öffentliche IPs schicken
 
 ### 7. Selbstaktualisierung
 
-Nennt das Manifest eine höhere `launcher.version`, läuft es so:
+Bei jedem Start fragt der Launcher parallel zum Manifest GitHub nach dem neuesten Release (`api.github.com/repos/German-Samplife/samplife-essentials/releases/latest`, ab 2.2.0). Es zählt nur ein veröffentlichtes Release mit Tag `v<Version>` und der Datei `Samplife.Launcher.exe`; die SHA-256 nennt GitHub in der Antwort (`digest`), sonst steht sie in `SHA256SUMS.txt`. Antwortet GitHub nicht (auch nach 8 Sekunden), geht es ohne weiter.
+
+Nennen das Release oder das Manifest (`launcher.version`) eine höhere Version, läuft es mit der höheren von beiden so:
 
 1. Der Launcher lädt die neue `.exe` über https.
 2. Er prüft die SHA-256.
 3. Er benennt sich selbst in `Samplife Launcher.exe.alt` um (das erlaubt Windows auch bei einem laufenden Programm) und legt die neue Datei an seinen Platz.
 4. Er startet die neue Datei mit denselben Parametern. Die neue Fassung löscht beim Start eine übrig gebliebene `.alt`.
 
-Schlägt etwas fehl, bleibt die alte Datei. Der Launcher zeigt dann einen Hinweis mit dem Download-Link und startet das Spiel nicht.
+Schlägt etwas fehl, bleibt die alte Datei. Verlangt das Manifest die neue Fassung, zeigt der Launcher einen Hinweis mit dem Download-Link und startet das Spiel nicht. Kennt nur GitHub sie, geht es mit der laufenden Fassung weiter (Hinweis über der Liste), beim nächsten Start gibt es einen neuen Versuch.
 
 Warum selbst aktualisieren statt nur Hinweis:
 
 - Der Spieler muss nichts tun.
 - Eine Datei, die ein Programm selbst schreibt, hat keine Download-Markierung des Browsers, SmartScreen fragt deshalb nicht noch einmal.
-- Fehlt der Block `launcher` im Manifest, gibt es keine Aktualisierung. So lässt sich das Manifest vorbereiten, bevor das Release existiert.
+- Ein neues Release erreicht alle Spieler beim nächsten Start, ohne dass jemand das Manifest anfasst. Der Block `launcher` im Manifest legt nur noch fest, welche Fassung der Server mindestens verlangt.
 
 ### 8. Sicherung des letzten geprüften Stands
 

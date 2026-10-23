@@ -194,6 +194,9 @@ namespace SamplifeEssentials
         string manifestJson = "";
         bool ausSicherung;          // Liste kam aus der lokalen Sicherung, weil der Server nicht antwortete
         bool listeLaedtGerade;
+        Task<LauncherFassung> releaseAbfrage;   // einmal je Start: neuestes Release auf GitHub
+        bool aktualisierungVersucht;            // nur ein Versuch je Start, auch wenn die Liste erneut geladen wird
+        string aktualisierungFehler = "";       // freiwillige Aktualisierung hat nicht geklappt: Hinweis ueber der Liste
         string sampVersion = "";
         bool verzeichnisGueltig, brauchtAdmin;
         // Erst wenn der Spieler ein gefundenes Verzeichnis bestaetigt oder selbst eines waehlt, darf geladen werden
@@ -630,23 +633,22 @@ namespace SamplifeEssentials
             listeStatus.Foreground = Farben.Gedaempft;
             listeStatus.Text = "Lade die Liste der Dateien von " + optionen.ManifestQuelle + " …";
             KnoepfeAktualisieren();
+            // Parallel zur Liste GitHub fragen, ob es einen neueren Launcher gibt; einmal je Start
+            if (releaseAbfrage == null)
+            {
+                var quelle = optionen.ReleaseQuelle;
+                var test = optionen.Testmodus;
+                releaseAbfrage = Task.Run(() => Aktualisierung.NeuesteHolen(quelle, test));
+            }
             string fehlerText = "";
             Stand sicherung = null;
             var sicherungVersuchen = false;
             string json = null;
+            Manifest neu = null;
             try
             {
                 json = await Task.Run(() => Programm.ListeHolen(optionen));
-                var neu = Manifest.Lesen(json);
-                if (Aktualisierung.Noetig(neu, optionen.NachAktualisierung))
-                {
-                    listeLaedtGerade = false;
-                    SelbstAktualisieren(neu.Launcher);
-                    return;
-                }
-                ausSicherung = false;
-                hinweis.Visibility = Visibility.Collapsed;
-                ManifestSetzen(neu, json);
+                neu = Manifest.Lesen(json);
             }
             catch (ManifestFehler fehler)
             {
@@ -658,6 +660,34 @@ namespace SamplifeEssentials
                 // Server nicht erreichbar: mit dem zuletzt geprueften Stand weiter (await geht im catch unter C# 5 nicht)
                 fehlerText = fehler.Message;
                 sicherungVersuchen = verzeichnisGueltig;
+            }
+
+            // Neuere Fassung aus der Liste oder von GitHub: zuerst aktualisieren, auch wenn die Liste nicht passt
+            var release = await releaseAbfrage;
+            var ausListe = neu != null ? neu.Launcher : null;
+            var fassung = aktualisierungVersucht ? null : Aktualisierung.Neuere(ausListe, release, optionen.NachAktualisierung);
+            if (fassung != null)
+            {
+                aktualisierungVersucht = true;
+                listeLaedtGerade = false;
+                SelbstAktualisieren(fassung, Aktualisierung.Neuere(ausListe, null, optionen.NachAktualisierung) != null);
+                return;
+            }
+            if (neu != null)
+            {
+                try
+                {
+                    ausSicherung = false;
+                    hinweis.Visibility = Visibility.Collapsed;
+                    ManifestSetzen(neu, json);
+                    if (aktualisierungFehler != "") HinweisZeigen(aktualisierungFehler);
+                }
+                catch (Exception fehler)
+                {
+                    manifest = null;
+                    fehlerText = fehler.Message;
+                    sicherungVersuchen = verzeichnisGueltig;
+                }
             }
             if (sicherungVersuchen)
             {
@@ -1199,8 +1229,11 @@ namespace SamplifeEssentials
             foreach (var zeile in komponenten) zeile.Gesperrt = gesperrt;
         }
 
-        /// <summary>Die Liste nennt eine neuere Fassung: laden, pruefen, ersetzen und neu starten.</summary>
-        async void SelbstAktualisieren(LauncherFassung fassung)
+        /// <summary>
+        /// Liste oder GitHub nennen eine neuere Fassung: laden, pruefen, ersetzen und neu starten. Pflicht ist sie, wenn die Liste
+        /// sie verlangt; sonst geht es bei einem Fehler mit dieser Fassung weiter.
+        /// </summary>
+        async void SelbstAktualisieren(LauncherFassung fassung, bool pflicht)
         {
             modus = Modus.Laeuft;
             zeilen.Clear();
@@ -1225,12 +1258,27 @@ namespace SamplifeEssentials
                 }, CancellationToken.None));
                 MeldungZeigen(new Meldung { Nummer = 2, Art = MeldungArt.Erfolg, Text = "Prüfsumme stimmt. Starte die neue Fassung …", Fertig = true });
                 await Task.Delay(600);
-                Aktualisierung.NeuStarten(optionen.AlsArgumente() + (Gta != "" && bestaetigt ? " --gta \"" + Gta + "\"" : ""), fassung.Version);
+                // Ueber „Verbinden“ auf der Website gestartet: die neue Fassung verbindet ebenfalls direkt
+                var link = optionen.Direkt ? " --link \"" + Spielstart.Schema + "://verbinden\"" : "";
+                Aktualisierung.NeuStarten(optionen.AlsArgumente() + (Gta != "" && bestaetigt ? " --gta \"" + Gta + "\"" : "") + link, fassung.Version);
                 modus = Modus.Schliessen;
                 Wurzel.Close();
             }
             catch (Exception fehler)
             {
+                if (!pflicht)
+                {
+                    // Nur GitHub kennt die neue Fassung, der Server laeuft noch mit dieser: weiter wie sonst, beim naechsten Start neu versuchen
+                    aktualisierungFehler = "Launcher " + fassung.Version + " konnte nicht geladen werden (" + fehler.Message + "). Du spielst mit "
+                        + Programm.Version + " weiter; beim nächsten Start versucht der Launcher es erneut.";
+                    modus = Modus.Spielen;
+                    bereichProtokoll.Visibility = Visibility.Collapsed;
+                    Sperren(false);
+                    titel.Text = "Bereit machen";
+                    untertitel.Text = "Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt.";
+                    ListeLaden();
+                    return;
+                }
                 MeldungZeigen(new Meldung { Nummer = 3, Art = MeldungArt.Fehler, Text = "Die Aktualisierung hat nicht geklappt: " + fehler.Message, Fertig = true });
                 modus = Modus.Download;
                 knopfSpielen.IsEnabled = true;

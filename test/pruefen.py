@@ -735,6 +735,75 @@ def main():
             code = subprocess.run([EXE, '--test', '--selbsttest', '--appdaten', app, '--manifest', url9], timeout=120).returncode
             art = ('mit gemerktem Verzeichnis' if gemerkt else 'ohne gemerktes Verzeichnis') + (' und fremdem Loader' if mit_loader else '')
             pruefe(code == 0, art + ': laeuft und beendet sich sauber (Rueckgabe %d)' % code)
+
+        print('36. Neues Release auf GitHub, auch ohne Eintrag in der Liste')
+        gta = spiel_anlegen(os.path.join(arbeit, 'spiel-release'))
+
+        def release(name, tag='v9.0.0', datei='Samplife.Launcher.exe', pruefsumme='sha256:' + sha(neu), summen=False, **mehr):
+            """Antwort wie von api.github.com/repos/.../releases/latest."""
+            eintrag = {'name': datei, 'size': len(neu), 'browser_download_url': basis + 'launcher-neu.bin'}
+            if pruefsumme:
+                eintrag['digest'] = pruefsumme
+            dateien = [eintrag]
+            if summen:
+                with open(os.path.join(web, 'summen.txt'), 'w', encoding='ascii') as f:
+                    f.write('%s  Samplife.Launcher.exe\n%s  Samplife.Essentials.Installer.exe\n' % (sha(neu), sha(neu)))
+                dateien.append({'name': 'SHA256SUMS.txt', 'size': 1, 'browser_download_url': basis + 'summen.txt'})
+            daten = {'tag_name': tag, 'draft': False, 'prerelease': False, 'body': 'Text', 'assets': dateien}
+            daten.update(mehr)
+            with open(os.path.join(web, name), 'w', encoding='utf-8') as f:
+                json.dump(daten, f)
+            return basis + name
+
+        def frische_kopie():
+            shutil.copy(EXE, exe_kopie)
+            for rest in (exe_kopie + '.alt', exe_kopie + '.neu'):
+                if os.path.exists(rest):
+                    os.remove(rest)
+
+        def mit_release(liste, url, *mehr):
+            frische_kopie()
+            return starten(gta, liste, '--kein-neustart', '--release', url, *mehr, exe=exe_kopie)
+
+        ohne_launcher = launcher_manifest('ohne-launcher.json', spiel_liste)
+        pruefe(mit_release(ohne_launcher, release('release.json')) == 10, 'neueres Release: Rueckgabe 10')
+        pruefe(lesen(exe_kopie) == neu, 'neue Fassung aus dem Release an der Stelle der alten')
+        pruefe(lesen(exe_kopie + '.alt') == lesen(EXE), 'alte Fassung als .alt')
+        pruefe(mit_release(ohne_launcher, release('release-summen.json', pruefsumme='', summen=True)) == 10
+               and lesen(exe_kopie) == neu, 'ohne digest: Pruefsumme aus SHA256SUMS.txt')
+        pruefe(mit_release(basis + 'liste-fehlt.json', release('release.json')) == 10 and lesen(exe_kopie) == neu,
+               'Liste nicht erreichbar: aktualisiert trotzdem')
+        # Nicht passend oder nicht neuer: keine Aktualisierung, der Start laeuft normal weiter
+        for name, text, mehr in (
+                ('release-falsch.json', 'falsche Pruefsumme', {'pruefsumme': 'sha256:' + '0' * 64}),
+                ('release-ohne-summe.json', 'ohne Pruefsumme', {'pruefsumme': ''}),
+                ('release-kleidung.json', 'Tag eines anderen Pakets', {'tag': 'kleidung-9.0.0'}),
+                ('release-vorab.json', 'Vorab-Release', {'prerelease': True}),
+                ('release-entwurf.json', 'Entwurf', {'draft': True}),
+                ('release-andere-datei.json', 'ohne Samplife.Launcher.exe', {'datei': 'Samplife.Essentials.Installer.exe'}),
+                ('release-alt.json', 'aeltere Version', {'tag': 'v1.0.0'})):
+            code = mit_release(ohne_launcher, release(name, **mehr))
+            pruefe(code == 0 and lesen(exe_kopie) == lesen(EXE), text + ': weiter mit dieser Fassung (Rueckgabe %d)' % code)
+        code = mit_release(ohne_launcher, basis + 'release-fehlt.json')
+        pruefe(code == 0 and lesen(exe_kopie) == lesen(EXE), 'GitHub antwortet nicht: weiter mit dieser Fassung (Rueckgabe %d)' % code)
+        code = mit_release(ohne_launcher, release('release.json'), '--nach-aktualisierung', '9.0.0')
+        pruefe(code == 0 and lesen(exe_kopie) == lesen(EXE), 'direkt nach einer Aktualisierung: keine zweite (Rueckgabe %d)' % code)
+        # Was die Liste verlangt, bleibt Pflicht, auch wenn das Release aelter ist
+        code = mit_release(falsch, release('release-acht.json', tag='v8.0.0'))
+        pruefe(code == 7 and lesen(exe_kopie) == lesen(EXE), 'Liste verlangt 9.0.0 mit falscher Pruefsumme: Rueckgabe 7 (%d)' % code)
+        pruefe(mit_release(falsch, release('release-zehn.json', tag='v10.0.0')) == 10 and lesen(exe_kopie) == neu,
+               'Release neuer als die Liste: das Release gewinnt')
+        # Mit Fenster: klappt die freiwillige Aktualisierung nicht, laeuft der Launcher normal weiter
+        frische_kopie()
+        app = os.path.join(arbeit, 'appdaten-release')
+        os.makedirs(app)
+        vorher = len(Stiller.abrufe)
+        code = subprocess.run([exe_kopie, '--test', '--selbsttest', '--appdaten', app, '--manifest', url9,
+                               '--release', release('release-fenster.json', pruefsumme='sha256:' + '0' * 64)], timeout=120).returncode
+        abrufe = Stiller.abrufe[vorher:]
+        pruefe(code == 0 and lesen(exe_kopie) == lesen(EXE), 'Fenster: falsche Pruefsumme, laeuft weiter (Rueckgabe %d)' % code)
+        pruefe('/launcher-neu.bin' in abrufe, 'Fenster: neue Fassung versucht zu laden')
+        pruefe(abrufe.count('/' + url9.rsplit('/', 1)[1]) >= 2, 'Fenster: Liste danach erneut geladen')
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)
