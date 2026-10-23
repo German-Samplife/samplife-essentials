@@ -720,6 +720,21 @@ def main():
         vorher = dx_abrufe()
         pruefe(spielen(gta, url11, '--appdaten', ad, '--systemordner', leer_system) == 0 and dx_abrufe() == vorher,
                'DLLs im GTA-Verzeichnis genuegen')
+
+        print('35. Fenster startet und laeuft (Selbsttest mit dem echten Fenster)')
+        # 2.1.0 stuerzte mit gemerktem Verzeichnis beim Start ab, ohne dass ein Test es merkte
+        for name, gemerkt, mit_loader in (('start1', True, False), ('start2', True, True), ('start3', False, False)):
+            gta = spiel_anlegen(os.path.join(arbeit, name))
+            if mit_loader:
+                open(os.path.join(gta, 'dinput8.dll'), 'wb').write(b'MZ\x00lade *.asi\x00')
+            app = os.path.join(arbeit, 'appdaten-' + name)
+            os.makedirs(os.path.join(app, 'German Samplife', 'Launcher'))
+            if gemerkt:
+                with open(os.path.join(app, 'German Samplife', 'Launcher', 'einstellungen.json'), 'w', encoding='utf-8') as f:
+                    json.dump({'gta': gta, 'optional': []}, f)
+            code = subprocess.run([EXE, '--test', '--selbsttest', '--appdaten', app, '--manifest', url9], timeout=120).returncode
+            art = ('mit gemerktem Verzeichnis' if gemerkt else 'ohne gemerktes Verzeichnis') + (' und fremdem Loader' if mit_loader else '')
+            pruefe(code == 0, art + ': laeuft und beendet sich sauber (Rueckgabe %d)' % code)
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

@@ -37,6 +37,7 @@ namespace SamplifeEssentials
         public bool Deinstallieren;     // mit --still: alles entfernen, was der Launcher angelegt hat
         public string Fremde = "";      // mit --still: fremde ASI Loader und Konflikte in diese Datei schreiben
         public bool Abschalten;         // mit --fremde: die gefundenen, die sich ausschalten lassen, ausschalten
+        public bool Selbsttest;         // Fenster starten, 6 Sekunden laufen lassen, beenden; Rueckgabe 98/99 bei einem Absturz
 
         public string AlsArgumente()
         {
@@ -51,7 +52,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.1.0";
+        public const string Version = "2.1.1";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -98,6 +99,7 @@ namespace SamplifeEssentials
                     case "--deinstallieren": optionen.Deinstallieren = true; break;
                     case "--fremde": optionen.Fremde = naechstes; i++; break;
                     case "--abschalten": optionen.Abschalten = true; break;
+                    case "--selbsttest": optionen.Selbsttest = true; break;
                     case "--systemordner": systemOrdner = naechstes; i++; break;
                 }
             }
@@ -130,13 +132,40 @@ namespace SamplifeEssentials
             anwendung.ShutdownMode = ShutdownMode.OnMainWindowClose;
             anwendung.DispatcherUnhandledException += delegate(object s, DispatcherUnhandledExceptionEventArgs e)
             {
+                if (optionen.Selbsttest) Environment.Exit(98);
                 MessageBox.Show("Unerwarteter Fehler: " + e.Exception.Message, "Samplife Launcher", MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
+            };
+            // Fehler ausserhalb des Fensters (z. B. in einem Hintergrund-Thread) beenden das Programm. Dann wenigstens sagen,
+            // was passiert ist, statt dass sich der Launcher wortlos schliesst.
+            AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
+            {
+                if (optionen.Selbsttest) Environment.Exit(99);
+                var fehler = e.ExceptionObject as Exception;
+                MessageBox.Show("Der Launcher muss wegen eines unerwarteten Fehlers beendet werden:\n\n"
+                    + (fehler != null ? fehler.GetType().Name + ": " + fehler.Message : "unbekannt")
+                    + "\n\nBitte melde das in der Community. Die aktuelle Fassung gibt es unter "
+                    + "https://github.com/German-Samplife/samplife-essentials/releases/latest",
+                    "Samplife Launcher", MessageBoxButton.OK, MessageBoxImage.Error);
             };
 
             if (optionen.Bildschirmfoto != "") return Bildschirmfoto(anwendung, optionen);
 
             var fenster = new Fenster(optionen);
+            if (optionen.Selbsttest)
+            {
+                // Fuer Tests: das echte Fenster starten, einige Sekunden laufen lassen und sauber beenden (Rueckgabe 0)
+                fenster.Wurzel.ShowInTaskbar = false;
+                fenster.Wurzel.WindowStartupLocation = WindowStartupLocation.Manual;
+                fenster.Wurzel.Left = -20000;
+                fenster.Wurzel.Top = -20000;
+                fenster.Wurzel.Loaded += delegate
+                {
+                    var ende = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+                    ende.Tick += delegate { ende.Stop(); anwendung.Shutdown(0); };
+                    ende.Start();
+                };
+            }
             anwendung.Run(fenster.Wurzel);
             return 0;
         }
