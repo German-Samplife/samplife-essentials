@@ -15,6 +15,8 @@ namespace SamplifeEssentials
         public string ManifestQuelle = Programm.StandardManifest;
         // Wird gefragt, wenn die Liste unter ManifestQuelle mit einem HTTP-Fehler antwortet; leer = kein Ersatz
         public string AusweichQuelle = Programm.AusweichManifest;
+        // Neuestes Release auf GitHub, beim Start nach einer neueren Fassung des Launchers gefragt; leer = nicht fragen
+        public string ReleaseQuelle = Aktualisierung.StandardReleaseQuelle;
         public string Gta = "";
         public string Samp = "";     // SA-MP-Version vorgeben, falls sie nicht erkannt wird
         public bool Testmodus;      // erlaubt eine lokale Liste und unverschluesselte Downloads vom eigenen Rechner
@@ -44,6 +46,7 @@ namespace SamplifeEssentials
             var text = "";
             if (ManifestQuelle != Programm.StandardManifest) text += " --manifest \"" + ManifestQuelle + "\"";
             if (AusweichQuelle != Programm.AusweichManifest && AusweichQuelle != "") text += " --ausweich \"" + AusweichQuelle + "\"";
+            if (ReleaseQuelle != Aktualisierung.StandardReleaseQuelle && ReleaseQuelle != "") text += " --release \"" + ReleaseQuelle + "\"";
             if (Testmodus) text += " --test";
             foreach (var id in Optional) text += " --optional \"" + id + "\"";
             return text;
@@ -52,7 +55,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.1.1";
+        public const string Version = "2.2.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -68,6 +71,7 @@ namespace SamplifeEssentials
             Argumente = string.Join(" ", teile.ToArray());
             var optionen = new Optionen();
             var ausweichGesetzt = false;
+            var releaseGesetzt = false;
             var appDaten = "";
             var systemOrdner = "";
             for (var i = 0; i < args.Length; i++)
@@ -77,6 +81,7 @@ namespace SamplifeEssentials
                 {
                     case "--manifest": optionen.ManifestQuelle = naechstes; i++; break;
                     case "--ausweich": optionen.AusweichQuelle = naechstes; ausweichGesetzt = true; i++; break;
+                    case "--release": optionen.ReleaseQuelle = naechstes; releaseGesetzt = true; i++; break;
                     case "--gta": optionen.Gta = naechstes; i++; break;
                     case "--samp": optionen.Samp = naechstes; i++; break;
                     case "--test": optionen.Testmodus = true; break;
@@ -111,6 +116,9 @@ namespace SamplifeEssentials
 
             // Eine eigene Liste hat keinen Ersatz, ausser er wird ausdruecklich angegeben
             if (optionen.ManifestQuelle != StandardManifest && !ausweichGesetzt) optionen.AusweichQuelle = "";
+            // Tests und eigene Listen fragen GitHub nur, wenn ein Release ausdruecklich angegeben ist: Sonst wuerde sich eine
+            // Vorab-Fassung beim Start selbst durch das letzte Release ersetzen
+            if ((optionen.Testmodus || optionen.ManifestQuelle != StandardManifest) && !releaseGesetzt) optionen.ReleaseQuelle = "";
 
             Aktualisierung.AlteEntfernen();
 
@@ -196,7 +204,7 @@ namespace SamplifeEssentials
         }
 
         /// <summary>Holt die Liste der Komponenten. Aus dem Netz nur verschluesselt; eine lokale Datei nur im Testmodus.</summary>
-        public static string ManifestHolen(string quelle, bool testmodus)
+        public static string ManifestHolen(string quelle, bool testmodus, int wartezeit = 20000)
         {
             Uri adresse;
             var istAdresse = Uri.TryCreate(quelle, UriKind.Absolute, out adresse) && (adresse.Scheme == Uri.UriSchemeHttps || adresse.Scheme == Uri.UriSchemeHttp);
@@ -211,7 +219,8 @@ namespace SamplifeEssentials
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var anfrage = (HttpWebRequest)WebRequest.Create(adresse);
             anfrage.UserAgent = "SamplifeLauncher/" + Version;
-            anfrage.Timeout = 20000;
+            anfrage.Timeout = wartezeit;
+            anfrage.ReadWriteTimeout = wartezeit;
             using (var antwort = (HttpWebResponse)anfrage.GetResponse())
             {
                 if (antwort.ResponseUri.Scheme != Uri.UriSchemeHttps && !(testmodus && antwort.ResponseUri.IsLoopback))
@@ -243,32 +252,51 @@ namespace SamplifeEssentials
                 var gta = optionen.Gta != "" ? optionen.Gta : GtaVerzeichnis.Finden();
                 if (!GtaVerzeichnis.IstGtaVerzeichnis(gta)) return 2;
 
+                // Neuestes Release auf GitHub; aktualisiert auch dann, wenn die Liste fehlt oder zu neu ist
+                var release = Aktualisierung.NeuesteHolen(optionen.ReleaseQuelle, optionen.Testmodus);
+
                 Manifest manifest = null;
                 string json = null;
                 var ausSicherung = false;
+                var ohneListe = false;
                 try
                 {
                     json = ListeHolen(optionen);
                     manifest = Manifest.Lesen(json);
                 }
-                catch (ManifestFehler) { return 3; }
+                catch (ManifestFehler) { ohneListe = true; }
                 catch (Exception)
                 {
                     var stand = Stand.Lesen(gta);
-                    if (stand == null) return 3;
-                    json = stand.ManifestJson;
-                    manifest = Manifest.Lesen(json);
-                    ausSicherung = true;
+                    if (stand == null) ohneListe = true;
+                    else
+                    {
+                        json = stand.ManifestJson;
+                        manifest = Manifest.Lesen(json);
+                        ausSicherung = true;
+                    }
                 }
 
-                if (!ausSicherung && Aktualisierung.Noetig(manifest, optionen.NachAktualisierung))
+                // Was die Liste verlangt, ist Pflicht; ein neueres Release allein nicht: Klappt es nicht, geht es mit dieser Fassung weiter
+                var ausListe = manifest != null && !ausSicherung ? manifest.Launcher : null;
+                var fassung = Aktualisierung.Neuere(ausListe, release, optionen.NachAktualisierung);
+                if (fassung != null)
                 {
-                    try { Aktualisierung.Ausfuehren(manifest.Launcher, optionen.Testmodus, delegate { }, CancellationToken.None); }
-                    catch (Exception) { return 7; }
-                    if (optionen.KeinNeustart) return 10;
-                    Aktualisierung.NeuStarten(Argumente, manifest.Launcher.Version);
-                    return 0;
+                    var geklappt = true;
+                    try { Aktualisierung.Ausfuehren(fassung, optionen.Testmodus, delegate { }, CancellationToken.None); }
+                    catch (Exception)
+                    {
+                        if (Aktualisierung.Neuere(ausListe, null, optionen.NachAktualisierung) != null) return 7;
+                        geklappt = false;
+                    }
+                    if (geklappt)
+                    {
+                        if (optionen.KeinNeustart) return 10;
+                        Aktualisierung.NeuStarten(Argumente, fassung.Version);
+                        return 0;
+                    }
                 }
+                if (ohneListe) return 3;
 
                 if (optionen.Fremde != "")
                 {

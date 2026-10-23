@@ -12,6 +12,8 @@ Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases bau
 
 ## Was der Spieler sieht
 
+**Bei jedem Start** fragt der Launcher parallel zur Liste der Dateien bei GitHub nach dem neuesten Release. Liegt dort oder in der Liste eine höhere Version als die laufende, lädt er sie, prüft die SHA-256, ersetzt sich selbst und startet neu, ohne dass der Spieler etwas tun muss. Klappt das nicht und verlangt nur GitHub die neue Fassung, geht es mit der laufenden weiter, und der Launcher versucht es beim nächsten Start erneut. Verlangt die Liste sie, bietet er den Download an.
+
 1. **Erster Start:** Der Launcher sucht das GTA-Verzeichnis und fragt „Ist das dein GTA-Verzeichnis?". Der Spieler bestätigt mit „Ja, verwenden" oder wählt einen anderen Ordner. Ohne diese Bestätigung lädt der Launcher nichts.
    - Gesucht wird in den Einträgen von SA-MP, Rockstar und Steam, in der Liste zuletzt gestarteter Programme und in den obersten drei Ordnerebenen der Festplatten, höchstens acht Sekunden lang.
    - Vorgeschlagen werden nur Ordner, in denen neben `gta_sa.exe` auch die Ordner `models` und `data` liegen.
@@ -111,7 +113,7 @@ Stand der echten Liste: SampVoice 3.1 für SA-MP 0.3.7 R1 und R3, direkt von den
 | `samp_client` | Ab Launcher 2.0: SA-MP selbst, Aufbau wie eine Komponente. Nur für GTA-Verzeichnisse ohne `samp.dll` und nur, wenn auch der open.mp-Launcher keine passende `samp.dll` hat. Im GTA-Verzeichnis legt das Paket nur ab, was fehlt; danach prüft und ersetzt der Launcher es nie. Ein Paket mit `"ablage": "launcher"` (nur `typ: datei`, nur hier) landet im Ordner des Launchers, `ziel` relativ dazu, z. B. die `samp.dll` unter `samp/0.3.7-R1`. Eigener Block, weil Installer 1.x jede Komponente installieren würden. |
 | `bilder[]` | Adressen von Bildern aus dem Spiel für den Kopf des Fensters (JPG oder PNG, auf der Website). Der Launcher zeigt bei jedem Start eins davon und merkt sich geladene Bilder für den Start ohne Netz. Die Bilder liegen nicht in diesem Repository. |
 | `updates` | Adresse der neuesten Updates aus der Community (`{"updates": [{"slug", "datum", "titel", "kurz", "url"}]}`). |
-| `launcher.version`, `url`, `sha256`, `groesse` | Aktuelle Fassung des Launchers. Ist sie höher als die laufende, aktualisiert sich der Launcher selbst. Ohne den Block gibt es keine Aktualisierung. |
+| `launcher.version`, `url`, `sha256`, `groesse` | Fassung, die der Server mindestens verlangt. Ist sie höher als die laufende, aktualisiert sich der Launcher selbst; klappt das nicht, startet er nicht. Neue Releases findet der Launcher ab 2.2.0 auch ohne diesen Block auf GitHub (siehe „Veröffentlichen“). |
 | `pakete[].url` | Adresse des Downloads, muss mit `https://` beginnen. |
 | `pakete[].sha256` | Prüfsumme der Datei, 64 Hex-Zeichen. |
 | `pakete[].groesse` | Größe in Bytes, für Anzeige und Fortschritt. |
@@ -181,7 +183,7 @@ python test/pruefen.py
 
 Ein anderer Pfad zur `.exe` kann als Parameter folgen.
 
-Das Script baut ein nachgebautes GTA-Verzeichnis und Testpakete in einem temporären Ordner, liefert sie über einen lokalen Webserver aus und startet die `.exe` ohne Fenster. Geprüft werden unter anderem: Auswahl des Pakets nach SA-MP-Version, Sicherung ersetzter Dateien, falsche Prüfsumme, Archiv mit `..\`, Archiv mit `gta_sa.exe`, Download über unverschlüsseltes http, Deinstallieren (auch nach Aktualisierungen und für Installationen ohne `installiert.json`), fremde ASI Loader und Konflikte samt Ausschalten, Einrichten der DirectX-Laufzeit mit einem nachgebauten Installer von Microsoft.
+Das Script baut ein nachgebautes GTA-Verzeichnis und Testpakete in einem temporären Ordner, liefert sie über einen lokalen Webserver aus und startet die `.exe` ohne Fenster. Geprüft werden unter anderem: Auswahl des Pakets nach SA-MP-Version, Sicherung ersetzter Dateien, falsche Prüfsumme, Archiv mit `..\`, Archiv mit `gta_sa.exe`, Download über unverschlüsseltes http, Deinstallieren (auch nach Aktualisierungen und für Installationen ohne `installiert.json`), fremde ASI Loader und Konflikte samt Ausschalten, Einrichten der DirectX-Laufzeit mit einem nachgebauten Installer von Microsoft, Selbstaktualisierung aus der Liste und aus einem nachgebauten Release von GitHub (falsche oder fehlende Prüfsumme, Tags anderer Pakete, Vorab-Releases, GitHub nicht erreichbar).
 
 Aufrufparameter für Tests:
 
@@ -189,6 +191,7 @@ Aufrufparameter für Tests:
 |---|---|
 | `--manifest <Adresse oder Datei>` | andere Liste verwenden (dann ohne Ersatzadresse) |
 | `--ausweich <Adresse oder Datei>` | Ersatz, falls die Liste mit einem HTTP-Fehler antwortet |
+| `--release <Adresse oder Datei>` | andere Quelle für das neueste Release (Aufbau wie die Antwort von `api.github.com/repos/…/releases/latest`). Mit `--test` oder eigener Liste fragt der Launcher GitHub nur, wenn dieser Parameter gesetzt ist |
 | `--gta <Ordner>` | GTA-Verzeichnis vorgeben, die Suche entfällt |
 | `--samp <Version>` | SA-MP-Version vorgeben, falls sie nicht erkannt wird (für `--still`) |
 | `--suche <Datei.txt>` | nur suchen und die gefundenen Verzeichnisse in die Datei schreiben |
@@ -219,7 +222,8 @@ Eine neue Fassung entsteht durch einen Tag:
 1. Version in `src/Programm.cs` und `src/AssemblyInfo.cs` anheben und committen.
 2. Tag setzen und pushen, zum Beispiel `git tag v2.0.1 && git push origin v2.0.1`.
 3. GitHub baut die `.exe`, führt `test/pruefen.py` aus und hängt die Datei samt SHA-256 und Größe an das Release.
-4. Im Manifest (Repo samplife) den Block `launcher` mit Version, Adresse, SHA-256 und Größe aus dem Release eintragen. Erst dann aktualisieren sich laufende Launcher.
+4. Fertig: Laufende Launcher ab 2.2.0 finden das Release beim nächsten Start selbst über `api.github.com/repos/German-Samplife/samplife-essentials/releases/latest` und aktualisieren sich. Dafür muss das Release als „Latest“ markiert sein (das macht `release.yml`; Pakete wie Kleidung oder samp-cef legen ihre Releases mit `--latest=false` an), einen Tag `v<Version>` haben und die Datei `Samplife.Launcher.exe` enthalten. Die Prüfsumme liest der Launcher aus der Antwort von GitHub, sonst aus `SHA256SUMS.txt`.
+5. Nur wenn der Server eine Fassung verlangt (und für Launcher vor 2.2.0): im Manifest (Repo samplife) den Block `launcher` mit Version, Adresse, SHA-256 und Größe aus dem Release eintragen.
 
 Bei jedem Push auf einen anderen Branch als `main`, der den Launcher ändert, baut und prüft GitHub ebenfalls und legt Bildschirmfotos aller Zustände des Fensters als Artefakt `bildschirmfotos` ab.
 

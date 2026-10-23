@@ -4,5 +4,5 @@ using System.Reflection;
 [assembly: AssemblyDescription("Hält GTA San Andreas auf dem Stand von German Samplife und startet SA-MP.")]
 [assembly: AssemblyCompany("German Samplife")]
 [assembly: AssemblyProduct("Samplife Launcher")]
-[assembly: AssemblyVersion("2.1.1.0")]
-[assembly: AssemblyFileVersion("2.1.1.0")]
+[assembly: AssemblyVersion("2.2.0.0")]
+[assembly: AssemblyFileVersion("2.2.0.0")]
