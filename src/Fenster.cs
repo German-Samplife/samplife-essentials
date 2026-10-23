@@ -356,6 +356,8 @@ namespace SamplifeEssentials
                 else if (optionen.Titelbild != "" && File.Exists(optionen.Titelbild)) TitelbildZeigen(File.ReadAllBytes(optionen.Titelbild));
                 if (!optionen.OhneNetz) ListeLaden();
                 if (!bestaetigt && (optionen.Bildschirmfoto == "" || optionen.Zustand == "ablauf")) VerzeichnisSuchen();
+                // Mit gemerktem Verzeichnis lief die Pruefung im Konstruktor noch nicht (siehe FremdePruefen)
+                else FremdePruefen();
             };
         }
 
@@ -527,6 +529,9 @@ namespace SamplifeEssentials
                 bereichFremd.Visibility = Visibility.Collapsed;
                 return;
             }
+            // Vor dem Laden des Fensters (Konstruktor mit gemerktem Verzeichnis) kaeme das Warten auf einem fremden Thread zurueck
+            // und die Liste wuerde von dort geaendert: Absturz. Loaded ruft die Pruefung danach noch einmal auf.
+            if (!Wurzel.IsLoaded) return;
             var gta = Gta;
             var liste = manifest;
             List<FremdeDatei> gefunden;
@@ -792,6 +797,8 @@ namespace SamplifeEssentials
         {
             var runde = ++pruefRunde;
             if (manifest == null || !bestaetigt || !verzeichnisGueltig || sampVersion == "" || modus == Modus.Laeuft) return;
+            // Wie bei FremdePruefen: nur mit laufendem Fenster, sonst kaeme das Warten auf einem fremden Thread zurueck
+            if (!Wurzel.IsLoaded) return;
             var gta = Gta;
             var version = sampVersion;
             var liste = manifest;

@@ -196,6 +196,7 @@ Aufrufparameter für Tests:
 | `--fremde <Datei.txt>` | mit `--still`: fremde ASI Loader und Konflikte als `pfad\|art` in die Datei schreiben |
 | `--abschalten` | mit `--fremde`: die gefundenen, die sich ausschalten lassen, umbenennen |
 | `--systemordner <Ordner>` | mit `--test`: eigener Ordner statt `SysWOW64` für die Prüfung auf DirectX |
+| `--selbsttest` | echtes Fenster starten, 6 Sekunden laufen lassen und beenden (Rückgabe 0); ein Absturz endet mit 98 oder 99 statt der Fehlermeldung |
 | `--test` | erlaubt eine lokale Liste und http vom eigenen Rechner (`127.0.0.1`) |
 | `--still` | ohne Fenster abgleichen, Fehlendes und Veraltetes laden, Stand sichern. Rückgabe: 0 Erfolg, 1 Laden fehlgeschlagen, 2 kein GTA-Verzeichnis, 3 weder Liste noch brauchbare Sicherung, 4 SA-MP fehlt oder falsche Version, 5 Name ungültig, 6 `samp.exe` startet nicht, 7 Selbstaktualisierung fehlgeschlagen, 10 selbst aktualisiert |
 | `--spielen` | mit `--still`: danach anmelden und `samp.exe` starten |
