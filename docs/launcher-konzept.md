@@ -192,6 +192,15 @@ Die Sicherung ist nicht signiert. Wer Schreibrechte im GTA-Verzeichnis hat, kön
 
 Den echten Spielstart mit GTA prüfen Spieler auf Windows mit dem Testserver, nicht mit dem Live-Server.
 
+### 12. Fassung 2.1: DirectX, fremde ASI Loader, Deinstallieren
+
+Stand: 23.10.2026.
+
+- **DirectX-Laufzeit.** `samp.dll` braucht `d3dx9_25.dll`, `sampvoice.asi` braucht `d3dx9_43.dll`. Beide fehlen auf einem frischen Windows 10 und 11, kein Paket bringt sie mit, und sie dürfen nur über den Installer von Microsoft verteilt werden. Der Launcher prüft sie im 32-Bit-Systemordner und im GTA-Verzeichnis und richtet sonst den Redist vom Juni 2010 ein (`systemvoraussetzungen` im Manifest, Adresse bei download.microsoft.com, SHA-256, signiert von Microsoft). Er entpackt sich ohne Administratorrechte; nur `DXSETUP.exe /silent` braucht die Abfrage von Windows. Das passiert vor allen anderen Downloads, damit eine abgelehnte Abfrage nicht erst nach 150 MB auffällt. Ohne die Laufzeit startet der Launcher das Spiel nicht, weil SA-MP dann ohnehin nicht lädt.
+- **Fremde ASI Loader.** Erkannt an der Zeichenkette `*.asi` in DLLs mit den üblichen Namen (`dinput8.dll`, `winmm.dll`, `d3d9.dll` …). Geprüft gegen die DLLs von Windows (kein Treffer), den Ultimate ASI Loader und Silent's ASI Loader (Treffer). Der Launcher meldet sie nur und schaltet sie auf Wunsch durch Umbenennen aus; der Start wird nicht verhindert, weil zwei Loader nicht in jedem Fall stören und der Spieler entscheiden soll. Bekannte Problemfälle (z. B. die alte `samplife-kleidung.asi`) stehen unter `konflikte` im Manifest und werden genauso behandelt.
+- **Deinstallieren.** Damit ersetzte Dateien in der Fassung des Spielers zurückkommen und nicht in einer alten eigenen, schreibt der Launcher ab 2.1 `installiert.json` mit der ersten Berührung jeder Datei. Für ältere Installationen wird sie aus Protokoll, Stand und ältester Sicherung rekonstruiert (README, „Deinstallieren“). Die DirectX-Laufzeit bleibt, weil sie zu Windows gehört.
+- **Nicht gelöst: falsche GTA-Version.** SA-MP läuft nur mit `gta_sa.exe` 1.0, nicht mit der Steam- oder Rockstar-Launcher-Fassung. Der Launcher kann das Spiel nicht mitliefern und prüft die Version noch nicht; der open.mp-Launcher tut es auch nicht.
+
 ## Offen
 
 1. **SA-MP-Client mitliefern:** entschieden (22.10.). Ohne `samp.exe` startet der Launcher wie der open.mp-Launcher: `gta_sa.exe` starten und die `samp.dll` laden, aus seinem eigenen Ordner oder dem des open.mp-Launchers. Fehlt beides, richtet er `samp_client` ein (Release `samp-client-0.3.7-R1`, Dateien unverändert aus dem Archiv des open.mp-Launchers). Eine vorhandene SA-MP-Installation ersetzt er nie. Siehe README, „Wie SA-MP startet“.

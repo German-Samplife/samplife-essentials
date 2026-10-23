@@ -88,6 +88,17 @@ namespace SamplifeEssentials
                     Schritt("Im GTA-Verzeichnis fehlt SA-MP. Der Launcher richtet " + Manifest.SampClient.Name + " ein; "
                         + "vorhandene Dateien bleiben, wie sie sind.");
                 }
+                // Was Windows fuer die Pakete braucht (DirectX): ohne laedt SA-MP bzw. SampVoice nicht
+                foreach (var voraussetzung in Systemvoraussetzung.Fehlend(Manifest, Gta))
+                {
+                    noetig.Add(voraussetzung);
+                    Schritt(voraussetzung.Name + ": fehlt auf diesem Rechner ("
+                        + string.Join(", ", Systemvoraussetzung.Fehlende(voraussetzung, Gta).ToArray()) + ")");
+                }
+                // Fremde ASI Loader und bekannte Konflikte: nur Hinweis, der Spieler entscheidet im Fenster
+                foreach (var fremd in FremdeDateien.Suchen(Gta, Manifest))
+                    Melden(new Meldung { Nummer = naechsteNummer++, Art = MeldungArt.Warnung, Text = fremd.Text, Fertig = true });
+
                 var neuerStand = new Stand { ManifestJson = ManifestJson, ManifestStand = Manifest.Stand, Geprueft = DateTime.UtcNow };
                 foreach (var pruefung in pruefungen)
                 {

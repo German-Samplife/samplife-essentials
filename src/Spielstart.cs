@@ -73,7 +73,7 @@ namespace SamplifeEssentials
 
         public static void NameSetzen(string name, bool testmodus)
         {
-            using (var schluessel = Registry.CurrentUser.CreateSubKey(testmodus ? TestSchluessel : SampSchluessel))
+            using (var schluessel = SampSchluesselOeffnen(testmodus))
             {
                 schluessel.SetValue("PlayerName", name, RegistryValueKind.String);
             }
@@ -82,10 +82,51 @@ namespace SamplifeEssentials
         /// <summary>Wo SA-MP das Spiel sucht (wie „Einstellungen“ im SA-MP-Browser): das bestaetigte GTA-Verzeichnis.</summary>
         public static void GtaEintragen(string gta, bool testmodus)
         {
-            using (var schluessel = Registry.CurrentUser.CreateSubKey(testmodus ? TestSchluessel : SampSchluessel))
+            using (var schluessel = SampSchluesselOeffnen(testmodus))
             {
                 schluessel.SetValue("gta_sa_exe", Path.Combine(gta, GtaVerzeichnis.SpielDatei), RegistryValueKind.String);
             }
+        }
+
+        public static string SampSchluesselPfad(bool testmodus)
+        {
+            return testmodus ? TestSchluessel : SampSchluessel;
+        }
+
+        public static string AktuellesSchema(bool testmodus)
+        {
+            return testmodus ? TestSchema : Schema;
+        }
+
+        // Liegt diese Datei im Ordner des Launchers, hat er den Schluessel von SA-MP angelegt; die Deinstallation entfernt ihn dann.
+        static string SampMarke(bool testmodus)
+        {
+            return Path.Combine(Pfade.Launcher, testmodus ? "samp-schluessel-angelegt-test" : "samp-schluessel-angelegt");
+        }
+
+        public static bool SampSchluesselVomLauncher(bool testmodus)
+        {
+            try { return File.Exists(SampMarke(testmodus)); }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>Oeffnet den Schluessel von SA-MP zum Schreiben. Gab es ihn noch nicht, merkt sich der Launcher das.</summary>
+        static RegistryKey SampSchluesselOeffnen(bool testmodus)
+        {
+            var pfad = SampSchluesselPfad(testmodus);
+            using (var vorhanden = Registry.CurrentUser.OpenSubKey(pfad))
+            {
+                if (vorhanden == null)
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(Pfade.Launcher);
+                        File.WriteAllText(SampMarke(testmodus),"Der Launcher hat HKEY_CURRENT_USER\\" + pfad + " angelegt.");
+                    }
+                    catch (Exception) { }
+                }
+            }
+            return Registry.CurrentUser.CreateSubKey(pfad);
         }
 
         /// <summary>
