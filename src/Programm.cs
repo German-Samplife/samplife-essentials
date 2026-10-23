@@ -34,6 +34,9 @@ namespace SamplifeEssentials
         public string Bildschirmfoto = "";
         public string Zustand = "start";
         public string Suchergebnis = "";    // nur suchen und die Funde in diese Datei schreiben
+        public bool Deinstallieren;     // mit --still: alles entfernen, was der Launcher angelegt hat
+        public string Fremde = "";      // mit --still: fremde ASI Loader und Konflikte in diese Datei schreiben
+        public bool Abschalten;         // mit --fremde: die gefundenen, die sich ausschalten lassen, ausschalten
 
         public string AlsArgumente()
         {
@@ -48,7 +51,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.0.0";
+        public const string Version = "2.1.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -65,6 +68,7 @@ namespace SamplifeEssentials
             var optionen = new Optionen();
             var ausweichGesetzt = false;
             var appDaten = "";
+            var systemOrdner = "";
             for (var i = 0; i < args.Length; i++)
             {
                 var naechstes = i + 1 < args.Length ? args[i + 1] : "";
@@ -91,11 +95,17 @@ namespace SamplifeEssentials
                     case "--bildschirmfoto": optionen.Bildschirmfoto = naechstes; i++; break;
                     case "--zustand": optionen.Zustand = naechstes; i++; break;
                     case "--suche": optionen.Suchergebnis = naechstes; i++; break;
+                    case "--deinstallieren": optionen.Deinstallieren = true; break;
+                    case "--fremde": optionen.Fremde = naechstes; i++; break;
+                    case "--abschalten": optionen.Abschalten = true; break;
+                    case "--systemordner": systemOrdner = naechstes; i++; break;
                 }
             }
 
             // Eigener Ordner statt %LOCALAPPDATA% nur fuer Tests
             if (optionen.Testmodus && appDaten != "") Pfade.Lokal = appDaten;
+            // Eigener Systemordner fuer die Pruefung auf DirectX nur fuer Tests
+            if (optionen.Testmodus && systemOrdner != "") Systemvoraussetzung.Ordner = systemOrdner;
 
             // Eine eigene Liste hat keinen Ersatz, ausser er wird ausdruecklich angegeben
             if (optionen.ManifestQuelle != StandardManifest && !ausweichGesetzt) optionen.AusweichQuelle = "";
@@ -194,6 +204,13 @@ namespace SamplifeEssentials
         {
             try
             {
+                if (optionen.Deinstallieren)
+                {
+                    // Nur mit ausdruecklich genanntem Verzeichnis, nie mit einem Fund der Suche
+                    var deinstallation = new Deinstallation { Gta = optionen.Gta, Testmodus = optionen.Testmodus };
+                    return deinstallation.Ausfuehren().Erfolg ? 0 : 1;
+                }
+
                 var gta = optionen.Gta != "" ? optionen.Gta : GtaVerzeichnis.Finden();
                 if (!GtaVerzeichnis.IstGtaVerzeichnis(gta)) return 2;
 
@@ -221,6 +238,19 @@ namespace SamplifeEssentials
                     catch (Exception) { return 7; }
                     if (optionen.KeinNeustart) return 10;
                     Aktualisierung.NeuStarten(Argumente, manifest.Launcher.Version);
+                    return 0;
+                }
+
+                if (optionen.Fremde != "")
+                {
+                    var zeilen = new List<string>();
+                    foreach (var fremd in FremdeDateien.Suchen(gta, manifest))
+                    {
+                        var zeile = fremd.Pfad + "|" + fremd.Art;
+                        if (optionen.Abschalten && fremd.Abschaltbar) zeile += "|" + FremdeDateien.Abschalten(gta, fremd);
+                        zeilen.Add(zeile);
+                    }
+                    File.WriteAllLines(optionen.Fremde, zeilen, Encoding.UTF8);
                     return 0;
                 }
 

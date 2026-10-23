@@ -66,6 +66,8 @@ namespace SamplifeEssentials
         long bytesErledigt;
         string sicherung = "";
         Ergebnis ergebnis = new Ergebnis();
+        // Was der Launcher angelegt hat und wie es vorher aussah (fuer „Deinstallieren“)
+        Installiert verzeichnis;
 
         // Je installierter Komponente die Pakete und ihre Dateien, fuer die Sicherung des Stands
         public readonly List<KomponenteStand> Staende = new List<KomponenteStand>();
@@ -93,8 +95,14 @@ namespace SamplifeEssentials
                 if (!GtaVerzeichnis.IstBeschreibbar(gta))
                     throw new InstallationsFehler("In dieses Verzeichnis darf nicht geschrieben werden. Starte den Launcher als Administrator.");
 
+                verzeichnis = Installiert.Laden(gta);
+
                 var auftraege = new List<KeyValuePair<Komponente, Paket>>();
-                foreach (var komponente in auswahl)
+                // Systemvoraussetzungen zuerst: Lehnt der Spieler die Abfrage von Windows ab, ist noch nichts Grosses geladen
+                var reihenfolge = new List<Komponente>();
+                foreach (var komponente in auswahl) if (komponente.IstSystem) reihenfolge.Add(komponente);
+                foreach (var komponente in auswahl) if (!komponente.IstSystem) reihenfolge.Add(komponente);
+                foreach (var komponente in reihenfolge)
                 {
                     var pakete = Manifest.PassendePakete(komponente, sampVersion);
                     if (pakete.Count == 0)
@@ -113,6 +121,13 @@ namespace SamplifeEssentials
                 {
                     abbruch.ThrowIfCancellationRequested();
                     var datei = Herunterladen(auftrag.Key, auftrag.Value, abbruch);
+                    if (auftrag.Key.IstSystem)
+                    {
+                        // Gehoert zu Windows: nicht ins GTA-Verzeichnis, nicht in den Stand
+                        Systemvoraussetzung.Einrichten(auftrag.Key, datei, gta, testmodus, Schritt);
+                        Schritt(auftrag.Key.Name + " ist eingerichtet");
+                        continue;
+                    }
                     var paketStand = new PaketStand { Url = auftrag.Value.Url, Sha256 = auftrag.Value.Sha256 };
                     if (auftrag.Value.Typ == "zip") Entpacken(auftrag.Key, auftrag.Value, datei, paketStand, abbruch);
                     else DateiAblegen(auftrag.Key, auftrag.Value, datei, paketStand);
@@ -160,6 +175,9 @@ namespace SamplifeEssentials
             {
                 try { if (Directory.Exists(temp)) Directory.Delete(temp, true); }
                 catch (Exception) { }
+                // Auch nach einem Fehler: Was schon geschrieben ist, muss die Deinstallation kennen
+                try { if (verzeichnis != null) verzeichnis.Speichern(gta); }
+                catch (Exception fehler) { Notieren("Die Liste der installierten Dateien konnte nicht gespeichert werden: " + fehler.Message); }
                 ProtokollSchreiben();
             }
             ergebnis.Sicherung = sicherung;
@@ -378,6 +396,8 @@ namespace SamplifeEssentials
                     ergebnis.Unveraendert++;
                     Datei(anzeige + " ist bereits aktuell");
                     Merken(paketStand, anzeige, ziel, pruefsumme);
+                    // Lag schon genau so da: gehoert nicht dem Launcher (ausser er hat sie frueher selbst angelegt)
+                    verzeichnis.Merken(anzeige, Installiert.Vorhanden, "");
                     return;
                 }
                 if (sicherung == "")
@@ -387,7 +407,9 @@ namespace SamplifeEssentials
                 File.Copy(ziel, kopie, true);
                 ergebnis.Gesichert++;
                 Datei("Sichere vorhandene " + anzeige + " nach " + kopie.Substring(gta.Length + 1));
+                verzeichnis.Merken(anzeige, Installiert.Gesichert, kopie.Substring(gta.Length + 1));
             }
+            else verzeichnis.Merken(anzeige, Installiert.Neu, "");
             Directory.CreateDirectory(Path.GetDirectoryName(ziel));
             File.Copy(quelle, ziel, true);
             ergebnis.Geschrieben++;

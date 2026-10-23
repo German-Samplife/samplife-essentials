@@ -481,7 +481,7 @@ def main():
             return ordner
 
         gta = ohne_samp(os.path.join(arbeit, 'ohne-samp'))
-        pruefe(spielen(gta, url5) == 0, 'Rueckgabe 0')
+        pruefe(spielen(gta, url5, '--appdaten', os.path.join(arbeit, 'appdaten-24')) == 0, 'Rueckgabe 0')
         pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R1' and os.path.exists(os.path.join(gta, 'SAMP', 'SAMP.img')), 'SA-MP eingerichtet')
         pruefe(gestartet(gta) is not None, 'samp.exe aus dem Paket gestartet')
         stand = json.loads(lesen(gta, 'samplife-launcher', 'stand.json').decode('utf-8'))
@@ -494,12 +494,12 @@ def main():
             gta_eintrag = ''
         pruefe(os.path.normcase(gta_eintrag) == os.path.normcase(os.path.join(gta, 'gta_sa.exe')), 'gta_sa_exe fuer SA-MP eingetragen')
         vorher = len([a for a in Stiller.abrufe if a.endswith('samp-client.zip')])
-        pruefe(spielen(gta, url5) == 0, 'zweiter Start: Rueckgabe 0')
+        pruefe(spielen(gta, url5, '--appdaten', os.path.join(arbeit, 'appdaten-24')) == 0, 'zweiter Start: Rueckgabe 0')
         pruefe(len([a for a in Stiller.abrufe if a.endswith('samp-client.zip')]) == vorher, 'SA-MP nicht noch einmal geladen')
 
         print('25. Vorhandenes SA-MP wird nie ersetzt')
         open(os.path.join(gta, 'samp.dll'), 'wb').write(b'samp-0.3.7-R3')
-        pruefe(spielen(gta, url5) == 4, 'andere Version: Rueckgabe 4')
+        pruefe(spielen(gta, url5, '--appdaten', os.path.join(arbeit, 'appdaten-24')) == 4, 'andere Version: Rueckgabe 4')
         pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R3', 'samp.dll unveraendert')
         gta = ohne_samp(os.path.join(arbeit, 'ohne-samp2'))
         boese_liste = launcher_manifest('samp-boese.json', [{'id': 'b', 'name': 'Boese', 'pakete': [paket('samp-boese.zip', boeses_samp)]}])
@@ -583,6 +583,143 @@ def main():
         url7 = lade_manifest('laden3.json', komponenten=[{'id': 'x', 'name': 'X', 'pakete': [
             paket('samp-r1.dll', dll_daten, typ='datei', ablage='launcher', ziel='samp/0.3.7-R1', dateiname='samp.dll')]}])
         pruefe(starten(gta, url7, '--appdaten', os.path.join(arbeit, 'appdaten-x')) == 3, 'Liste abgelehnt: Rueckgabe 3')
+
+        def deinstallieren(gta, appdaten):
+            return subprocess.run([EXE, '--still', '--test', '--deinstallieren', '--gta', gta, '--appdaten', appdaten],
+                                  timeout=120).returncode
+
+        def gibt_es(*teile):
+            return os.path.exists(os.path.join(*teile))
+
+        print('29. Deinstallieren nach der Installation')
+        ad = os.path.join(arbeit, 'appdaten-weg')
+        url8 = launcher_manifest('entfernen.json', [spiel_liste[0], dict(spiel_liste[1], entfernen=['voice.log', 'voice-cache'])])
+        gta = spiel_anlegen(os.path.join(arbeit, 'weg1'))
+        open(os.path.join(gta, 'eigener-mod.asi'), 'wb').write(b'mod')
+        pruefe(spielen(gta, url8, '--appdaten', ad) == 0, 'installiert')
+        verz = json.loads(lesen(gta, 'samplife-launcher', 'installiert.json').decode('utf-8'))
+        eintraege = {d['pfad']: d for d in verz['dateien']}
+        pruefe(eintraege.get('vorbisFile.dll', {}).get('vorher') == 'gesichert' and eintraege.get('sampvoice.asi', {}).get('vorher') == 'neu'
+               and not verz['geschaetzt'], 'installiert.json: vorbisFile.dll gesichert, sampvoice.asi neu')
+        open(os.path.join(gta, 'voice.log'), 'w').write('log')
+        os.makedirs(os.path.join(gta, 'voice-cache', 'tief'))
+        open(os.path.join(gta, 'voice-cache', 'tief', 'x'), 'w').write('x')
+        os.makedirs(os.path.join(ad, 'German Samplife', 'Launcher', 'bilder'), exist_ok=True)
+        open(os.path.join(ad, 'German Samplife', 'Launcher', 'einstellungen.json'), 'w').write('{}')
+        pruefe(deinstallieren(gta, ad) == 0, 'Rueckgabe 0')
+        pruefe(lesen(gta, 'vorbisFile.dll') == b'alte fassung', 'ersetzte Datei in der Fassung von vorher zurueck')
+        pruefe(not gibt_es(gta, 'sampvoice.asi') and not gibt_es(gta, 'scripts'), 'Dateien und dadurch leere Ordner entfernt')
+        pruefe(not gibt_es(gta, 'voice.log') and not gibt_es(gta, 'voice-cache'), 'im Spiel angelegte Dateien (entfernen) entfernt')
+        pruefe(not any(gibt_es(gta, n) for n in ('samplife-launcher', 'samplife-essentials-sicherung', 'samplife-essentials-protokoll.txt')),
+               'Stand, Sicherungen und Protokoll entfernt')
+        pruefe(lesen(gta, 'eigener-mod.asi') == b'mod' and lesen(gta, 'gta_sa.exe') == b'spiel' and lesen(gta, 'samp.dll') == b'samp-0.3.7-R1',
+               'eigene Mods, Spiel und SA-MP bleiben')
+        pruefe(not gibt_es(ad, 'German Samplife'), 'Ordner des Launchers unter AppData entfernt')
+
+        print('30. Unveraendert vorgefundene Datei bleibt')
+        gta = spiel_anlegen(os.path.join(arbeit, 'weg2'))
+        open(os.path.join(gta, 'sampvoice.asi'), 'wb').write(b'voice r1')
+        pruefe(spielen(gta, url8, '--appdaten', ad) == 0 and deinstallieren(gta, ad) == 0, 'installiert und deinstalliert')
+        pruefe(lesen(gta, 'sampvoice.asi') == b'voice r1', 'sampvoice.asi lag schon so da und bleibt')
+
+        print('31. Nach einer Aktualisierung: Fassung von vor dem Launcher, nicht die alte eigene')
+        gta = spiel_anlegen(os.path.join(arbeit, 'weg3'))
+        pruefe(spielen(gta, url, '--appdaten', ad) == 0, 'erste Fassung')
+        time.sleep(1.1)
+        pruefe(spielen(gta, url2, '--appdaten', ad) == 0 and lesen(gta, 'vorbisFile.dll') == b'noch neuerer lader', 'aktualisiert')
+        pruefe(deinstallieren(gta, ad) == 0 and lesen(gta, 'vorbisFile.dll') == b'alte fassung', 'Original zurueck')
+
+        print('32. Installation eines Launchers bis 2.0 (ohne installiert.json)')
+        for name, ohne_protokoll in (('weg4', False), ('weg5', True)):
+            gta = spiel_anlegen(os.path.join(arbeit, name))
+            spielen(gta, url, '--appdaten', ad)
+            time.sleep(1.1)
+            spielen(gta, url2, '--appdaten', ad)
+            os.remove(os.path.join(gta, 'samplife-launcher', 'installiert.json'))
+            if ohne_protokoll:
+                os.remove(os.path.join(gta, 'samplife-essentials-protokoll.txt'))
+            art = 'ohne Protokoll, aus der aeltesten Sicherung' if ohne_protokoll else 'aus dem Protokoll'
+            pruefe(deinstallieren(gta, ad) == 0, art + ': Rueckgabe 0')
+            pruefe(lesen(gta, 'vorbisFile.dll') == b'alte fassung' and not gibt_es(gta, 'sampvoice.asi'), art + ': Original zurueck, Rest entfernt')
+
+        print('33. Fremde ASI Loader und Konflikte')
+        url9 = launcher_manifest('konflikte.json', spiel_liste, konflikte=[{'datei': 'alt.asi', 'grund': 'Alte Fassung'}, {'datei': '../weg.asi'}])
+        gta = spiel_anlegen(os.path.join(arbeit, 'fremd1'))
+        open(os.path.join(gta, 'dinput8.dll'), 'wb').write(b'MZ\x00lade *.asi\x00 aus scripts')
+        open(os.path.join(gta, 'd3d9.dll'), 'wb').write(b'MZ\x00kein loader, nur asin()')
+        open(os.path.join(gta, 'alt.asi'), 'wb').write(b'alt')
+        aus = os.path.join(arbeit, 'fremde.txt')
+
+        def fremde(*mehr):
+            if os.path.exists(aus):
+                os.remove(aus)
+            code = starten(gta, url9, '--fremde', aus, *mehr)
+            return code, open(aus, encoding='utf-8-sig').read().split() if os.path.exists(aus) else []
+
+        code, zeilen = fremde()
+        pruefe(code == 0 and 'dinput8.dll|Loader' in zeilen and 'alt.asi|Konflikt' in zeilen, 'Loader und Konflikt gefunden')
+        pruefe(not any(z.startswith('d3d9.dll') or z.startswith('vorbisFile.dll') for z in zeilen), 'keine Fehlalarme (d3d9.dll, Original-vorbisFile.dll)')
+        open(os.path.join(gta, 'vorbisFile.dll'), 'wb').write(b'fremder lader *.asi')
+        code, zeilen = fremde()
+        pruefe('vorbisFile.dll|LoaderErsetzt' in zeilen, 'fremder Loader als vorbisFile.dll erkannt')
+        code, zeilen = fremde('--abschalten')
+        pruefe(not gibt_es(gta, 'dinput8.dll') and lesen(gta, 'dinput8.dll.samplife-aus').startswith(b'MZ')
+               and gibt_es(gta, 'alt.asi.samplife-aus') and gibt_es(gta, 'vorbisFile.dll'), 'ausgeschaltet (umbenannt), vorbisFile.dll bleibt')
+        pruefe(spielen(gta, url9, '--appdaten', ad) == 0, 'danach installiert')
+        code, zeilen = fremde()
+        pruefe(zeilen == [], 'nach der Installation nichts Fremdes mehr')
+        pruefe(deinstallieren(gta, ad) == 0, 'deinstalliert')
+        pruefe(gibt_es(gta, 'dinput8.dll') and gibt_es(gta, 'alt.asi') and not gibt_es(gta, 'dinput8.dll.samplife-aus'), 'wieder eingeschaltet')
+        pruefe(lesen(gta, 'vorbisFile.dll') == b'fremder lader *.asi', 'eigener Loader des Spielers zurueck')
+
+        print('34. DirectX-Laufzeit')
+        quelle = os.path.join(werkzeug, 'dx.cs')
+        with open(quelle, 'w', encoding='utf-8') as f:
+            f.write('using System; using System.IO; using System.Reflection;\n'
+                    'class Dx { static int Main(string[] a) {\n'
+                    '  var ich = Assembly.GetExecutingAssembly().Location;\n'
+                    '  foreach (var x in a) if (x.StartsWith("/T:")) { var ziel = x.Substring(3).Trim(\'"\');\n'
+                    '    Directory.CreateDirectory(ziel); File.Copy(ich, Path.Combine(ziel, "DXSETUP.exe"), true); return 0; }\n'
+                    '  foreach (var x in a) if (x == "/silent") { var sys = Environment.GetEnvironmentVariable("SAMPLIFE_TEST_SYSTEM");\n'
+                    '    File.WriteAllText(Path.Combine(sys, "d3dx9_25.dll"), "x"); File.WriteAllText(Path.Combine(sys, "d3dx9_43.dll"), "x"); return 0; }\n'
+                    '  return 5; } }\n')
+        csc = os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Microsoft.NET', 'Framework', 'v4.0.30319', 'csc.exe')
+        dx_exe = os.path.join(werkzeug, 'dxredist.exe')
+        subprocess.run([csc, '/nologo', '/out:' + dx_exe, quelle], check=True, stdout=subprocess.DEVNULL)
+        dx_daten = lesen(dx_exe)
+        open(os.path.join(web, 'dx.exe'), 'wb').write(dx_daten)
+        system = os.path.join(arbeit, 'system')
+        os.makedirs(system)
+        os.environ['SAMPLIFE_TEST_SYSTEM'] = system
+
+        def dx_eintrag(**mehr):
+            eintrag = dict({'id': 'directx', 'name': 'DirectX-Laufzeit', 'typ': 'directx', 'dateien': ['d3dx9_25.dll', 'd3dx9_43.dll']},
+                           **paket('dx.exe', dx_daten))
+            eintrag.update(mehr)
+            return eintrag
+
+        unbekannt = {'id': 'zukunft', 'name': 'Unbekannt', 'typ': 'gibt-es-noch-nicht', 'url': 'https://example.com/x', 'sha256': '0' * 64}
+        url10 = launcher_manifest('directx.json', spiel_liste, systemvoraussetzungen=[dx_eintrag(), unbekannt])
+        dx_abrufe = lambda: len([a for a in Stiller.abrufe if a.endswith('/dx.exe')])
+        gta = spiel_anlegen(os.path.join(arbeit, 'dx1'))
+        pruefe(spielen(gta, url10, '--appdaten', ad, '--systemordner', system) == 0, 'Rueckgabe 0, unbekannter Typ uebergangen')
+        pruefe(gibt_es(system, 'd3dx9_25.dll') and gibt_es(system, 'd3dx9_43.dll'), 'DirectX eingerichtet')
+        pruefe(gestartet(gta) is not None, 'samp.exe gestartet')
+        vorher = dx_abrufe()
+        pruefe(spielen(gta, url10, '--appdaten', ad, '--systemordner', system) == 0 and dx_abrufe() == vorher, 'vorhanden: nicht noch einmal geladen')
+        pruefe(deinstallieren(gta, ad) == 0 and gibt_es(system, 'd3dx9_25.dll'), 'Deinstallieren laesst DirectX da')
+        leer_system = os.path.join(arbeit, 'system-leer')
+        os.makedirs(leer_system)
+        url11 = launcher_manifest('directx-falsch.json', spiel_liste, systemvoraussetzungen=[dx_eintrag(sha256='0' * 64)])
+        gta = spiel_anlegen(os.path.join(arbeit, 'dx2'))
+        pruefe(spielen(gta, url11, '--appdaten', ad, '--systemordner', leer_system) == 1, 'falsche Pruefsumme: Rueckgabe 1')
+        pruefe(gestartet(gta, 2) is None and not gibt_es(leer_system, 'd3dx9_25.dll'), 'kein Start, nichts eingerichtet')
+        gta = spiel_anlegen(os.path.join(arbeit, 'dx3'))
+        for name in ('d3dx9_25.dll', 'd3dx9_43.dll'):
+            open(os.path.join(gta, name), 'wb').write(b'x')
+        vorher = dx_abrufe()
+        pruefe(spielen(gta, url11, '--appdaten', ad, '--systemordner', leer_system) == 0 and dx_abrufe() == vorher,
+               'DLLs im GTA-Verzeichnis genuegen')
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

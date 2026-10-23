@@ -30,6 +30,20 @@ namespace SamplifeEssentials
         public bool Optional;          // aus optionale_komponenten: der Spieler entscheidet selbst
         public bool IstSampClient;     // aus samp_client: darf samp.exe, samp.dll und samp.saa ablegen, aber nur wenn sie fehlen
         public List<Paket> Pakete = new List<Paket>();
+        // Dateien und Ordner, die die Komponente erst im Spiel anlegt (Logs, Cache). Die Deinstallation entfernt sie mit.
+        public List<string> Entfernen = new List<string>();
+        // Aus systemvoraussetzungen: gehoert zu Windows, nicht ins GTA-Verzeichnis (z. B. DirectX). Wird nur eingerichtet, wenn
+        // eine der SystemDateien im 32-Bit-Systemordner und im GTA-Verzeichnis fehlt; die Deinstallation laesst es da.
+        public bool IstSystem;
+        public string SystemTyp = "";
+        public List<string> SystemDateien = new List<string>();
+    }
+
+    /// <summary>Datei, die mit den Komponenten nicht zusammenpasst (z. B. eine alte Fassung), samt Grund.</summary>
+    public class Konflikt
+    {
+        public string Datei;           // relativ zum GTA-Verzeichnis
+        public string Grund;
     }
 
     /// <summary>Aktuelle Fassung des Launchers fuer die Selbstaktualisierung.</summary>
@@ -67,6 +81,12 @@ namespace SamplifeEssentials
         public Komponente SampClient;
         public string Updates = "";         // Adresse der neuesten Updates aus der Community, fuer die Spalte rechts
         public List<string> Bilder = new List<string>();  // Bilder aus dem Spiel fuer den Kopf des Fensters (Website)
+        // Ab Launcher 2.1: was Windows fuer die Pakete braucht (DirectX), und Dateien, die mit ihnen nicht zusammenpassen
+        public List<Komponente> Systemvoraussetzungen = new List<Komponente>();
+        public List<Konflikt> Konflikte = new List<Konflikt>();
+
+        // Systemvoraussetzungen, die der Launcher einrichten kann; unbekannte Typen aus neueren Listen werden uebergangen
+        static readonly string[] BekannteSystemTypen = { "directx" };
 
         /// <summary>Pflicht-Komponenten und die optionalen, die der Spieler gewaehlt hat.</summary>
         public List<Komponente> Verwaltet(ICollection<string> optionalGewaehlt)
@@ -121,8 +141,21 @@ namespace SamplifeEssentials
                     if (paket.Ablage != "") throw new ManifestFehler("Nur samp_client darf außerhalb des GTA-Verzeichnisses ablegen (" + komponente.Name + ").");
                 }
             }
+            foreach (var eintrag in Liste(daten, "systemvoraussetzungen"))
+            {
+                var voraussetzung = SystemLesen(eintrag);
+                if (voraussetzung != null) manifest.Systemvoraussetzungen.Add(voraussetzung);
+            }
+            foreach (var eintrag in Liste(daten, "konflikte"))
+            {
+                var datei = Text(eintrag, "datei").Replace('/', '\\');
+                if (!SichererPfad(datei)) continue;
+                manifest.Konflikte.Add(new Konflikt { Datei = datei, Grund = Text(eintrag, "grund") });
+            }
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var komponente in manifest.Alle())
+            var alleIds = manifest.Alle();
+            alleIds.AddRange(manifest.Systemvoraussetzungen);
+            foreach (var komponente in alleIds)
             {
                 if (!ids.Add(komponente.Id)) throw new ManifestFehler("Die Komponente \"" + komponente.Id + "\" steht doppelt in der Liste.");
             }
@@ -206,7 +239,73 @@ namespace SamplifeEssentials
             }
             if (komponente.Pakete.Count == 0)
                 throw new ManifestFehler("Die Komponente " + komponente.Name + " enthält keine Pakete.");
+            foreach (var pfad in Texte(eintrag, "entfernen"))
+            {
+                var sauber = pfad.Replace('/', '\\').TrimEnd('\\');
+                if (SichererPfad(sauber)) komponente.Entfernen.Add(sauber);
+            }
             return komponente;
+        }
+
+        /// <summary>
+        /// Eine Systemvoraussetzung: { id, name, beschreibung, quelle, lizenz, typ, dateien[], url, sha256, groesse }.
+        /// Unbekannte Typen (aus einer neueren Liste) ergeben null und werden uebergangen.
+        /// </summary>
+        static Komponente SystemLesen(Dictionary<string, object> eintrag)
+        {
+            var typ = Text(eintrag, "typ");
+            if (Array.IndexOf(BekannteSystemTypen, typ) < 0) return null;
+            var komponente = new Komponente();
+            komponente.IstSystem = true;
+            komponente.SystemTyp = typ;
+            komponente.Pflicht = true;
+            komponente.Id = Pflichttext(eintrag, "id", "systemvoraussetzungen");
+            komponente.Name = Pflichttext(eintrag, "name", "systemvoraussetzungen");
+            komponente.Beschreibung = Text(eintrag, "beschreibung");
+            komponente.Quelle = Text(eintrag, "quelle");
+            komponente.Lizenz = Text(eintrag, "lizenz");
+            foreach (var datei in Texte(eintrag, "dateien"))
+            {
+                // Nur Dateinamen, kein Pfad: geprueft wird im Systemordner und im GTA-Verzeichnis
+                if (datei.IndexOfAny(new[] { '\\', '/', ':' }) >= 0 || datei.Contains(".."))
+                    throw new ManifestFehler("In \"dateien\" bei " + komponente.Name + " stehen nur Dateinamen.");
+                komponente.SystemDateien.Add(datei);
+            }
+            if (komponente.SystemDateien.Count == 0)
+                throw new ManifestFehler("Bei " + komponente.Name + " fehlt die Angabe \"dateien\".");
+            var paket = new Paket
+            {
+                Samp = "", Typ = "datei", Ziel = "", ZipUnterordner = "", Dateiname = "", Ablage = "",
+                Url = Pflichttext(eintrag, "url", komponente.Id),
+                Sha256 = Pflichttext(eintrag, "sha256", komponente.Id).ToLowerInvariant(),
+                Groesse = Zahl(eintrag, "groesse")
+            };
+            if (paket.Sha256.Length != 64)
+                throw new ManifestFehler("Die Prüfsumme bei " + komponente.Name + " ist unvollständig.");
+            komponente.Pakete.Add(paket);
+            return komponente;
+        }
+
+        /// <summary>Relativer Pfad im GTA-Verzeichnis ohne „..“ und ohne Laufwerk.</summary>
+        static bool SichererPfad(string pfad)
+        {
+            if (string.IsNullOrEmpty(pfad) || pfad.Contains("..") || pfad.Contains(":") || pfad.StartsWith("\\")) return false;
+            return pfad.IndexOfAny(System.IO.Path.GetInvalidPathChars()) < 0;
+        }
+
+        static List<string> Texte(Dictionary<string, object> daten, string name)
+        {
+            var ergebnis = new List<string>();
+            object wert;
+            if (!daten.TryGetValue(name, out wert) || wert == null) return ergebnis;
+            var eintraege = wert as IEnumerable;
+            if (eintraege == null || wert is string) throw new ManifestFehler("Die Angabe \"" + name + "\" ist keine Liste.");
+            foreach (var eintrag in eintraege)
+            {
+                var text = eintrag as string;
+                if (!string.IsNullOrEmpty(text) && text.Trim() != "") ergebnis.Add(text.Trim());
+            }
+            return ergebnis;
         }
 
         /// <summary>Pakete einer Komponente, die zur erkannten SA-MP-Version passen.</summary>

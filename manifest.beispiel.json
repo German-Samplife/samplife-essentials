@@ -73,6 +73,11 @@
           "groesse": 325058560,
           "typ": "zip"
         }
+      ],
+      "entfernen": [
+        "cef_client.log",
+        "cef/cef.log",
+        "cef/user_data"
       ]
     }
   ],
@@ -89,6 +94,29 @@
           "ziel": "modloader/beispiel"
         }
       ]
+    }
+  ],
+  "systemvoraussetzungen": [
+    {
+      "id": "directx",
+      "name": "DirectX-Laufzeit",
+      "beschreibung": "SA-MP und SampVoice brauchen sie. Sie fehlt auf einem frischen Windows; der Launcher richtet sie nur dann ein.",
+      "quelle": "https://www.microsoft.com/download/details.aspx?id=8109",
+      "lizenz": "Microsoft, frei verteilbar",
+      "typ": "directx",
+      "dateien": [
+        "d3dx9_25.dll",
+        "d3dx9_43.dll"
+      ],
+      "url": "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe",
+      "sha256": "053f76dcbb28802e23341b6a787e3b0791c0fa5c8d4d011b1044172dbf89c73b",
+      "groesse": 100275120
+    }
+  ],
+  "konflikte": [
+    {
+      "datei": "samplife-kleidung.asi",
+      "grund": "Alte Fassung der CJ-Kleidung. Zusammen mit der neuen (cef\\plugins) stürzt GTA ab."
     }
   ]
 }

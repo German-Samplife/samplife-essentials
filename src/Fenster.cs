@@ -32,14 +32,18 @@ namespace SamplifeEssentials
         Brush infoFarbe = Farben.Gedaempft;
 
         public string Name { get { return Komponente.Name; } }
-        public string Art { get { return Komponente.Optional ? "  ·  optional" : "  ·  Pflicht"; } }
+        public string Art { get { return Komponente.IstSystem ? "  ·  für Windows" : Komponente.Optional ? "  ·  optional" : "  ·  Pflicht"; } }
         public string Beschreibung { get { return Komponente.Beschreibung; } }
         public string Quelle { get { return Komponente.Quelle; } }
         public string QuelleVor { get { return Komponente.Quelle == "" ? "" : "Quelle: "; } }
         public string QuelleNach { get { return Komponente.Lizenz == "" ? "" : (Komponente.Quelle == "" ? "Lizenz: " : " · Lizenz: ") + Komponente.Lizenz; } }
         public string HakenHinweis
         {
-            get { return Komponente.Optional ? "Optional: Du entscheidest, ob der Launcher das einrichtet." : "Gehört zum Spielen auf dem Server und lässt sich nicht abwählen."; }
+            get
+            {
+                if (Komponente.IstSystem) return "Gehört zu Windows. Der Launcher richtet es nur ein, wenn es auf deinem Rechner fehlt; Windows fragt dann einmal nach Administratorrechten.";
+                return Komponente.Optional ? "Optional: Du entscheidest, ob der Launcher das einrichtet." : "Gehört zum Spielen auf dem Server und lässt sich nicht abwählen.";
+            }
         }
 
         public bool Gewaehlt
@@ -155,7 +159,15 @@ namespace SamplifeEssentials
         readonly TextBox pfad, name;
         readonly TextBlock pfadSymbol, pfadStatus, listeStatus, prozent, fusszeile, pfadTitel, sucheText, titel, untertitel,
             hinweisText, nameStatus, neuStatus;
-        readonly Button knopfSpielen, knopfAbbrechen, knopfProtokoll, knopfErneut, knopfDurchsuchen, knopfSuchen, knopfAnderer, knopfGruendlich;
+        readonly Button knopfSpielen, knopfAbbrechen, knopfProtokoll, knopfErneut, knopfDurchsuchen, knopfSuchen, knopfAnderer, knopfGruendlich,
+            knopfDeinstallieren, knopfAbschalten;
+        // Fremde ASI Loader und Konflikte im GTA-Verzeichnis
+        readonly FrameworkElement bereichFremd;
+        readonly TextBlock fremdTitel;
+        readonly ObservableCollection<FremdeDatei> fremde = new ObservableCollection<FremdeDatei>();
+        int fremdRunde;
+        // Systemvoraussetzungen (DirectX), die auf diesem Rechner fehlen; aus der letzten Vorschau
+        List<Komponente> systemFehlt = new List<Komponente>();
         readonly FrameworkElement bereichAuswahl, bereichProtokoll, listeLaedt, listeRollen, bereichSuche, bereichPfad, hinweis;
         readonly ItemsControl fundListe;
         readonly FrameworkElement bereichVersion;
@@ -232,6 +244,13 @@ namespace SamplifeEssentials
             knopfErneut = Finde<Button>("KnopfErneut");
             knopfDurchsuchen = Finde<Button>("KnopfDurchsuchen");
             knopfGruendlich = Finde<Button>("KnopfGruendlich");
+            knopfDeinstallieren = Finde<Button>("KnopfDeinstallieren");
+            knopfAbschalten = Finde<Button>("KnopfAbschalten");
+            bereichFremd = Finde<FrameworkElement>("BereichFremd");
+            fremdTitel = Finde<TextBlock>("FremdTitel");
+            Finde<ItemsControl>("FremdListe").ItemsSource = fremde;
+            knopfDeinstallieren.Click += delegate { DeinstallierenGedrueckt(); };
+            knopfAbschalten.Click += delegate { FremdeAbschalten(); };
             bereichAuswahl = Finde<FrameworkElement>("BereichAuswahl");
             bereichProtokoll = Finde<FrameworkElement>("BereichProtokoll");
             listeLaedt = Finde<FrameworkElement>("ListeLaedt");
@@ -494,6 +513,80 @@ namespace SamplifeEssentials
             if (!verzeichnisGueltig) bereichVersion.Visibility = Visibility.Collapsed;
             KomponentenAbgleichen();
             KnoepfeAktualisieren();
+            FremdePruefen();
+        }
+
+        /// <summary>Sucht im Hintergrund nach fremden ASI Loadern und Dateien aus "konflikte" und zeigt sie unter dem Verzeichnis.</summary>
+        async void FremdePruefen()
+        {
+            var runde = ++fremdRunde;
+            if (optionen.Bildschirmfoto != "" && optionen.Zustand != "ablauf") return;
+            if (!bestaetigt || !verzeichnisGueltig)
+            {
+                fremde.Clear();
+                bereichFremd.Visibility = Visibility.Collapsed;
+                return;
+            }
+            var gta = Gta;
+            var liste = manifest;
+            List<FremdeDatei> gefunden;
+            try { gefunden = await Task.Run(() => FremdeDateien.Suchen(gta, liste)); }
+            catch (Exception) { return; }
+            if (runde != fremdRunde) return;
+            FremdeZeigen(gefunden);
+        }
+
+        void FremdeZeigen(IList<FremdeDatei> gefunden)
+        {
+            fremde.Clear();
+            var abschaltbar = false;
+            var loader = 0;
+            foreach (var fremd in gefunden)
+            {
+                fremde.Add(fremd);
+                if (fremd.Abschaltbar) abschaltbar = true;
+                if (fremd.Art != FremdArt.Konflikt) loader++;
+            }
+            bereichFremd.Visibility = fremde.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (loader == fremde.Count)
+                fremdTitel.Text = loader == 1 ? "Ein anderer ASI Loader liegt im GTA-Verzeichnis" : loader + " andere ASI Loader liegen im GTA-Verzeichnis";
+            else
+                fremdTitel.Text = fremde.Count == 1 ? "Eine Datei passt nicht zu den Dateien des Servers" : fremde.Count + " Dateien passen nicht zu den Dateien des Servers";
+            knopfAbschalten.Visibility = abschaltbar ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>„Ausschalten“: fremde Loader und Konflikte umbenennen, nach Rueckfrage. Geloescht wird nichts.</summary>
+        void FremdeAbschalten()
+        {
+            if (modus != Modus.Spielen || !bestaetigt || !verzeichnisGueltig) return;
+            var namen = new List<string>();
+            foreach (var fremd in fremde) if (fremd.Abschaltbar) namen.Add("•  " + fremd.Pfad);
+            if (namen.Count == 0) return;
+            if (brauchtAdmin) { AdminFragen(); return; }
+            var antwort = MessageBox.Show(Wurzel,
+                "Der Launcher benennt diese Dateien um (Endung " + FremdeDateien.Endung + "), damit GTA sie nicht mehr lädt. Gelöscht wird nichts.\n\n"
+                + string.Join("\n", namen.ToArray()) + "\n\n"
+                + "Wieder einschalten: über „Deinstallieren“, oder du entfernst die Endung selbst.\n\nJetzt ausschalten?",
+                Wurzel.Title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (antwort != MessageBoxResult.Yes) return;
+            var fehler = new List<string>();
+            foreach (var fremd in new List<FremdeDatei>(fremde))
+            {
+                if (!fremd.Abschaltbar) continue;
+                try { FremdeDateien.Abschalten(Gta, fremd); }
+                catch (Exception e) { fehler.Add(fremd.Pfad + ": " + e.Message); }
+            }
+            if (fehler.Count > 0)
+                MessageBox.Show(Wurzel, "Nicht alles ließ sich ausschalten. Schließe GTA San Andreas und versuche es noch einmal.\n\n"
+                    + string.Join("\n", fehler.ToArray()), Wurzel.Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            FremdePruefen();
+        }
+
+        void AdminFragen()
+        {
+            var antwort = MessageBox.Show(Wurzel, "In dieses GTA-Verzeichnis darf der Launcher nur als Administrator schreiben. Als Administrator neu starten?",
+                Wurzel.Title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (antwort == MessageBoxResult.Yes) AlsAdministratorStarten();
         }
 
         void PfadMeldung(string symbol, Brush farbe, string text)
@@ -612,6 +705,9 @@ namespace SamplifeEssentials
                 zeile.AuswahlGeaendert = delegate { KomponentenAbgleichen(); KnoepfeAktualisieren(); };
                 komponenten.Add(zeile);
             }
+            // Systemvoraussetzungen (DirectX) am Ende der Liste: Pflicht, aber nur eingerichtet, wenn sie fehlen
+            foreach (var voraussetzung in manifest.Systemvoraussetzungen)
+                komponenten.Add(new KomponenteZeile { Komponente = voraussetzung, Gewaehlt = true });
             listeLaedt.Visibility = Visibility.Collapsed;
             listeRollen.Visibility = Visibility.Visible;
             if (manifest.Hinweis != "") fusszeile.Text = manifest.Hinweis;
@@ -647,7 +743,8 @@ namespace SamplifeEssentials
             VerzeichnisPruefen();
             TitelbildLaden(manifest.Bilder);
             PasswortAbfragen(manifest.ServerAdresse, manifest.ServerPort);
-            if (manifest.Updates != "" && neuigkeiten.Count == 0) NeuigkeitenLaden(manifest.Updates);
+            // Fuer Bildschirmfotos nicht: Dort laeuft ManifestSetzen vor dem Fenster, und das Warten kaeme auf einem fremden Thread zurueck
+            if (manifest.Updates != "" && neuigkeiten.Count == 0 && optionen.Bildschirmfoto == "") NeuigkeitenLaden(manifest.Updates);
             else if (manifest.Updates == "") neuStatus.Text = "Die Updates findest du in der Community auf unserer Website.";
         }
 
@@ -697,11 +794,18 @@ namespace SamplifeEssentials
             if (manifest == null || !bestaetigt || !verzeichnisGueltig || sampVersion == "" || modus == Modus.Laeuft) return;
             var gta = Gta;
             var version = sampVersion;
+            var liste = manifest;
             var verwaltet = manifest.Verwaltet(GewaehlteOptionale());
             List<Pruefung> ergebnis;
-            try { ergebnis = await Task.Run(() => Stand.Abgleichen(gta, Stand.Lesen(gta), verwaltet, version, false, CancellationToken.None)); }
+            List<Komponente> fehlt;
+            try
+            {
+                fehlt = await Task.Run(() => Systemvoraussetzung.Fehlend(liste, gta));
+                ergebnis = await Task.Run(() => Stand.Abgleichen(gta, Stand.Lesen(gta), verwaltet, version, false, CancellationToken.None));
+            }
             catch (Exception) { return; }
             if (runde != pruefRunde) return;
+            systemFehlt = fehlt;
             PruefungZeigen(ergebnis);
         }
 
@@ -729,6 +833,26 @@ namespace SamplifeEssentials
                     }
                 }
             }
+            // Systemvoraussetzungen: vorhanden oder fehlt auf diesem Rechner
+            var systemNoetig = false;
+            foreach (var zeile in komponenten)
+            {
+                if (!zeile.Komponente.IstSystem) continue;
+                if (systemFehlt.Contains(zeile.Komponente))
+                {
+                    alleAktuell = false;
+                    systemNoetig = true;
+                    var pakete = zeile.Komponente.Pakete;
+                    foreach (var paket in pakete) nachladen += paket.Groesse;
+                    zeile.Info = "fehlt auf diesem Rechner" + (Groesse(pakete) == "" ? "" : " · " + Groesse(pakete));
+                    zeile.InfoFarbe = Farben.Warnung;
+                }
+                else
+                {
+                    zeile.Info = "vorhanden";
+                    zeile.InfoFarbe = Farben.Erfolg;
+                }
+            }
             if (modus != Modus.Spielen) return;
             if (alleAktuell)
             {
@@ -741,7 +865,8 @@ namespace SamplifeEssentials
                 titel.Text = "Bereit machen";
                 untertitel.Text = ausSicherung
                     ? "Es fehlen Dateien, und die Server-Liste ist gerade nicht erreichbar. Versuche es gleich noch einmal."
-                    : "Vor dem Start lädt der Launcher " + (nachladen > 0 ? Installation.Groesse(nachladen) : "die fehlenden Dateien") + " nach.";
+                    : "Vor dem Start lädt der Launcher " + (nachladen > 0 ? Installation.Groesse(nachladen) : "die fehlenden Dateien") + " nach."
+                        + (systemNoetig ? " Für die DirectX-Laufzeit fragt Windows einmal nach Administratorrechten." : "");
             }
         }
 
@@ -842,6 +967,8 @@ namespace SamplifeEssentials
             var bereit = bestaetigt && verzeichnisGueltig && manifest != null;
             knopfSpielen.IsEnabled = bereit;
             knopfGruendlich.IsEnabled = bereit && !brauchtAdmin;
+            // Deinstallieren geht auch ohne Server-Liste, aber nur mit bestaetigtem Verzeichnis
+            knopfDeinstallieren.IsEnabled = bestaetigt && verzeichnisGueltig;
         }
 
         void HauptknopfGedrueckt()
@@ -974,6 +1101,79 @@ namespace SamplifeEssentials
             untertitel.Text = "Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt.";
             KomponentenAbgleichen();
             KnoepfeAktualisieren();
+            FremdePruefen();
+        }
+
+        // ---------------------------------------------------------------- Deinstallieren
+
+        void DeinstallierenGedrueckt()
+        {
+            if (modus != Modus.Spielen || !bestaetigt || !verzeichnisGueltig) return;
+            if (brauchtAdmin) { AdminFragen(); return; }
+            var namen = new List<string>();
+            if (manifest != null)
+            {
+                foreach (var komponente in manifest.Alle()) namen.Add(komponente.Name);
+                if (manifest.SampClient != null) namen.Add(manifest.SampClient.Name + ", falls der Launcher es eingerichtet hat");
+            }
+            var antwort = MessageBox.Show(Wurzel,
+                "Der Launcher entfernt alles, was er in " + Gta + " und auf diesem Rechner eingerichtet hat:\n\n"
+                + "•  " + (namen.Count > 0 ? string.Join(", ", namen.ToArray()) : "die Dateien der Erweiterungen") + "\n"
+                + "•  was diese im Spiel angelegt haben (Logs, Daten der Browser-Oberfläche)\n"
+                + "•  seine Sicherungen, den gesicherten Stand und das Protokoll\n"
+                + "•  seine Einstellungen und die Adresse samplife:// für „Verbinden“ auf der Website\n\n"
+                + "Dateien, die er ersetzt hat, bekommst du in der Fassung von vorher zurück. Ausgeschaltete Dateien schaltet er wieder ein. "
+                + "Deine eigenen Mods und die DirectX-Laufzeit bleiben. Die Datei des Launchers löschst du danach selbst.\n\n"
+                + "Jetzt deinstallieren?",
+                "Samplife Launcher deinstallieren", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (antwort == MessageBoxResult.Yes) Deinstallieren();
+        }
+
+        static string EigenerName()
+        {
+            try { return Path.GetFileName(Aktualisierung.EigeneDatei); }
+            catch (Exception) { return "des Launchers"; }
+        }
+
+        async void Deinstallieren()
+        {
+            modus = Modus.Laeuft;
+            ++pruefRunde;
+            zeilen.Clear();
+            kurzZeilen.Clear();
+            FortschrittZeigen(0);
+            bereichProtokoll.Visibility = Visibility.Visible;
+            Sperren(true);
+            knopfSpielen.IsEnabled = false;
+            knopfSpielen.Content = "Entferne …";
+            knopfProtokoll.Visibility = Visibility.Collapsed;
+            titel.Text = "Deinstallieren";
+            untertitel.Text = "Der Launcher entfernt seine Dateien und holt zurück, was er ersetzt hat.";
+
+            var deinstallation = new Deinstallation { Gta = Gta, Testmodus = optionen.Testmodus };
+            var meldungen = new Progress<Meldung>(MeldungZeigen);
+            deinstallation.Melden = m => ((IProgress<Meldung>)meldungen).Report(m);
+            var ergebnis = await Task.Run(() => deinstallation.Ausfuehren());
+            await Task.Delay(150);
+            knopfSpielen.IsEnabled = true;
+            if (ergebnis.Erfolg)
+            {
+                FortschrittZeigen(1);
+                // Danach gibt es nichts mehr zu tun als zu schliessen: Einstellungen sind weg, „Spielen“ wuerde alles neu laden
+                modus = Modus.Schliessen;
+                knopfSpielen.Content = "Schließen";
+                titel.Text = "Alles entfernt";
+                untertitel.Text = "Der Launcher hat " + (ergebnis.Entfernt + ergebnis.Wiederhergestellt) + " Dateien aufgeräumt"
+                    + (ergebnis.Wiederhergestellt > 0 ? ", davon " + ergebnis.Wiederhergestellt + " in der Fassung von vorher zurückgeholt" : "")
+                    + ". Die Datei " + EigenerName() + " kannst du jetzt löschen."
+                    + (ergebnis.Uebrig > 0 ? " Einige Dateien ließen sich nicht entfernen; sie stehen unter „Mehr anzeigen“." : "");
+                bereichFremd.Visibility = Visibility.Collapsed;
+                return;
+            }
+            modus = Modus.Erneut;
+            knopfSpielen.Content = "Zurück";
+            titel.Text = "Das hat nicht geklappt";
+            untertitel.Text = ergebnis.Fehler;
         }
 
         void Sperren(bool gesperrt)
@@ -986,6 +1186,8 @@ namespace SamplifeEssentials
             knopfDurchsuchen.IsEnabled = !gesperrt;
             knopfSuchen.IsEnabled = !gesperrt;
             knopfGruendlich.IsEnabled = !gesperrt;
+            knopfDeinstallieren.IsEnabled = !gesperrt;
+            knopfAbschalten.IsEnabled = !gesperrt;
             bereichVersion.IsEnabled = !gesperrt;
             foreach (var zeile in komponenten) zeile.Gesperrt = gesperrt;
         }
@@ -1114,16 +1316,61 @@ namespace SamplifeEssentials
                 komponente.Pakete.Add(new Paket { Samp = "", Groesse = komponente.Id == "cef" ? 152101349 : 893058 });
                 komponenten.Add(new KomponenteZeile { Komponente = komponente, Gewaehlt = true });
             }
+            var directx = new Komponente
+            {
+                Id = "directx", Name = "DirectX-Laufzeit", IstSystem = true, Lizenz = "Microsoft",
+                Beschreibung = "SA-MP und SampVoice brauchen sie. Sie fehlt auf einem frischen Windows; der Launcher richtet sie nur dann ein.",
+                Quelle = "https://www.microsoft.com/download/details.aspx?id=8109"
+            };
+            directx.Pakete.Add(new Paket { Samp = "", Groesse = 100275120 });
+            var directxZeile = new KomponenteZeile { Komponente = directx, Gewaehlt = true };
+            komponenten.Add(directxZeile);
             listeLaedt.Visibility = Visibility.Collapsed;
             listeRollen.Visibility = Visibility.Visible;
             knopfSpielen.IsEnabled = true;
             knopfGruendlich.IsEnabled = true;
+            knopfDeinstallieren.IsEnabled = true;
 
             if (zustand == "passwort") serverpasswortHaken.IsChecked = true;
-            if (zustand == "dateien") DateienUmschalten();
-            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien")
+            if (zustand == "dateien" || zustand == "directx") DateienUmschalten();
+            if (zustand == "fremd")
+            {
+                FremdeZeigen(new List<FremdeDatei>
+                {
+                    new FremdeDatei { Pfad = "dinput8.dll", Art = FremdArt.Loader },
+                    new FremdeDatei { Pfad = "samplife-kleidung.asi", Art = FremdArt.Konflikt,
+                        Grund = "alte Fassung der CJ-Kleidung; zusammen mit der neuen stürzt GTA ab." }
+                });
+            }
+            if (zustand == "directx")
+            {
+                foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = Farben.Erfolg; }
+                directxZeile.Info = "fehlt auf diesem Rechner · 95,6 MB";
+                directxZeile.InfoFarbe = Farben.Warnung;
+                titel.Text = "Bereit machen";
+                untertitel.Text = "Vor dem Start lädt der Launcher 95,6 MB nach. Für die DirectX-Laufzeit fragt Windows einmal nach Administratorrechten.";
+                // Die Zeile steht am Ende der Liste
+                Wurzel.Dispatcher.BeginInvoke(new Action(delegate { ((ScrollViewer)listeRollen).ScrollToEnd(); }), DispatcherPriority.Loaded);
+                return;
+            }
+            if (zustand == "deinstalliert")
+            {
+                bereichProtokoll.Visibility = Visibility.Visible;
+                Sperren(true);
+                var m = 1;
+                MeldungZeigen(new Meldung { Nummer = m++, Art = MeldungArt.Datei, Text = "Hole vorbisFile.dll in der Fassung von vor dem Launcher zurück", Fertig = true });
+                MeldungZeigen(new Meldung { Nummer = m++, Art = MeldungArt.Datei, Text = @"Entferne C:\Users\Max\AppData\Local\German Samplife\Launcher (Einstellungen, Bilder, Schriften)", Fertig = true });
+                MeldungZeigen(new Meldung { Nummer = m++, Art = MeldungArt.Erfolg, Text = "Fertig. 247 Dateien entfernt, 2 Dateien in der Fassung von vorher zurückgeholt, 1 ausgeschaltete Datei wieder eingeschaltet.", Fertig = true });
+                FortschrittZeigen(1);
+                knopfSpielen.Content = "Schließen";
+                titel.Text = "Alles entfernt";
+                untertitel.Text = "Der Launcher hat 249 Dateien aufgeräumt, davon 2 in der Fassung von vorher zurückgeholt. Die Datei Samplife Launcher.exe kannst du jetzt löschen.";
+                return;
+            }
+            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
+                directxZeile.Info = "vorhanden";
                 titel.Text = "Bereit zum Spielen";
                 untertitel.Text = "Alle Dateien sind auf dem Stand des Servers. Mit „Spielen“ startet SA-MP und verbindet dich mit german-samplife.de.";
                 if (zustand == "offline")
