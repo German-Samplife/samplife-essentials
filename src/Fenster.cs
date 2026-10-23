@@ -743,7 +743,8 @@ namespace SamplifeEssentials
             VerzeichnisPruefen();
             TitelbildLaden(manifest.Bilder);
             PasswortAbfragen(manifest.ServerAdresse, manifest.ServerPort);
-            if (manifest.Updates != "" && neuigkeiten.Count == 0) NeuigkeitenLaden(manifest.Updates);
+            // Fuer Bildschirmfotos nicht: Dort laeuft ManifestSetzen vor dem Fenster, und das Warten kaeme auf einem fremden Thread zurueck
+            if (manifest.Updates != "" && neuigkeiten.Count == 0 && optionen.Bildschirmfoto == "") NeuigkeitenLaden(manifest.Updates);
             else if (manifest.Updates == "") neuStatus.Text = "Die Updates findest du in der Community auf unserer Website.";
         }
 
