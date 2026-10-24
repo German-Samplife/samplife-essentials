@@ -2,20 +2,26 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
 
 namespace SamplifeEssentials
 {
     /// <summary>
-    /// Was sich der Launcher fuer den Windows-Benutzer merkt: das bestaetigte GTA-Verzeichnis und die gewaehlten optionalen
-    /// Komponenten. Der Spielername steht dort, wo SA-MP ihn liest (Spielstart). Liegt unter
-    /// %LOCALAPPDATA%\German Samplife\Launcher\einstellungen.json.
+    /// Was sich der Launcher fuer den Windows-Benutzer merkt: das bestaetigte GTA-Verzeichnis, die gewaehlten optionalen
+    /// Komponenten und die zuletzt benutzten Passwoerter (Konto und Server). Der Spielername steht dort, wo SA-MP ihn liest
+    /// (Spielstart). Liegt unter %LOCALAPPDATA%\German Samplife\Launcher\einstellungen.json; die Passwoerter darin
+    /// verschluesselt Windows fuer den angemeldeten Benutzer (DPAPI), ein anderer Benutzer oder Rechner kann sie nicht lesen.
     /// </summary>
     public class Einstellungen
     {
         public string Gta = "";
         public List<string> Optional = new List<string>();
+        public string Kontopasswort = "";
+        public string Serverpasswort = "";
+
+        static readonly byte[] Zusatz = Encoding.UTF8.GetBytes("German Samplife Launcher");
 
         static string Datei
         {
@@ -39,6 +45,8 @@ namespace SamplifeEssentials
                 {
                     foreach (var id in (IEnumerable)wert) if (id is string) einstellungen.Optional.Add((string)id);
                 }
+                if (daten.TryGetValue("kontopasswort", out wert) && wert is string) einstellungen.Kontopasswort = Entschluesseln((string)wert);
+                if (daten.TryGetValue("serverpasswort", out wert) && wert is string) einstellungen.Serverpasswort = Entschluesseln((string)wert);
             }
             catch (Exception) { }
             return einstellungen;
@@ -49,10 +57,35 @@ namespace SamplifeEssentials
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Datei));
-                var json = new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "gta", Gta }, { "optional", Optional } });
+                var json = new JavaScriptSerializer().Serialize(new Dictionary<string, object>
+                {
+                    { "gta", Gta }, { "optional", Optional },
+                    { "kontopasswort", Verschluesseln(Kontopasswort) }, { "serverpasswort", Verschluesseln(Serverpasswort) }
+                });
                 File.WriteAllText(Datei, json, new UTF8Encoding(false));
             }
             catch (Exception) { }
+        }
+
+        static string Verschluesseln(string klartext)
+        {
+            if (string.IsNullOrEmpty(klartext)) return "";
+            try
+            {
+                return Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(klartext), Zusatz, DataProtectionScope.CurrentUser));
+            }
+            catch (Exception) { return ""; }
+        }
+
+        /// <summary>Leer, wenn nichts gespeichert ist oder Windows es nicht entschluesseln kann (anderer Benutzer, neues Profil).</summary>
+        static string Entschluesseln(string gespeichert)
+        {
+            if (string.IsNullOrEmpty(gespeichert)) return "";
+            try
+            {
+                return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(gespeichert), Zusatz, DataProtectionScope.CurrentUser));
+            }
+            catch (Exception) { return ""; }
         }
     }
 }

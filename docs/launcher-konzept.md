@@ -152,7 +152,7 @@ Im GTA-Verzeichnis liegt der Ordner `samplife-launcher\`:
 
   Stimmt beides, startet er mit dem Hinweis „Server-Liste nicht erreichbar, du spielst mit dem geprüften Stand vom …“. Fehlt etwas, startet er nicht, weil er ohne Liste nichts nachladen kann, und sagt das.
 - **Warum im GTA-Verzeichnis:** Die Sicherung gehört zu genau diesen Dateien. Wer zwei GTA-Ordner hat, hat zwei unabhängige Stände.
-- **Einstellungen** (bestätigtes GTA-Verzeichnis, Name, Wahl der optionalen Komponenten) liegen dagegen unter `%LOCALAPPDATA%\German Samplife\Launcher\einstellungen.json`, weil sie zum Windows-Benutzer gehören.
+- **Einstellungen** (bestätigtes GTA-Verzeichnis, Name, Wahl der optionalen Komponenten, Konto- und Serverpasswort verschlüsselt per DPAPI) liegen dagegen unter `%LOCALAPPDATA%\German Samplife\Launcher\einstellungen.json`, weil sie zum Windows-Benutzer gehören.
 
 Die Sicherung ist nicht signiert. Wer Schreibrechte im GTA-Verzeichnis hat, könnte ohnehin die Dateien selbst ändern.
 
