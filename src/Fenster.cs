@@ -270,6 +270,9 @@ namespace SamplifeEssentials
             Finde<ItemsControl>("ProtokollKurz").ItemsSource = kurzZeilen;
             serverpasswortHaken.Checked += delegate { bereichPasswort.Visibility = Visibility.Visible; passwort.Focus(); };
             serverpasswortHaken.Unchecked += delegate { bereichPasswort.Visibility = Visibility.Collapsed; };
+            // Zuletzt benutzte Passwoerter; das Kaestchen „Serverpasswort“ hakt PasswortAbfragen an, wenn der Server eins verlangt
+            kontopasswort.Password = einstellungen.Kontopasswort;
+            passwort.Password = einstellungen.Serverpasswort;
             knopfDateien.Click += delegate { DateienUmschalten(); };
             Finde<Button>("KnopfMehr").Click += delegate { protokollFenster.Visibility = Visibility.Visible; protokollRollen.ScrollToEnd(); };
             Finde<Button>("KnopfFensterZu").Click += delegate { protokollFenster.Visibility = Visibility.Collapsed; };
@@ -1045,6 +1048,11 @@ namespace SamplifeEssentials
 
             einstellungen.Gta = Gta;
             einstellungen.Optional = GewaehlteOptionale();
+            if (!nurPruefen)
+            {
+                einstellungen.Kontopasswort = kontopasswort.Password;
+                if (serverpasswortHaken.IsChecked == true) einstellungen.Serverpasswort = passwort.Password;
+            }
             einstellungen.Speichern();
 
             modus = Modus.Laeuft;
@@ -1122,7 +1130,13 @@ namespace SamplifeEssentials
             }
             modus = Modus.Erneut;
             knopfSpielen.Content = "Zurück";
-            if (ergebnis.Code == 8) kontopasswort.Clear();
+            if (ergebnis.Code == 8)
+            {
+                // Falsches Kontopasswort nicht weiter merken
+                kontopasswort.Clear();
+                einstellungen.Kontopasswort = "";
+                einstellungen.Speichern();
+            }
             titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : ergebnis.Code == 8 ? "Anmeldung nicht möglich" : "Das hat nicht geklappt";
             untertitel.Text = ergebnis.Abgebrochen ? "Bereits geladene Dateien bleiben im GTA-Verzeichnis." : ergebnis.Fehler;
         }

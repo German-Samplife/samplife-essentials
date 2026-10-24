@@ -20,7 +20,7 @@ if not exist "%AUSGABE%" mkdir "%AUSGABE%"
   /resource:schriften\Inter-SemiBold.ttf,schrift.Inter-SemiBold.ttf /resource:schriften\Inter-Bold.ttf,schrift.Inter-Bold.ttf ^
   /resource:schriften\InterDisplay-SemiBold.ttf,schrift.InterDisplay-SemiBold.ttf /resource:schriften\InterDisplay-Bold.ttf,schrift.InterDisplay-Bold.ttf ^
   /r:"%FW%\WPF\PresentationCore.dll" /r:"%FW%\WPF\PresentationFramework.dll" /r:"%FW%\WPF\WindowsBase.dll" ^
-  /r:"%FW%\System.Xaml.dll" /r:"%FW%\System.Web.Extensions.dll" /r:"%FW%\System.Windows.Forms.dll" ^
+  /r:"%FW%\System.Xaml.dll" /r:"%FW%\System.Web.Extensions.dll" /r:"%FW%\System.Windows.Forms.dll" /r:"%FW%\System.Security.dll" ^
   /r:"%FW%\System.IO.Compression.dll" /r:"%FW%\System.IO.Compression.FileSystem.dll" ^
   src\AssemblyInfo.cs src\Pfade.cs src\Schriften.cs src\Programm.cs src\Manifest.cs src\GtaVerzeichnis.cs src\Installation.cs src\Stand.cs ^
   src\Ablauf.cs src\Systemvoraussetzung.cs src\Installiert.cs src\FremdeDateien.cs src\Deinstallation.cs src\Spielstart.cs src\SampStart.cs src\Aktualisierung.cs src\Einstellungen.cs src\Neuigkeiten.cs src\Titelbild.cs src\Fenster.cs
