@@ -3,7 +3,7 @@
 //! samp-cef loads every DLL in `GTA/cef/plugins/` and, with our patch, hands it
 //! every event the server sends with `cef_emit_event` (`cef_server_event`) and a
 //! function to send events to the server (`cef_server_emitter`). Events starting with
-//! `kleidung:` are ours and don't go on to the browsers.
+//! `kleidung:` or `anim:` are ours and don't go on to the browsers.
 //!
 //! | Event | Direction | Arguments |
 //! |---|---|---|
@@ -11,6 +11,8 @@
 //! | `kleidung:frage` | server -> client | none; the client answers with `kleidung:hallo` |
 //! | `kleidung:spieler` | server -> client | player id, 18 parts (see outfit::parse_teile) |
 //! | `kleidung:weg` | server -> client | player id; outfit forgotten, the player wears the standard CJ |
+//! | `anim:start` | server -> client | player id, pose name (anim.rs); partial animation until `anim:stopp` |
+//! | `anim:stopp` | server -> client | player id; the pose fades out |
 //!
 //! The callbacks run on samp-cef's thread; they only queue. The game thread takes the
 //! queue in logic.rs.
@@ -28,10 +30,13 @@ pub const EXTERNAL_BREAK: c_int = 1;
 pub const EXTERNAL_CONTINUE: c_int = 0;
 
 const PREFIX: &str = "kleidung:";
+const PREFIX_ANIM: &str = "anim:";
 
 pub enum Nachricht {
     Spieler(u16, Box<Teile>),
     Weg(u16),
+    AnimStart(u16, String),
+    AnimStopp(u16),
     Getrennt,
 }
 
@@ -122,7 +127,11 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
         return EXTERNAL_CONTINUE;
     };
 
-    let Some(name) = event.strip_prefix(PREFIX) else {
+    // (prefix, name): kleidung:frage -> ("kleidung:", "frage"), anim:start -> ("anim:", "start")
+    let Some((prefix, name)) = [PREFIX, PREFIX_ANIM]
+        .into_iter()
+        .find_map(|prefix| event.strip_prefix(prefix).map(|name| (prefix, name)))
+    else {
         return EXTERNAL_CONTINUE;
     };
 
@@ -131,21 +140,40 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
     let arguments = arguments.to_string_lossy();
     let mut tokens = arguments.split_whitespace();
 
-    let ergebnis = match name {
-        "frage" => {
+    let ergebnis = match (prefix, name) {
+        (PREFIX, "frage") => {
             hallo();
             Ok(())
         }
 
-        "spieler" => match parse_id(tokens.next()) {
+        (PREFIX, "spieler") => match parse_id(tokens.next()) {
             None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
             Some(id) => outfit::parse_teile(tokens).map(|teile| push(Nachricht::Spieler(id, Box::new(teile)))),
         },
 
-        "weg" => match parse_id(tokens.next()) {
+        (PREFIX, "weg") => match parse_id(tokens.next()) {
             None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
             Some(id) => {
                 push(Nachricht::Weg(id));
+                Ok(())
+            }
+        },
+
+        (PREFIX_ANIM, "start") => match (parse_id(tokens.next()), tokens.next(), tokens.next()) {
+            (None, _, _) => Err("Spieler-ID fehlt oder ungültig".to_owned()),
+            (Some(_), None, _) => Err("Name der Pose fehlt".to_owned()),
+            (Some(_), Some(_), Some(_)) => Err("zu viele Argumente".to_owned()),
+            (Some(_), Some(pose), None) if !crate::anim::gueltiger_name(pose) => Err("Name der Pose ungültig".to_owned()),
+            (Some(id), Some(pose), None) => {
+                push(Nachricht::AnimStart(id, pose.to_owned()));
+                Ok(())
+            }
+        },
+
+        (PREFIX_ANIM, "stopp") => match parse_id(tokens.next()) {
+            None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
+            Some(id) => {
+                push(Nachricht::AnimStopp(id));
                 Ok(())
             }
         },

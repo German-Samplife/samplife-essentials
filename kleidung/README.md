@@ -2,6 +2,8 @@
 
 `samplife-kleidung.dll` zieht im SA-MP-Client jede Figur mit Skin 0 (CJ) so an, wie der Server es für ihren Spieler vorgibt, **die eigene und die der anderen Spieler**, wie im Singleplayer mit Kleidung aus `models/player.img`. Der Server schickt die Outfits über samp-cef; das Plugin selbst entscheidet nichts.
 
+Ab 0.6.0 spielt es außerdem **Posen**: Teilanimationen nur für den Oberkörper, mit denen man weiterläuft (siehe [Posen](#posen-teilanimationen)). Die Posen stecken in der DLL.
+
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
 
 ## Voraussetzungen
@@ -43,6 +45,36 @@ Verhalten:
 - Das Plugin merkt sich alle Outfits, auch von Spielern, die gerade nicht in der Nähe sind. Kommt einer herein oder respawnt er, zieht es ihn innerhalb einer Sekunde an. Der Server schickt ein Outfit also nur bei einer Änderung und nach jedem `kleidung:hallo` einmal alle bekannten.
 - Figuren mit einem anderen Skin (Fraktions-Uniformen) rührt das Plugin nicht an. Bekommen sie wieder Skin 0, zieht es sie wieder an.
 - Beim Trennen vom CEF-Server (auch beim Verlassen des SA-MP-Servers) vergisst das Plugin alle Outfits.
+
+## Posen (Teilanimationen)
+
+SA-MP spielt jede Animation von `ApplyAnimation` über den ganzen Körper und hält den Spieler fest, auch wenn die Animation nur den Oberkörper bewegt. Die Posen spielt deshalb das Plugin, so wie GTA beim Rauchen oder Trinken im Gehen.
+
+| Ereignis | Richtung | Argumente |
+|---|---|---|
+| `anim:start` | Server → Client | Spieler-ID und Name der Pose, z. B. `anim:start 4 handy_funk`. Die Pose läuft in Schleife, bis `anim:stopp` kommt. |
+| `anim:stopp` | Server → Client | Spieler-ID. Die Pose blendet in einer Viertelsekunde aus. |
+
+Ereignisse, die mit `anim:` beginnen, nimmt das Plugin an; sie gehen nicht an die Browser-Seiten. Der Server erkennt Clients mit Posen an `kleidung:hallo` ab Version `0.6.0`.
+
+Verhalten:
+
+- Die Posen funktionieren unabhängig von der Kleidung, auch ohne ein einziges `kleidung:spieler` und bei jedem Skin.
+- Das Plugin merkt sich die Pose jedes Spielers, auch wenn er gerade nicht in der Nähe ist. Kommt er herein, respawnt er oder steigt er aus einem Fahrzeug, spielt es die Pose innerhalb einer Viertelsekunde wieder. Der Server schickt eine Pose also nur beim Start und beim Ende und nach jedem `kleidung:hallo` einmal alle laufenden.
+- In Fahrzeugen und bei toten Figuren pausiert die Pose. Blendet GTA sie zugunsten einer eigenen Teilanimation aus (z. B. Tragen), versucht das Plugin es höchstens einmal pro Sekunde wieder; der Server beendet Posen deshalb, bevor er so etwas startet.
+- Beim Trennen vom CEF-Server blendet das Plugin alle Posen aus und vergisst sie.
+
+**Die Posen-Datei.** `anim/samplife.ifp` (Block `samplife`) wird mit `include_bytes!` in die DLL gebaut und beim ersten Bild im Spiel aus dem Speicher geladen: `RwStreamOpen` mit `rwSTREAMMEMORY` (`0x7ECEF0`), `CAnimManager::LoadAnimFile` (`0x4D47F0`), danach `AddAnimBlockRef` (`0x4D3FB0`), damit der Block nie ausgelagert wird. Abgespielt wird mit `CAnimManager::BlendAnimation(clump, hierarchy, flags, 4.0)` (`0x4D4410`) und den Flags laufend, Schleife und Teilanimation (`0x1 | 0x2 | 0x10`); beendet, indem das Plugin `m_BlendDelta` auf `-4` und das Flag „nach dem Ausblenden löschen“ (`0x4`) setzt. Adressen aus gta-reversed (`Animation/AnimManager.cpp`, `Plugins/RpAnimBlendPlugin/RpAnimBlend.cpp`, `RenderWare/rw/rwplcore.cpp`), Aufbau von `CAnimBlock` und `CAnimBlendAssociation` aus `AnimBlock.h` und `AnimBlendAssociation.h`. Vorher prüft das Plugin, dass GTA noch Platz hat (höchstens 180 Blöcke und 2500 Animationen).
+
+Eine Pose bewegt nur die Knochen, die in der Datei stehen. `anim/posen_bauen.py` behält deshalb nur die Knochen des Oberkörpers, dieselben wie GTAs `CARRY/crry_prtial` (Wirbelsäule, Kopf, Arme, Hände, Bauch, Brust), und gibt starren Posen einen zweiten Keyframe, damit sie nicht 0 lang sind. Neue Posen:
+
+```bash
+python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk
+```
+
+Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten) und `handy_funk` (Hand an der Schulter).
+
+Testen: [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn), laden mit `/rcon loadfs pose_test`, dann `/pose halten`, `/pose funk`, `/pose aus`. `/kleidunginfo` zeigt eine Zeile „Posen“ mit den geladenen Posen und wie viele gerade laufen; im Log stehen das Laden und jede Pose mit Spieler-ID.
 
 ## Test mit dem Server
 
@@ -169,8 +201,12 @@ Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/
 | `src/diag.rs` | Vergleich des Kleidungs-Codes mit gta_sa.exe, Originalbytes für einen Aufruf |
 | `src/rebuild.rs` | die drei Umbau-Varianten und die Auswahl der wirksamen |
 | `src/logic.rs` | Outfits je Spieler, Prüfung jede Sekunde, Umbauten, `/kleidunginfo` |
+| `src/anim.rs` | Posen: eingebettete IFP laden, Teilanimationen je Spieler starten, wiederholen, ausblenden |
+| `anim/samplife.ifp` | die Posen (Block `samplife`), wird in die DLL gebaut |
+| `anim/posen_bauen.py` | baut `anim/samplife.ifp` aus IFP-Dateien, nur Oberkörper |
 | `src/log.rs` | Logdatei |
 | `beispiel/kleidung_test.pwn` | Filterscript für den Test mit dem Server |
+| `beispiel/pose_test.pwn` | Filterscript für den Test der Posen |
 
 ## Lizenz
 

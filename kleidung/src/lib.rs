@@ -5,10 +5,12 @@
 //! loads it and hands it the server's events (netz.rs, needs cef/plugin-ereignisse.patch).
 //! `DllMain` redirects one call in GTA's `Idle()` (entry A, see hooks.rs) and starts a
 //! watchdog thread that logs a sign of life, installs entry B (Direct3D Present) and
-//! reports what happens. The clothes logic runs on the game thread (logic.rs).
+//! reports what happens. The clothes logic runs on the game thread (logic.rs), and so do
+//! the partial animations (poses) the server starts per player (anim.rs).
 
 #![allow(clippy::missing_safety_doc)]
 
+mod anim;
 mod diag;
 mod game;
 mod hooks;
