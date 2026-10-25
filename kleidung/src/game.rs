@@ -163,6 +163,26 @@ fn region_ok(addr: usize, len: usize, write: bool) -> bool {
     true
 }
 
+/// CStats::StatTypesFloat[STAT_MUSCLE] (0xB79380 + 23 * 4; gta-reversed Stats.h, Enums/eStats.h). CClothesBuilder::
+/// CreateSkinnedClump (0x5A42B0) nimmt die Muskeln beim Bauen aus dieser Statistik des eigenen Spielers, nicht aus der
+/// Kleidungsbeschreibung (das Fett dagegen aus m_fFatStat). Für die Muskeln einer anderen Figur setzt rebuild::umbauen
+/// sie deshalb nur während des Umbaus und stellt sie danach zurück.
+const STAT_MUSCLE_FLOAT: usize = 0xB79380 + 23 * 4;
+
+pub fn muskel_stat() -> Option<f32> {
+    if readable(STAT_MUSCLE_FLOAT, 4) {
+        Some(unsafe { (STAT_MUSCLE_FLOAT as *const f32).read_unaligned() })
+    } else {
+        None
+    }
+}
+
+pub fn muskel_stat_setzen(wert: f32) {
+    if readable(STAT_MUSCLE_FLOAT, 4) {
+        unsafe { (STAT_MUSCLE_FLOAT as *mut f32).write_unaligned(wert) };
+    }
+}
+
 pub fn read_u32(addr: usize) -> Option<u32> {
     if readable(addr, 4) {
         Some(unsafe { (addr as *const u32).read_unaligned() })

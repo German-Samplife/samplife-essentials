@@ -143,6 +143,8 @@ struct State {
     /// the server has sent at least one outfit in this connection
     aktiv: bool,
     outfits: HashMap<u16, OutfitKeys>,
+    /// (Fett, Muskeln) je Spieler-ID aus `kleidung:koerper`; kommt vor oder nach dem Outfit
+    koerper: HashMap<u16, (u16, u16)>,
     standard: Option<OutfitKeys>,
     peds: HashMap<usize, Entry>,
     queue: VecDeque<usize>,
@@ -174,6 +176,7 @@ impl State {
             started: Instant::now(),
             aktiv: false,
             outfits: HashMap::new(),
+            koerper: HashMap::new(),
             standard: None,
             peds: HashMap::new(),
             queue: VecDeque::new(),
@@ -355,7 +358,7 @@ impl State {
     fn handle(&mut self, ver: SampVersion, nachricht: Nachricht) {
         match nachricht {
             Nachricht::Spieler(id, teile) => {
-                let keys = OutfitKeys::from_teile(&teile);
+                let keys = OutfitKeys::from_teile(&teile).mit_koerper(self.koerper.get(&id).copied());
 
                 if !self.aktiv {
                     self.aktiv = true;
@@ -370,7 +373,19 @@ impl State {
                 }
             }
 
+            Nachricht::Koerper(id, fett, muskeln) => {
+                let neu = Some((fett, muskeln));
+                if self.koerper.insert(id, (fett, muskeln)) != neu {
+                    if let Some(keys) = self.outfits.get_mut(&id) {
+                        keys.koerper = neu;
+                        crate::log!("Körper Spieler-ID {id}: Fett {fett}, Muskeln {muskeln}");
+                        self.force_scan = true;
+                    }
+                }
+            }
+
             Nachricht::Weg(id) => {
+                self.koerper.remove(&id);
                 if self.outfits.remove(&id).is_some() {
                     crate::log!("Outfit Spieler-ID {id} vergessen");
                     self.force_scan = true;
@@ -385,6 +400,7 @@ impl State {
                 self.anims.getrennt(ver);
                 self.aktiv = false;
                 self.outfits.clear();
+                self.koerper.clear();
                 self.peds.clear();
                 self.queue.clear();
                 self.model_shows = None;
@@ -639,7 +655,7 @@ impl State {
                 if ped.seated_in_vehicle() { " (im Fahrzeug)" } else { "" },
                 target.kurz()
             );
-            let ergebnis = rebuild::umbauen(ped_addr, desc_ptr, &wer);
+            let ergebnis = rebuild::umbauen(ped_addr, desc_ptr, &wer, target.koerper.map(|(_, muskeln)| muskeln));
             let ms = ergebnis.ms;
 
             self.stats.rebuilds += 1;

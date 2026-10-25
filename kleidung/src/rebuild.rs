@@ -86,8 +86,22 @@ fn ausfuehren(variante: Variante, ped: usize, desc_ptr: usize) -> Option<()> {
     }
 }
 
-/// Game thread. `desc_ptr` already holds the wanted clothes.
-pub fn umbauen(ped: usize, desc_ptr: usize, wer: &str) -> Ergebnis {
+/// Game thread. `desc_ptr` already holds the wanted clothes. `muskeln` (0 bis 1000): Muskeln dieser Figur; der Baukasten
+/// liest sie aus der Statistik des eigenen Spielers (game::muskel_stat), die deshalb nur für diesen Umbau gesetzt wird.
+pub fn umbauen(ped: usize, desc_ptr: usize, wer: &str, muskeln: Option<u16>) -> Ergebnis {
+    let muskel_vorher = muskeln.and_then(|m| {
+        let vorher = game::muskel_stat()?;
+        game::muskel_stat_setzen(m as f32);
+        Some(vorher)
+    });
+    let ergebnis = umbauen_innen(ped, desc_ptr, wer);
+    if let Some(vorher) = muskel_vorher {
+        game::muskel_stat_setzen(vorher);
+    }
+    ergebnis
+}
+
+fn umbauen_innen(ped: usize, desc_ptr: usize, wer: &str) -> Ergebnis {
     let start_all = Instant::now();
     let mut reihenfolge = vec![Variante::Nachgebaut, Variante::Normal, Variante::Originalbytes];
 
