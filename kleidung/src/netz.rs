@@ -11,6 +11,7 @@
 //! | `kleidung:frage` | server -> client | none; the client answers with `kleidung:hallo` |
 //! | `kleidung:spieler` | server -> client | player id, 18 parts (see outfit::parse_teile) |
 //! | `kleidung:weg` | server -> client | player id; outfit forgotten, the player wears the standard CJ |
+//! | `kleidung:koerper` | server -> client | player id, Fett and Muskeln (0 to 1000, like STAT_FAT/STAT_MUSCLE) |
 //! | `anim:start` | server -> client | player id, pose name (anim.rs); partial animation until `anim:stopp` |
 //! | `anim:stopp` | server -> client | player id; the pose fades out |
 //!
@@ -34,6 +35,7 @@ const PREFIX_ANIM: &str = "anim:";
 
 pub enum Nachricht {
     Spieler(u16, Box<Teile>),
+    Koerper(u16, u16, u16),
     Weg(u16),
     AnimStart(u16, String),
     AnimStopp(u16),
@@ -149,6 +151,11 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
         (PREFIX, "spieler") => match parse_id(tokens.next()) {
             None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
             Some(id) => outfit::parse_teile(tokens).map(|teile| push(Nachricht::Spieler(id, Box::new(teile)))),
+        },
+
+        (PREFIX, "koerper") => match parse_id(tokens.next()) {
+            None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
+            Some(id) => outfit::parse_koerper(tokens).map(|(fett, muskeln)| push(Nachricht::Koerper(id, fett, muskeln))),
         },
 
         (PREFIX, "weg") => match parse_id(tokens.next()) {

@@ -61,11 +61,33 @@ pub fn parse_teile<'a>(tokens: impl Iterator<Item = &'a str>) -> Result<Teile, S
     Ok(teile)
 }
 
+/// Höchstwert von Fett und Muskeln wie die Statistiken von GTA (STAT_FAT, STAT_MUSCLE)
+pub const KOERPER_MAX: u16 = 1000;
+
+/// `kleidung:koerper <id> <fett> <muskeln>`: zwei ganze Zahlen von 0 bis KOERPER_MAX
+pub fn parse_koerper<'a>(mut tokens: impl Iterator<Item = &'a str>) -> Result<(u16, u16), String> {
+    let mut wert = |name: &str| -> Result<u16, String> {
+        let t = tokens.next().ok_or_else(|| format!("{name} fehlt"))?;
+        t.parse::<u16>()
+            .ok()
+            .filter(|&v| v <= KOERPER_MAX)
+            .ok_or_else(|| format!("{name} ungültig: {t}"))
+    };
+    let fett = wert("Fett")?;
+    let muskeln = wert("Muskeln")?;
+    if tokens.next().is_some() {
+        return Err("zu viele Argumente".to_owned());
+    }
+    Ok((fett, muskeln))
+}
+
 /// Keys of one outfit, computed with the game's own CKeyGen::GetUppercaseKey.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct OutfitKeys {
     /// (texture key, model key) per texture part, 0/0 = nothing
     pub parts: [(u32, u32); CLOTHES_TEXTURE_TOTAL],
+    /// (Fett, Muskeln) von 0 bis KOERPER_MAX aus `kleidung:koerper`; None: der Körper bleibt, wie er ist
+    pub koerper: Option<(u16, u16)>,
 }
 
 fn key(name: &str) -> u32 {
@@ -85,7 +107,7 @@ impl OutfitKeys {
             parts[part] = (key(texture), key(model));
         }
 
-        OutfitKeys { parts }
+        OutfitKeys { parts, koerper: None }
     }
 
     /// Game thread only (calls into gta_sa.exe).
@@ -98,31 +120,48 @@ impl OutfitKeys {
             }
         }
 
-        OutfitKeys { parts }
+        OutfitKeys { parts, koerper: None }
+    }
+
+    pub fn mit_koerper(mut self, koerper: Option<(u16, u16)>) -> OutfitKeys {
+        self.koerper = koerper;
+        self
     }
 
     /// Writes the outfit into a desc: every texture part (also tattoos) and every
-    /// model part that depends on a texture is set, everything else (hands, fat,
-    /// muscle) stays as it is.
+    /// model part that depends on a texture is set, everything else (hands) stays as it is.
+    /// Fett und Muskeln nur, wenn der Server sie geschickt hat (die Muskeln liest der Baukasten aus der Statistik, siehe
+    /// rebuild::umbauen; in der Beschreibung stehen sie für den Abgleich).
     pub fn apply(&self, desc: &mut ClothesDesc) {
         for (texture_part, &(texture, model)) in self.parts.iter().enumerate() {
             desc.set_texture_and_model(texture, model, texture_part);
         }
+        if let Some((fett, muskeln)) = self.koerper {
+            desc.fat_stat = fett as f32;
+            desc.muscle_stat = muskeln as f32;
+        }
     }
 
     pub fn matches(&self, desc: &ClothesDesc) -> bool {
-        self.parts.iter().enumerate().all(|(texture_part, &(texture, model))| {
-            desc.texture_keys[texture_part] == texture
-                && game::texture_dependency(texture_part)
-                    .map(|model_part| desc.model_keys[model_part] == model)
-                    .unwrap_or(true)
-        })
+        let koerper_ok = self
+            .koerper
+            .is_none_or(|(fett, muskeln)| desc.fat_stat == fett as f32 && desc.muscle_stat == muskeln as f32);
+        koerper_ok
+            && self.parts.iter().enumerate().all(|(texture_part, &(texture, model))| {
+                desc.texture_keys[texture_part] == texture
+                    && game::texture_dependency(texture_part)
+                        .map(|model_part| desc.model_keys[model_part] == model)
+                        .unwrap_or(true)
+            })
     }
 
     /// Short form for the log: torso texture key and how many parts are worn.
     pub fn kurz(&self) -> String {
         let worn = self.parts.iter().filter(|&&(texture, _)| texture != 0).count();
-        format!("Oberteil {:08x}, {worn} Teile", self.parts[TEX_TORSO].0)
+        match self.koerper {
+            Some((fett, muskeln)) => format!("Oberteil {:08x}, {worn} Teile, Fett {fett}, Muskeln {muskeln}", self.parts[TEX_TORSO].0),
+            None => format!("Oberteil {:08x}, {worn} Teile", self.parts[TEX_TORSO].0),
+        }
     }
 }
 
@@ -151,6 +190,17 @@ mod tests {
     fn falsche_anzahl() {
         assert!(parse_teile(vec!["-"; 17].into_iter()).is_err());
         assert!(parse_teile(vec!["-"; 19].into_iter()).is_err());
+    }
+
+    #[test]
+    fn koerper() {
+        assert_eq!(parse_koerper("400 750".split_whitespace()), Ok((400, 750)));
+        assert_eq!(parse_koerper("0 1000".split_whitespace()), Ok((0, 1000)));
+        assert!(parse_koerper("1001 0".split_whitespace()).is_err());
+        assert!(parse_koerper("-1 0".split_whitespace()).is_err());
+        assert!(parse_koerper("400".split_whitespace()).is_err());
+        assert!(parse_koerper("400 500 600".split_whitespace()).is_err());
+        assert!(parse_koerper("viel 500".split_whitespace()).is_err());
     }
 
     #[test]
