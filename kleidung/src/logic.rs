@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use crate::anim::Anims;
 use crate::game::{self, ClothesDesc, Ped, Skip, MODEL_PLAYER};
 use crate::hooks;
 use crate::netz::{self, Nachricht};
@@ -157,6 +158,8 @@ struct State {
     last_result: ScanResult,
     diagnosed: bool,
     aufgabe_gemeldet: bool,
+    /// poses (partial animations) per player, independent of the clothes
+    anims: Anims,
 }
 
 impl State {
@@ -183,6 +186,7 @@ impl State {
             last_result: ScanResult::default(),
             diagnosed: false,
             aufgabe_gemeldet: false,
+            anims: Anims::new(),
         }
     }
 
@@ -320,12 +324,15 @@ impl State {
 
     fn run(&mut self, ver: SampVersion) {
         for nachricht in netz::take() {
-            self.handle(nachricht);
+            self.handle(ver, nachricht);
         }
 
         if INFO_PENDING.swap(0, Ordering::SeqCst) > 0 {
             self.info(ver);
         }
+
+        // poses work without clothes from the server
+        self.anims.frame(ver);
 
         if !self.aktiv {
             return;
@@ -345,7 +352,7 @@ impl State {
         self.rebuild_next(ver);
     }
 
-    fn handle(&mut self, nachricht: Nachricht) {
+    fn handle(&mut self, ver: SampVersion, nachricht: Nachricht) {
         match nachricht {
             Nachricht::Spieler(id, teile) => {
                 let keys = OutfitKeys::from_teile(&teile);
@@ -370,7 +377,12 @@ impl State {
                 }
             }
 
+            Nachricht::AnimStart(id, name) => self.anims.start(ver, id, name),
+
+            Nachricht::AnimStopp(id) => self.anims.stopp(ver, id),
+
             Nachricht::Getrennt => {
+                self.anims.getrennt(ver);
                 self.aktiv = false;
                 self.outfits.clear();
                 self.peds.clear();
@@ -734,6 +746,17 @@ impl State {
                 last.wait_vehicle,
                 last.wait_dead,
                 last.no_data
+            ),
+        );
+
+        samp::chat_line(
+            ver,
+            WHITE,
+            &format!(
+                "Posen: {}, aktiv bei {} Spielern, gestartet {}x",
+                self.anims.zustand(),
+                self.anims.aktive_posen(),
+                self.anims.gestartet
             ),
         );
 
