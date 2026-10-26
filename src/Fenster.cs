@@ -186,6 +186,13 @@ namespace SamplifeEssentials
         readonly ObservableCollection<ProtokollZeile> kurzZeilen = new ObservableCollection<ProtokollZeile>();
         bool titelbildGezeigt;
         bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
+        // Absturzbericht (src/Absturzbericht.cs): Fenster ueber dem Launcher, einmal je Start geprueft
+        readonly FrameworkElement absturzFenster, absturzEingabe;
+        readonly TextBlock absturzTitel, absturzText, absturzStatus;
+        readonly TextBox absturzKommentar;
+        readonly Button knopfAbsturzSenden, knopfAbsturzNein;
+        DateTime absturzZeit;
+        bool absturzGeprueft, absturzGesendet;
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
         readonly ObservableCollection<ProtokollZeile> zeilen = new ObservableCollection<ProtokollZeile>();
         readonly ObservableCollection<Neuigkeit> neuigkeiten = new ObservableCollection<Neuigkeit>();
@@ -276,6 +283,16 @@ namespace SamplifeEssentials
             knopfDateien.Click += delegate { DateienUmschalten(); };
             Finde<Button>("KnopfMehr").Click += delegate { protokollFenster.Visibility = Visibility.Visible; protokollRollen.ScrollToEnd(); };
             Finde<Button>("KnopfFensterZu").Click += delegate { protokollFenster.Visibility = Visibility.Collapsed; };
+            absturzFenster = Finde<FrameworkElement>("AbsturzFenster");
+            absturzEingabe = Finde<FrameworkElement>("AbsturzEingabe");
+            absturzTitel = Finde<TextBlock>("AbsturzTitel");
+            absturzText = Finde<TextBlock>("AbsturzText");
+            absturzStatus = Finde<TextBlock>("AbsturzStatus");
+            absturzKommentar = Finde<TextBox>("AbsturzKommentar");
+            knopfAbsturzSenden = Finde<Button>("KnopfAbsturzSenden");
+            knopfAbsturzNein = Finde<Button>("KnopfAbsturzNein");
+            knopfAbsturzSenden.Click += delegate { if (absturzGesendet) AbsturzSchliessen(); else AbsturzSenden(); };
+            knopfAbsturzNein.Click += delegate { AbsturzMerken(); AbsturzSchliessen(); };
             protokollFenster.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
             {
                 // Klick neben das Fenster schliesst es, wie auf der Website
@@ -784,6 +801,7 @@ namespace SamplifeEssentials
             // Fuer Bildschirmfotos nicht: Dort laeuft ManifestSetzen vor dem Fenster, und das Warten kaeme auf einem fremden Thread zurueck
             if (manifest.Updates != "" && neuigkeiten.Count == 0 && optionen.Bildschirmfoto == "") NeuigkeitenLaden(manifest.Updates);
             else if (manifest.Updates == "") neuStatus.Text = "Die Updates findest du in der Community auf unserer Website.";
+            AbsturzPruefen();
         }
 
         /// <summary>Groesse, Verfuegbarkeit und – wenn schon moeglich – der Stand jeder Komponente auf der Platte.</summary>
@@ -969,6 +987,8 @@ namespace SamplifeEssentials
         void DirektVersuchen()
         {
             if (!optionen.Direkt || direktVersucht || manifest == null) return;
+            // Erst den Absturzbericht beantworten; danach versucht es AbsturzSchliessen noch einmal
+            if (absturzFenster.Visibility == Visibility.Visible) return;
             direktVersucht = true;
             if (modus == Modus.Spielen && bestaetigt && verzeichnisGueltig && !brauchtAdmin && NamePruefen(false))
             {
@@ -1347,6 +1367,104 @@ namespace SamplifeEssentials
             catch (Exception) { }
         }
 
+        // ---------------------------------------------------------------- Absturzbericht
+
+        /// <summary>Nach dem Laden der Liste: Gibt es einen neuen Absturz und nimmt der Server Berichte an, fragen.</summary>
+        void AbsturzPruefen()
+        {
+            if (absturzGeprueft || manifest == null || manifest.Absturzbericht == "" || optionen.Bildschirmfoto != "") return;
+            absturzGeprueft = true;
+            var zeit = Absturzbericht.Neuer(einstellungen);
+            if (zeit.HasValue) AbsturzZeigen(zeit.Value);
+        }
+
+        void AbsturzZeigen(DateTime zeitUtc)
+        {
+            absturzZeit = zeitUtc;
+            absturzGesendet = false;
+            var lokal = zeitUtc.ToLocalTime();
+            absturzTitel.Text = "Dein Spiel ist abgestürzt";
+            absturzText.Text = "Am " + lokal.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) + " um " + lokal.ToString("HH:mm", CultureInfo.InvariantCulture)
+                + " Uhr ist GTA San Andreas abgestürzt. Schick uns den Bericht von SA-MP, damit wir den Fehler finden und beheben können.";
+            absturzEingabe.Visibility = Visibility.Visible;
+            absturzStatus.Visibility = Visibility.Collapsed;
+            knopfAbsturzNein.Visibility = Visibility.Visible;
+            knopfAbsturzNein.IsEnabled = true;
+            knopfAbsturzSenden.IsEnabled = true;
+            knopfAbsturzSenden.Content = "Bericht senden";
+            absturzFenster.Visibility = Visibility.Visible;
+        }
+
+        async void AbsturzSenden()
+        {
+            string inhalt;
+            try { inhalt = Absturzbericht.Lesen(); }
+            catch (Exception fehler)
+            {
+                AbsturzStatusZeigen(Farben.Fehler, "Die Datei crashinfo.txt ließ sich nicht lesen: " + fehler.Message);
+                return;
+            }
+            knopfAbsturzSenden.IsEnabled = false;
+            knopfAbsturzNein.IsEnabled = false;
+            AbsturzStatusZeigen(Farben.Gedaempft, "Sende den Bericht …");
+            var url = manifest.Absturzbericht;
+            var spieler = name.Text.Trim();
+            var kommentar = absturzKommentar.Text;
+            var zeit = absturzZeit;
+            var testmodus = optionen.Testmodus;
+            var nummer = 0;
+            var fehlerText = await Task.Run(() =>
+            {
+                int n;
+                var f = Absturzbericht.Senden(url, spieler, kommentar, zeit, inhalt, testmodus, out n);
+                nummer = n;
+                return f;
+            });
+            if (fehlerText != "")
+            {
+                AbsturzStatusZeigen(Farben.Fehler, fehlerText);
+                knopfAbsturzSenden.Content = "Erneut senden";
+                knopfAbsturzSenden.IsEnabled = true;
+                knopfAbsturzNein.IsEnabled = true;
+                return;
+            }
+            AbsturzMerken();
+            AbsturzGesendetZeigen(nummer);
+        }
+
+        void AbsturzGesendetZeigen(int nummer)
+        {
+            absturzGesendet = true;
+            absturzTitel.Text = "Danke";
+            absturzEingabe.Visibility = Visibility.Collapsed;
+            knopfAbsturzNein.Visibility = Visibility.Collapsed;
+            knopfAbsturzSenden.Content = "Schließen";
+            knopfAbsturzSenden.IsEnabled = true;
+            AbsturzStatusZeigen(Farben.Erfolg, nummer > 0
+                ? "Danke, Bericht Nr. " + nummer + " ist bei uns angekommen. Das Team schaut ihn sich an."
+                : "Danke, dein Bericht ist bei uns angekommen. Das Team schaut ihn sich an.");
+        }
+
+        void AbsturzStatusZeigen(Brush farbe, string text)
+        {
+            absturzStatus.Foreground = farbe;
+            absturzStatus.Text = text;
+            absturzStatus.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>Gesendet oder abgelehnt: Fuer diesen Absturz kommt der Hinweis nicht wieder.</summary>
+        void AbsturzMerken()
+        {
+            if (optionen.Bildschirmfoto != "") return;
+            Absturzbericht.Merken(einstellungen, absturzZeit);
+        }
+
+        void AbsturzSchliessen()
+        {
+            absturzFenster.Visibility = Visibility.Collapsed;
+            DirektVersuchen();
+        }
+
         // ---------------------------------------------------------------- Bildschirmfoto (nur zum Pruefen der Oberflaeche)
 
         /// <summary>Stellt einen Zustand mit Beispieldaten dar, ohne etwas herunterzuladen oder zu schreiben.</summary>
@@ -1436,7 +1554,8 @@ namespace SamplifeEssentials
                 untertitel.Text = "Der Launcher hat 249 Dateien aufgeräumt, davon 2 in der Fassung von vorher zurückgeholt. Die Datei Samplife Launcher.exe kannst du jetzt löschen.";
                 return;
             }
-            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd")
+            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
+                || zustand == "absturz" || zustand == "absturzgesendet")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1445,6 +1564,12 @@ namespace SamplifeEssentials
                 if (zustand == "offline")
                     HinweisZeigen("Die Server-Liste ist gerade nicht erreichbar. Du spielst mit dem geprüften Stand vom 21.10.2026, 13:40. "
                         + "Fehlt eine Datei, kann der Launcher sie erst wieder laden, wenn der Server antwortet.");
+                if (zustand == "absturz" || zustand == "absturzgesendet")
+                {
+                    AbsturzZeigen(new DateTime(2026, 10, 26, 20, 43, 0, DateTimeKind.Utc));
+                    absturzKommentar.Text = "Bin gerade aus dem Autohaus gefahren, dann ist das Spiel eingefroren.";
+                    if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
+                }
                 return;
             }
 

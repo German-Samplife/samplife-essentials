@@ -23,6 +23,6 @@ if not exist "%AUSGABE%" mkdir "%AUSGABE%"
   /r:"%FW%\System.Xaml.dll" /r:"%FW%\System.Web.Extensions.dll" /r:"%FW%\System.Windows.Forms.dll" /r:"%FW%\System.Security.dll" ^
   /r:"%FW%\System.IO.Compression.dll" /r:"%FW%\System.IO.Compression.FileSystem.dll" ^
   src\AssemblyInfo.cs src\Pfade.cs src\Schriften.cs src\Programm.cs src\Manifest.cs src\GtaVerzeichnis.cs src\Installation.cs src\Stand.cs ^
-  src\Ablauf.cs src\Systemvoraussetzung.cs src\Installiert.cs src\FremdeDateien.cs src\Deinstallation.cs src\Spielstart.cs src\SampStart.cs src\Aktualisierung.cs src\Einstellungen.cs src\Neuigkeiten.cs src\Titelbild.cs src\Fenster.cs
+  src\Ablauf.cs src\Systemvoraussetzung.cs src\Installiert.cs src\FremdeDateien.cs src\Deinstallation.cs src\Spielstart.cs src\SampStart.cs src\Aktualisierung.cs src\Einstellungen.cs src\Neuigkeiten.cs src\Titelbild.cs src\Absturzbericht.cs src\Fenster.cs
 if errorlevel 1 exit /b 1
 echo Fertig: %AUSGABE%\Samplife Launcher.exe

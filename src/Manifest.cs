@@ -75,6 +75,7 @@ namespace SamplifeEssentials
         public string ServerAdresse = "";
         public int ServerPort;
         public string Anmeldung = "";       // Adresse, bei der sich der Launcher vor dem Spielstart meldet
+        public string Absturzbericht = "";  // Ab Launcher 2.3: Adresse fuer Absturzberichte, leer = keine
         public LauncherFassung Launcher;    // null = keine Selbstaktualisierung
         // SA-MP selbst, nur fuer GTA-Verzeichnisse ohne samp.exe. Eigener Block statt in komponenten: Installer 1.x wuerden
         // sonst versuchen, samp.exe zu schreiben, und mit einem Fehler abbrechen.
@@ -173,6 +174,7 @@ namespace SamplifeEssentials
                 manifest.ServerAdresse = Text(server, "adresse");
                 manifest.ServerPort = (int)Zahl(server, "port");
                 manifest.Anmeldung = Text(server, "anmeldung");
+                manifest.Absturzbericht = Text(server, "absturzbericht");
             }
             var sampClient = Objekt(daten, "samp_client");
             if (sampClient != null)
