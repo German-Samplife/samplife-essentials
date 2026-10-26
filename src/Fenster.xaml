@@ -644,8 +644,8 @@
         <Border Width="620" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
                 VerticalAlignment="Center">
           <StackPanel Margin="28,26,28,24">
-            <Border Width="56" Height="56" CornerRadius="28" Background="#26FFB547" HorizontalAlignment="Left">
-              <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{StaticResource Warnung}"
+            <Border x:Name="AbsturzKreis" Width="56" Height="56" CornerRadius="28" Background="#26FFB547" HorizontalAlignment="Left">
+              <TextBlock x:Name="AbsturzSymbol" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{StaticResource Warnung}"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <TextBlock x:Name="AbsturzTitel" Text="Dein Spiel ist abgestürzt" FontFamily="{DynamicResource Anzeige}" FontSize="26"

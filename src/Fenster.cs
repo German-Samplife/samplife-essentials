@@ -188,7 +188,8 @@ namespace SamplifeEssentials
         bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
         // Absturzbericht (src/Absturzbericht.cs): Fenster ueber dem Launcher, einmal je Start geprueft
         readonly FrameworkElement absturzFenster, absturzEingabe;
-        readonly TextBlock absturzTitel, absturzText, absturzStatus;
+        readonly TextBlock absturzTitel, absturzText, absturzStatus, absturzSymbol;
+        readonly Border absturzKreis;
         readonly TextBox absturzKommentar;
         readonly Button knopfAbsturzSenden, knopfAbsturzNein;
         DateTime absturzZeit;
@@ -288,6 +289,8 @@ namespace SamplifeEssentials
             absturzTitel = Finde<TextBlock>("AbsturzTitel");
             absturzText = Finde<TextBlock>("AbsturzText");
             absturzStatus = Finde<TextBlock>("AbsturzStatus");
+            absturzSymbol = Finde<TextBlock>("AbsturzSymbol");
+            absturzKreis = Finde<Border>("AbsturzKreis");
             absturzKommentar = Finde<TextBox>("AbsturzKommentar");
             knopfAbsturzSenden = Finde<Button>("KnopfAbsturzSenden");
             knopfAbsturzNein = Finde<Button>("KnopfAbsturzNein");
@@ -1382,10 +1385,11 @@ namespace SamplifeEssentials
         {
             absturzZeit = zeitUtc;
             absturzGesendet = false;
-            var lokal = zeitUtc.ToLocalTime();
             absturzTitel.Text = "Dein Spiel ist abgestürzt";
-            absturzText.Text = "Am " + lokal.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) + " um " + lokal.ToString("HH:mm", CultureInfo.InvariantCulture)
-                + " Uhr ist GTA San Andreas abgestürzt. Schick uns den Bericht von SA-MP, damit wir den Fehler finden und beheben können.";
+            absturzText.Text = AbsturzZeitText() + " Schick uns den Bericht von SA-MP, damit wir den Fehler finden und beheben können.";
+            absturzSymbol.Text = "\uE7BA";
+            absturzSymbol.Foreground = Farben.Warnung;
+            absturzKreis.Background = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xB5, 0x47));
             absturzEingabe.Visibility = Visibility.Visible;
             absturzStatus.Visibility = Visibility.Collapsed;
             knopfAbsturzNein.Visibility = Visibility.Visible;
@@ -1393,6 +1397,13 @@ namespace SamplifeEssentials
             knopfAbsturzSenden.IsEnabled = true;
             knopfAbsturzSenden.Content = "Bericht senden";
             absturzFenster.Visibility = Visibility.Visible;
+        }
+
+        string AbsturzZeitText()
+        {
+            var lokal = absturzZeit.ToLocalTime();
+            return "Am " + lokal.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) + " um " + lokal.ToString("HH:mm", CultureInfo.InvariantCulture)
+                + " Uhr ist GTA San Andreas abgestürzt.";
         }
 
         async void AbsturzSenden()
@@ -1436,6 +1447,10 @@ namespace SamplifeEssentials
         {
             absturzGesendet = true;
             absturzTitel.Text = "Danke";
+            absturzText.Text = AbsturzZeitText();
+            absturzSymbol.Text = "\uE73E";
+            absturzSymbol.Foreground = Farben.Erfolg;
+            absturzKreis.Background = new SolidColorBrush(Color.FromArgb(0x26, 0x39, 0xD8, 0x74));
             absturzEingabe.Visibility = Visibility.Collapsed;
             knopfAbsturzNein.Visibility = Visibility.Collapsed;
             knopfAbsturzSenden.Content = "Schließen";
