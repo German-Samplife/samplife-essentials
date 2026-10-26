@@ -61,16 +61,16 @@ const NEXT_ASSOC: usize = 0x4D6AB0;
 const BLOCK_IS_LOADED: usize = 0x10;
 // CAnimBlendAssociation (0x3C, vtable first): m_BlendHier 0x14, m_BlendAmount 0x18,
 // m_BlendDelta 0x1C, m_Flags (uint16) 0x2E
-const ASSOC_SIZE: usize = 0x3C;
-const ASSOC_HIER: usize = 0x14;
-const ASSOC_BLEND_DELTA: usize = 0x1C;
-const ASSOC_FLAGS: usize = 0x2E;
+pub(crate) const ASSOC_SIZE: usize = 0x3C;
+pub(crate) const ASSOC_HIER: usize = 0x14;
+pub(crate) const ASSOC_BLEND_DELTA: usize = 0x1C;
+pub(crate) const ASSOC_FLAGS: usize = 0x2E;
 
 // eAnimationFlags (AnimBlendAssociation.h)
-const ANIM_PLAYING: u16 = 0x1;
-const ANIM_LOOPED: u16 = 0x2;
-const ANIM_BLEND_AUTO_REMOVE: u16 = 0x4;
-const ANIM_PARTIAL: u16 = 0x10;
+pub(crate) const ANIM_PLAYING: u16 = 0x1;
+pub(crate) const ANIM_LOOPED: u16 = 0x2;
+pub(crate) const ANIM_BLEND_AUTO_REMOVE: u16 = 0x4;
+pub(crate) const ANIM_PARTIAL: u16 = 0x10;
 
 /// blend in/out over a quarter second
 const BLEND_IN: f32 = 4.0;
@@ -330,7 +330,7 @@ impl Anims {
 }
 
 /// GTA ped of a SA-MP player id, local or remote; None if not streamed.
-fn ped_of(ver: SampVersion, id: u16) -> Option<usize> {
+pub(crate) fn ped_of(ver: SampVersion, id: u16) -> Option<usize> {
     if samp::local_id() == Some(id) {
         return samp::local_ped(ver);
     }
@@ -415,22 +415,87 @@ fn laden() -> Result<HashMap<String, usize>, String> {
     }
 }
 
+/// A pose fades out the other poses (BlendAnimation does that for every partial
+/// animation), but never the lips (lippen.rs), which play on the face at the same time.
 fn blend(clump: usize, hier: usize) {
-    let blend: extern "C" fn(usize, usize, i32, f32) -> usize = unsafe { std::mem::transmute(BLEND_ANIMATION) };
-    blend(clump, hier, (ANIM_PLAYING | ANIM_LOOPED | ANIM_PARTIAL) as i32, BLEND_IN);
+    let lippen = crate::lippen::hier();
+    blend_schonend(clump, hier, ANIM_PLAYING | ANIM_LOOPED | ANIM_PARTIAL, BLEND_IN, |h| lippen != 0 && h == lippen);
 }
 
-fn first_assoc(clump: usize) -> Option<usize> {
+/// `CAnimManager::BlendAnimation`. For a partial animation GTA fades out every other
+/// partial animation on the clump (blend delta below 0, auto remove); the ones for which
+/// `schonen(hierarchy)` holds get their blend delta and flags back right after the call,
+/// in the same frame, before GTA updates or deletes anything.
+pub(crate) fn blend_schonend(clump: usize, hier: usize, flags: u16, delta: f32, schonen: impl Fn(usize) -> bool) {
+    let mut vorher = Vec::new();
+    let mut assoc = first_assoc(clump);
+
+    while let Some(a) = assoc {
+        let h = read_ptr(a + ASSOC_HIER).unwrap_or(0);
+
+        if h != hier && schonen(h) {
+            unsafe {
+                vorher.push((
+                    a,
+                    ((a + ASSOC_BLEND_DELTA) as *const f32).read_unaligned(),
+                    ((a + ASSOC_FLAGS) as *const u16).read_unaligned(),
+                ));
+            }
+        }
+
+        assoc = next_assoc(a);
+    }
+
+    let blend: extern "C" fn(usize, usize, i32, f32) -> usize = unsafe { std::mem::transmute(BLEND_ANIMATION) };
+    blend(clump, hier, flags as i32, delta);
+
+    for (a, delta, flags) in vorher {
+        if writable(a, ASSOC_SIZE) {
+            unsafe {
+                ((a + ASSOC_BLEND_DELTA) as *mut f32).write_unaligned(delta);
+                ((a + ASSOC_FLAGS) as *mut u16).write_unaligned(flags);
+            }
+        }
+    }
+}
+
+/// Hierarchy of animation `name` in GTA's loaded block `block` (e.g. `ped`, always
+/// loaded from anim/ped.ifp).
+pub(crate) fn animation_im_block(block: &str, name: &str) -> Result<usize, String> {
+    let block_name = CString::new(block).map_err(|e| e.to_string())?;
+    let c_name = CString::new(name).map_err(|e| e.to_string())?;
+
+    unsafe {
+        let get_block: extern "C" fn(*const c_char) -> usize = std::mem::transmute(GET_ANIMATION_BLOCK);
+        let get_animation: extern "C" fn(*const c_char, usize) -> usize = std::mem::transmute(GET_ANIMATION);
+
+        let block_ptr = get_block(block_name.as_ptr());
+
+        if block_ptr == 0 || !readable(block_ptr + BLOCK_IS_LOADED, 1) || *((block_ptr + BLOCK_IS_LOADED) as *const u8) == 0 {
+            return Err(format!("Block {block} nicht geladen"));
+        }
+
+        let hier = get_animation(c_name.as_ptr(), block_ptr);
+
+        if hier == 0 {
+            return Err(format!("Animation {name} nicht im Block {block}"));
+        }
+
+        Ok(hier)
+    }
+}
+
+pub(crate) fn first_assoc(clump: usize) -> Option<usize> {
     let first: extern "C" fn(usize) -> usize = unsafe { std::mem::transmute(CLUMP_FIRST_ASSOC) };
     Some(first(clump)).filter(|&a| a != 0 && readable(a, ASSOC_SIZE))
 }
 
-fn next_assoc(assoc: usize) -> Option<usize> {
+pub(crate) fn next_assoc(assoc: usize) -> Option<usize> {
     let next: extern "C" fn(usize) -> usize = unsafe { std::mem::transmute(NEXT_ASSOC) };
     Some(next(assoc)).filter(|&a| a != 0 && readable(a, ASSOC_SIZE))
 }
 
-fn find_assoc(clump: usize, pick: impl Fn(usize) -> bool) -> Option<usize> {
+pub(crate) fn find_assoc(clump: usize, pick: impl Fn(usize) -> bool) -> Option<usize> {
     let mut assoc = first_assoc(clump);
 
     while let Some(a) = assoc {
@@ -443,7 +508,7 @@ fn find_assoc(clump: usize, pick: impl Fn(usize) -> bool) -> Option<usize> {
     None
 }
 
-fn blend_delta(assoc: usize) -> f32 {
+pub(crate) fn blend_delta(assoc: usize) -> f32 {
     unsafe { ((assoc + ASSOC_BLEND_DELTA) as *const f32).read_unaligned() }
 }
 
