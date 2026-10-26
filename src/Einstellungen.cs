@@ -10,7 +10,7 @@ namespace SamplifeEssentials
 {
     /// <summary>
     /// Was sich der Launcher fuer den Windows-Benutzer merkt: das bestaetigte GTA-Verzeichnis, die gewaehlten optionalen
-    /// Komponenten und die zuletzt benutzten Passwoerter (Konto und Server). Der Spielername steht dort, wo SA-MP ihn liest
+    /// Komponenten, die zuletzt benutzten Passwoerter (Konto und Server) und den zuletzt gemeldeten Absturz. Der Spielername steht dort, wo SA-MP ihn liest
     /// (Spielstart). Liegt unter %LOCALAPPDATA%\German Samplife\Launcher\einstellungen.json; die Passwoerter darin
     /// verschluesselt Windows fuer den angemeldeten Benutzer (DPAPI), ein anderer Benutzer oder Rechner kann sie nicht lesen.
     /// </summary>
@@ -20,6 +20,8 @@ namespace SamplifeEssentials
         public List<string> Optional = new List<string>();
         public string Kontopasswort = "";
         public string Serverpasswort = "";
+        // Zeitpunkt (UTC, ISO) des zuletzt gemeldeten oder abgelehnten Absturzes (Absturzbericht)
+        public string AbsturzGemeldet = "";
 
         static readonly byte[] Zusatz = Encoding.UTF8.GetBytes("German Samplife Launcher");
 
@@ -47,6 +49,7 @@ namespace SamplifeEssentials
                 }
                 if (daten.TryGetValue("kontopasswort", out wert) && wert is string) einstellungen.Kontopasswort = Entschluesseln((string)wert);
                 if (daten.TryGetValue("serverpasswort", out wert) && wert is string) einstellungen.Serverpasswort = Entschluesseln((string)wert);
+                if (daten.TryGetValue("absturz_gemeldet", out wert) && wert is string) einstellungen.AbsturzGemeldet = (string)wert;
             }
             catch (Exception) { }
             return einstellungen;
@@ -60,7 +63,8 @@ namespace SamplifeEssentials
                 var json = new JavaScriptSerializer().Serialize(new Dictionary<string, object>
                 {
                     { "gta", Gta }, { "optional", Optional },
-                    { "kontopasswort", Verschluesseln(Kontopasswort) }, { "serverpasswort", Verschluesseln(Serverpasswort) }
+                    { "kontopasswort", Verschluesseln(Kontopasswort) }, { "serverpasswort", Verschluesseln(Serverpasswort) },
+                    { "absturz_gemeldet", AbsturzGemeldet }
                 });
                 File.WriteAllText(Datei, json, new UTF8Encoding(false));
             }
