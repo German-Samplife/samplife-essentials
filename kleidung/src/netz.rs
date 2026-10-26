@@ -3,7 +3,7 @@
 //! samp-cef loads every DLL in `GTA/cef/plugins/` and, with our patch, hands it
 //! every event the server sends with `cef_emit_event` (`cef_server_event`) and a
 //! function to send events to the server (`cef_server_emitter`). Events starting with
-//! `kleidung:` or `anim:` are ours and don't go on to the browsers.
+//! `kleidung:`, `anim:` or `lippen:` are ours and don't go on to the browsers.
 //!
 //! | Event | Direction | Arguments |
 //! |---|---|---|
@@ -14,6 +14,10 @@
 //! | `kleidung:koerper` | server -> client | player id, Fett and Muskeln (0 to 1000, like STAT_FAT/STAT_MUSCLE) |
 //! | `anim:start` | server -> client | player id, pose name (anim.rs); partial animation until `anim:stopp` |
 //! | `anim:stopp` | server -> client | player id; the pose fades out |
+//! | `lippen:an` | server -> client | player id; his face talks (lippen.rs) until `lippen:aus` |
+//! | `lippen:aus` | server -> client | player id; the face stops talking |
+//! | `lippen:mikro` | server -> client | `1` a talk key of the local player is held, `0` released (mikro.rs) |
+//! | `lippen:pegel` | client -> server | `1` speech at the microphone while the key is held, `0` quiet again |
 //!
 //! The callbacks run on samp-cef's thread; they only queue. The game thread takes the
 //! queue in logic.rs.
@@ -32,6 +36,7 @@ pub const EXTERNAL_CONTINUE: c_int = 0;
 
 const PREFIX: &str = "kleidung:";
 const PREFIX_ANIM: &str = "anim:";
+const PREFIX_LIPPEN: &str = "lippen:";
 
 pub enum Nachricht {
     Spieler(u16, Box<Teile>),
@@ -39,6 +44,9 @@ pub enum Nachricht {
     Weg(u16),
     AnimStart(u16, String),
     AnimStopp(u16),
+    LippenAn(u16),
+    LippenAus(u16),
+    LippenMikro(bool),
     Getrennt,
 }
 
@@ -107,6 +115,11 @@ fn hallo() {
     }
 }
 
+/// mikro.rs: speech at the microphone starts (`true`) or stops; false if not sent.
+pub fn lippen_pegel(an: bool) -> bool {
+    emit("lippen:pegel", if an { "1" } else { "0" })
+}
+
 pub fn connect() {
     VERBUNDEN.store(true, Ordering::SeqCst);
     crate::log!("samp-cef: mit dem Server verbunden");
@@ -130,7 +143,7 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
     };
 
     // (prefix, name): kleidung:frage -> ("kleidung:", "frage"), anim:start -> ("anim:", "start")
-    let Some((prefix, name)) = [PREFIX, PREFIX_ANIM]
+    let Some((prefix, name)) = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN]
         .into_iter()
         .find_map(|prefix| event.strip_prefix(prefix).map(|name| (prefix, name)))
     else {
@@ -183,6 +196,34 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
                 push(Nachricht::AnimStopp(id));
                 Ok(())
             }
+        },
+
+        (PREFIX_LIPPEN, "an") => match parse_id(tokens.next()) {
+            None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
+            Some(id) => {
+                push(Nachricht::LippenAn(id));
+                Ok(())
+            }
+        },
+
+        (PREFIX_LIPPEN, "aus") => match parse_id(tokens.next()) {
+            None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
+            Some(id) => {
+                push(Nachricht::LippenAus(id));
+                Ok(())
+            }
+        },
+
+        (PREFIX_LIPPEN, "mikro") => match tokens.next() {
+            Some("1") => {
+                push(Nachricht::LippenMikro(true));
+                Ok(())
+            }
+            Some("0") => {
+                push(Nachricht::LippenMikro(false));
+                Ok(())
+            }
+            _ => Err("1 oder 0 erwartet".to_owned()),
         },
 
         _ => Err("unbekanntes Ereignis".to_owned()),

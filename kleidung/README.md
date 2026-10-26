@@ -4,6 +4,8 @@
 
 Ab 0.6.0 spielt es außerdem **Posen**: Teilanimationen nur für den Oberkörper, mit denen man weiterläuft (siehe [Posen](#posen-teilanimationen)). Die Posen stecken in der DLL.
 
+Ab 0.8.0 bewegen sich die **Lippen**, wenn jemand im Sprach-Chat spricht (siehe [Lippen](#lippen-beim-sprechen)): Taste gedrückt und Stimme am Mikrofon.
+
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
 
 ## Voraussetzungen
@@ -76,6 +78,25 @@ python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halte
 Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten) und `handy_funk` (Hand an der Schulter).
 
 Testen: [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn), laden mit `/rcon loadfs pose_test`, dann `/pose halten`, `/pose funk`, `/pose aus`. `/kleidunginfo` zeigt eine Zeile „Posen“ mit den geladenen Posen und wie viele gerade laufen; im Log stehen das Laden und jede Pose mit Spieler-ID.
+
+## Lippen beim Sprechen
+
+Spricht ein Spieler im Sprach-Chat (Nähe, Telefon, Funk, Sender), bewegt sich das Gesicht seiner Figur. Der Server entscheidet: Sprech- oder Funktaste gedrückt **und** das Plugin des Sprechers hört Stimme am Mikrofon. Taste allein reicht nicht, Stimme ohne Taste auch nicht.
+
+| Ereignis | Richtung | Argumente |
+|---|---|---|
+| `lippen:mikro` | Server → Client | `1`: eine Sprechtaste dieses Spielers ist gedrückt (nur wenn SampVoice ein Mikrofon gefunden hat), `0`: losgelassen. Nur an den Sprecher selbst. |
+| `lippen:pegel` | Client → Server | `1`: Stimme am Mikrofon, solange die Taste gedrückt ist, `0`: wieder still. Nur bei einem Wechsel. |
+| `lippen:an` | Server → Client | Spieler-ID. Das Gesicht spricht, bis `lippen:aus` kommt. An alle, auch an den Sprecher. |
+| `lippen:aus` | Server → Client | Spieler-ID. Das Gesicht hört auf. |
+
+Ereignisse, die mit `lippen:` beginnen, nimmt das Plugin an; sie gehen nicht an die Browser-Seiten. Der Server erkennt Clients mit Lippen an `kleidung:hallo` ab Version `0.8.0`.
+
+**Stimme erkennen** (`src/mikro.rs`). Nach `lippen:mikro 1` öffnet das Plugin das Standard-Aufnahmegerät, von dem auch SampVoice aufnimmt, über waveIn (`winmm.dll`, Windows teilt das Gerät), 16 kHz mono, vier Puffer zu 40 ms. Die Puffer holt es in jedem Bild im Spiel-Thread ab, ohne eigenen Thread. Stimme heißt: zwei Puffer hintereinander mindestens 10 dB über dem Grundrauschen und lauter als -55 dBFS (ein Tastenklick ist kürzer); still ist es 300 ms nach dem letzten lauten Puffer. Das Grundrauschen lernt das Plugin laufend (sinkt sofort, steigt um 2,5 dB pro Sekunde). An den Server geht nur ja oder nein, kein Ton. Das Gerät bleibt 30 Sekunden nach dem Loslassen offen, damit das nächste Drücken nicht ruckelt (das Öffnen hält den Spiel-Thread kurz an), und schließt beim Trennen. Lässt es sich nicht öffnen, zählt jedes Drücken als Stimme; das steht im Log.
+
+**Gesicht bewegen** (`src/lippen.rs`). Gespielt wird GTAs eigene Sprech-Animation `factalk` aus `ped.ifp` (Block `ped`, immer geladen), dieselbe wie bei sprechenden Passanten, als Teilanimation in Schleife mit `CAnimManager::BlendAnimation` (`0x4D4410`). Sie bewegt nur das Gesicht, Laufen, Fahren und Posen gehen weiter, auch im Fahrzeug. `BlendAnimation` blendet beim Start einer Teilanimation alle anderen Teilanimationen der Figur aus; das Plugin merkt sich vorher deren Blend-Delta und Flags und schreibt sie direkt danach zurück, noch im selben Bild. Posen und Lippen laufen so nebeneinander, und auch GTAs eigene Teilanimationen (Tragen, Rauchen, Telefon) bleiben. Blendet GTA die Lippen aus, startet das Plugin sie höchstens einmal pro Sekunde neu. Wie bei den Posen merkt es sich, wer spricht, auch außer Sichtweite.
+
+`/kleidunginfo` zeigt zwei Zeilen „Lippen“: ob `factalk` gefunden ist, wie viele gerade sprechen und wie oft gestartet wurde, und den Stand des eigenen Mikrofons (offen, Taste, Stimme, letzter Pegel, Grundrauschen, wie oft gemeldet). Im Log stehen Öffnen und Schließen des Mikrofons und Fehler.
 
 ## Test mit dem Server
 
@@ -161,6 +182,7 @@ Bei jeder Prüfung vergleicht das Plugin pro Figur ihr Soll-Outfit mit den Kleid
 - **Modell 0 ist für alle gleich.** Neu erscheinende CJs tragen zuerst das zuletzt gebaute Outfit, bis das Plugin sie bei der nächsten Prüfung (spätestens nach einer Sekunde) umbaut. Nach dem Verlassen eines Servers mit Kleidung bleibt das Modell im letzten Outfit, bis das Spiel neu startet; auf einem Server ohne Kleidung kann ein CJ deshalb so aussehen.
 - **Ruckler.** Jeder Umbau lädt Kleidung synchron nach. Das Plugin baut höchstens eine Figur pro Bild um.
 - **Speicherzugriffe.** Alle Zeiger werden vor dem Lesen geprüft (`VirtualQuery`). Ein Absturz innerhalb von `RebuildPlayer` selbst lässt sich so nicht abfangen; deshalb bitte Abstürze mit Log melden.
+- **Mikrofon.** Exklusiver Modus oder gesperrter Mikrofonzugriff für Desktop-Apps in Windows: Dann hört auch SampVoice nichts. Lässt sich das Gerät nicht öffnen, bewegen sich die Lippen nach der Taste.
 - **Andere Mods.** Mods, die CJ ebenfalls umziehen oder `player.img` ersetzen, können das Ergebnis verfälschen. Am besten mit möglichst sauberem GTA testen.
 
 ## Logdatei
@@ -204,7 +226,9 @@ Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/
 | `src/diag.rs` | Vergleich des Kleidungs-Codes mit gta_sa.exe, Originalbytes für einen Aufruf |
 | `src/rebuild.rs` | die drei Umbau-Varianten und die Auswahl der wirksamen |
 | `src/logic.rs` | Outfits je Spieler, Prüfung jede Sekunde, Umbauten, `/kleidunginfo` |
-| `src/anim.rs` | Posen: eingebettete IFP laden, Teilanimationen je Spieler starten, wiederholen, ausblenden |
+| `src/anim.rs` | Posen: eingebettete IFP laden, Teilanimationen je Spieler starten, wiederholen, ausblenden; Blenden, ohne andere Teilanimationen zu beenden |
+| `src/lippen.rs` | Lippen: `factalk` je sprechendem Spieler starten, wiederholen, ausblenden |
+| `src/mikro.rs` | Pegel des eigenen Mikrofons über waveIn, Stimme erkennen, `lippen:pegel` |
 | `anim/samplife.ifp` | die Posen (Block `samplife`), wird in die DLL gebaut |
 | `anim/posen_bauen.py` | baut `anim/samplife.ifp` aus IFP-Dateien, nur Oberkörper |
 | `src/log.rs` | Logdatei |

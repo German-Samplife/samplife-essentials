@@ -14,6 +14,8 @@ use std::time::{Duration, Instant};
 use crate::anim::Anims;
 use crate::game::{self, ClothesDesc, Ped, Skip, MODEL_PLAYER};
 use crate::hooks;
+use crate::lippen::Lippen;
+use crate::mikro::Mikro;
 use crate::netz::{self, Nachricht};
 use crate::outfit::OutfitKeys;
 use crate::rebuild;
@@ -162,6 +164,9 @@ struct State {
     aufgabe_gemeldet: bool,
     /// poses (partial animations) per player, independent of the clothes
     anims: Anims,
+    /// talking faces in the voice chat, and the own microphone level for the server
+    lippen: Lippen,
+    mikro: Mikro,
 }
 
 impl State {
@@ -190,6 +195,8 @@ impl State {
             diagnosed: false,
             aufgabe_gemeldet: false,
             anims: Anims::new(),
+            lippen: Lippen::new(),
+            mikro: Mikro::new(),
         }
     }
 
@@ -334,8 +341,10 @@ impl State {
             self.info(ver);
         }
 
-        // poses work without clothes from the server
+        // poses and lips work without clothes from the server
         self.anims.frame(ver);
+        self.lippen.frame(ver);
+        self.mikro.frame();
 
         if !self.aktiv {
             return;
@@ -396,8 +405,16 @@ impl State {
 
             Nachricht::AnimStopp(id) => self.anims.stopp(ver, id),
 
+            Nachricht::LippenAn(id) => self.lippen.an(ver, id),
+
+            Nachricht::LippenAus(id) => self.lippen.aus(ver, id),
+
+            Nachricht::LippenMikro(an) => self.mikro.taste(an),
+
             Nachricht::Getrennt => {
                 self.anims.getrennt(ver);
+                self.lippen.getrennt(ver);
+                self.mikro.getrennt();
                 self.aktiv = false;
                 self.outfits.clear();
                 self.koerper.clear();
@@ -775,6 +792,9 @@ impl State {
                 self.anims.gestartet
             ),
         );
+
+        samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.lippen.zustand()));
+        samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.mikro.zustand()));
 
         let patches = crate::diag::scan("/kleidunginfo");
         let variante = match (rebuild::wirksame_variante(), rebuild::aufgegeben(), self.stats.rebuilds) {

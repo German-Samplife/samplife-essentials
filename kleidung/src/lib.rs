@@ -6,7 +6,8 @@
 //! `DllMain` redirects one call in GTA's `Idle()` (entry A, see hooks.rs) and starts a
 //! watchdog thread that logs a sign of life, installs entry B (Direct3D Present) and
 //! reports what happens. The clothes logic runs on the game thread (logic.rs), and so do
-//! the partial animations (poses) the server starts per player (anim.rs).
+//! the partial animations (poses) the server starts per player (anim.rs) and the talking
+//! faces in the voice chat (lippen.rs, with the microphone level from mikro.rs).
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -14,8 +15,10 @@ mod anim;
 mod diag;
 mod game;
 mod hooks;
+mod lippen;
 mod log;
 mod logic;
+mod mikro;
 mod netz;
 mod outfit;
 mod rebuild;
