@@ -58,6 +58,20 @@ namespace SamplifeEssentials
             Dateien.Add(new InstallierteDatei { Pfad = pfad, Vorher = vorher, Sicherung = sicherung ?? "" });
         }
 
+        /// <summary>
+        /// Eine Datei des Spielers wurde gesichert und ersetzt (andere SA-MP-Version, Ablauf.SampErsetzen). Stand sie schon als
+        /// „neu“ oder „vorhanden“ in der Liste, gehoert die jetzt gesicherte Fassung dem Spieler: Sie kommt bei der
+        /// Deinstallation zurueck. Eine aeltere Sicherung derselben Datei bleibt, denn sie ist die erste Fassung des Spielers.
+        /// </summary>
+        public void Sichern(string pfad, string sicherung)
+        {
+            var datei = Suchen(pfad);
+            if (datei == null) { Merken(pfad, Gesichert, sicherung); return; }
+            if (datei.Vorher == Gesichert) return;
+            datei.Vorher = Gesichert;
+            datei.Sicherung = sicherung ?? "";
+        }
+
         // ---------------------------------------------------------------- Lesen und Schreiben
 
         /// <summary>Liest die Liste. Fehlt sie, wird sie aus dem, was aeltere Fassungen hinterlassen haben, rekonstruiert.</summary>

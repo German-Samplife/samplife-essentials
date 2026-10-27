@@ -27,6 +27,8 @@ namespace SamplifeEssentials
         public string Version = "";
         public bool VonOpenMp;         // die samp.dll stammt aus dem Ordner des open.mp-Launchers
         public string Grund = "";
+        public bool AndereVersion;     // im GTA-Verzeichnis liegt SA-MP in einer Version, die der Server nicht kennt
+        public string Andere = "";     // deren Version, soweit erkennbar ("" = unbekannt)
     }
 
     /// <summary>
@@ -47,6 +49,12 @@ namespace SamplifeEssentials
         public bool Gruendlich;
         public bool MitStart;
         public bool Testmodus;
+        /// <summary>
+        /// Der Spieler hat zugestimmt (Fenster „Andere SA-MP-Version gefunden“, still: --samp-ersetzen): Liegt im
+        /// GTA-Verzeichnis eine andere SA-MP-Version, sichert der Launcher sie und richtet samp_client ein. Gilt nur fuer
+        /// diesen Ablauf und wird nicht gemerkt.
+        /// </summary>
+        public bool SampErsetzen;
 
         public Action<Meldung> Melden = delegate { };
         public Action<double> Fortschritt = delegate { };
@@ -61,8 +69,18 @@ namespace SamplifeEssentials
             try
             {
                 // Wie SA-MP startet: samp.exe, samp.dll laden oder erst einrichten. Eine vorhandene Installation im
-                // GTA-Verzeichnis ersetzt der Launcher nie, auch nicht eine andere Version.
+                // GTA-Verzeichnis ersetzt der Launcher nur, wenn es eine andere Version ist und der Spieler zugestimmt hat
+                // (SampErsetzen); sie kommt dann in die Sicherung.
                 var plan = SampPlanen();
+                var sampErsetzen = SampErsetzen && plan.AndereVersion && Manifest.SampClient != null && Manifest.SampVersionen.Count > 0;
+                var andereVersion = plan.Andere;
+                if (sampErsetzen)
+                {
+                    plan.Art = "einrichten";
+                    plan.Version = Manifest.SampVersionen[0].Name;
+                    plan.Grund = "";
+                    SampVersion = plan.Version;
+                }
                 var sampEinrichten = plan.Art == "einrichten";
                 if (SampVersion == "") SampVersion = plan.Version;
 
@@ -85,8 +103,12 @@ namespace SamplifeEssentials
                 if (sampEinrichten)
                 {
                     noetig.Add(Manifest.SampClient);
-                    Schritt("Im GTA-Verzeichnis fehlt SA-MP. Der Launcher richtet " + Manifest.SampClient.Name + " ein; "
-                        + "vorhandene Dateien bleiben, wie sie sind.");
+                    if (sampErsetzen)
+                        Schritt("Im GTA-Verzeichnis liegt SA-MP " + (andereVersion == "" ? "in einer anderen Version" : andereVersion)
+                            + ". Der Launcher sichert es in " + Installation.SicherungsOrdner + " und richtet " + Manifest.SampClient.Name + " ein.");
+                    else
+                        Schritt("Im GTA-Verzeichnis fehlt SA-MP. Der Launcher richtet " + Manifest.SampClient.Name + " ein; "
+                            + "vorhandene Dateien bleiben, wie sie sind.");
                 }
                 // Was Windows fuer die Pakete braucht (DirectX): ohne laedt SA-MP bzw. SampVoice nicht
                 foreach (var voraussetzung in Systemvoraussetzung.Fehlend(Manifest, Gta))
@@ -116,6 +138,7 @@ namespace SamplifeEssentials
                         return Fehlschlag(ergebnis, "Die Server-Liste ist nicht erreichbar, deshalb kann nichts nachgeladen werden. "
                             + noetig[0].Name + " ist nicht vollständig. Versuche es später noch einmal.", 3);
                     var installation = new Installation(Gta, SampVersion, noetig, Testmodus);
+                    installation.SampErsetzen = sampErsetzen;
                     installation.Melden = Melden;
                     installation.Fortschritt = Fortschritt;
                     var installiert = installation.Ausfuehren(abbruch);
@@ -238,9 +261,13 @@ namespace SamplifeEssentials
                 if (plan.Version == "")
                 {
                     var andere = Spielstart.SampDateiVersion(gtaDll);
+                    plan.AndereVersion = true;
+                    plan.Andere = andere;
                     plan.Grund = "Im GTA-Verzeichnis liegt SA-MP " + (andere == "" ? "in einer anderen Version" : andere)
-                        + ". Der Server läuft nur mit SA-MP " + Benoetigt(manifest) + ". Der Launcher ersetzt dein SA-MP nicht; "
-                        + "entferne samp.dll und samp.exe aus dem GTA-Verzeichnis, dann richtet er die passende Version selbst ein.";
+                        + ". Der Server läuft nur mit SA-MP " + Benoetigt(manifest) + ". "
+                        + (manifest.SampClient != null && manifest.SampVersionen.Count > 0
+                            ? "Beim Klick auf „Spielen“ fragt der Launcher, ob er die passende Version einrichten soll; dein bisheriges SA-MP sichert er dabei."
+                            : "Entferne samp.dll und samp.exe aus dem GTA-Verzeichnis und installiere SA-MP " + Benoetigt(manifest) + ".");
                     return plan;
                 }
                 if (File.Exists(Path.Combine(gta, Spielstart.SampExe))) plan.Art = "exe";
@@ -278,8 +305,10 @@ namespace SamplifeEssentials
             return plan.Art == "" ? plan.Grund : "";
         }
 
-        static string Benoetigt(Manifest manifest)
+        public static string Benoetigt(Manifest manifest)
         {
+            // Ohne Liste (Bildschirmfotos) die Version, fuer die der Server gebaut ist
+            if (manifest == null) return "0.3.7-R1";
             var namen = new List<string>();
             foreach (var version in manifest.SampVersionen) namen.Add(version.Name);
             return namen.Count == 0 ? "0.3.7-R1" : string.Join(" oder ", namen.ToArray());

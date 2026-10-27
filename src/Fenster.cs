@@ -194,6 +194,11 @@ namespace SamplifeEssentials
         readonly Button knopfAbsturzSenden, knopfAbsturzNein;
         DateTime absturzZeit;
         bool absturzGeprueft, absturzGesendet;
+        // Andere SA-MP-Version im GTA-Verzeichnis: vor dem Start fragen, ob der Launcher die passende einrichten soll
+        readonly FrameworkElement sampFenster;
+        readonly TextBlock sampText;
+        readonly Button knopfSampEinrichten, knopfSampAbbrechen;
+        bool sampErsetzen;          // nur fuer den naechsten Start nach „Einrichten“, wird nicht gemerkt
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
         readonly ObservableCollection<ProtokollZeile> zeilen = new ObservableCollection<ProtokollZeile>();
         readonly ObservableCollection<Neuigkeit> neuigkeiten = new ObservableCollection<Neuigkeit>();
@@ -296,6 +301,17 @@ namespace SamplifeEssentials
             knopfAbsturzNein = Finde<Button>("KnopfAbsturzNein");
             knopfAbsturzSenden.Click += delegate { if (absturzGesendet) AbsturzSchliessen(); else AbsturzSenden(); };
             knopfAbsturzNein.Click += delegate { AbsturzMerken(); AbsturzSchliessen(); };
+            sampFenster = Finde<FrameworkElement>("SampFenster");
+            sampText = Finde<TextBlock>("SampText");
+            knopfSampEinrichten = Finde<Button>("KnopfSampEinrichten");
+            knopfSampAbbrechen = Finde<Button>("KnopfSampAbbrechen");
+            knopfSampAbbrechen.Click += delegate { sampFenster.Visibility = Visibility.Collapsed; };
+            knopfSampEinrichten.Click += delegate
+            {
+                sampFenster.Visibility = Visibility.Collapsed;
+                sampErsetzen = true;
+                Starten(false);
+            };
             protokollFenster.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
             {
                 // Klick neben das Fenster schliesst es, wie auf der Website
@@ -1068,6 +1084,18 @@ namespace SamplifeEssentials
         {
             if (manifest == null || modus != Modus.Spielen) return;
             if (!nurPruefen && !NamePruefen(true)) { name.Focus(); return; }
+            // Andere SA-MP-Version: erst fragen. „Einrichten“ ruft Starten noch einmal auf, „Abbrechen“ laesst alles, wie es ist.
+            if (!nurPruefen && !sampErsetzen)
+            {
+                var plan = Ablauf.Planen(Gta, manifest);
+                if (plan.AndereVersion && manifest.SampClient != null && manifest.SampVersionen.Count > 0)
+                {
+                    SampFensterZeigen(plan);
+                    return;
+                }
+            }
+            var ersetzen = sampErsetzen && !nurPruefen;
+            sampErsetzen = false;
 
             einstellungen.Gta = Gta;
             einstellungen.Optional = GewaehlteOptionale();
@@ -1101,7 +1129,7 @@ namespace SamplifeEssentials
                 Passwort = serverpasswortHaken.IsChecked == true ? passwort.Password : "",
                 Kontopasswort = kontopasswort.Password,
                 AusSicherung = ausSicherung, Optional = einstellungen.Optional, Gruendlich = nurPruefen, MitStart = !nurPruefen,
-                Testmodus = optionen.Testmodus
+                Testmodus = optionen.Testmodus, SampErsetzen = ersetzen
             };
             // Progress leitet die Meldungen aus dem Hintergrund-Thread in den Thread der Oberflaeche
             var meldungen = new Progress<Meldung>(MeldungZeigen);
@@ -1370,6 +1398,17 @@ namespace SamplifeEssentials
             catch (Exception) { }
         }
 
+        // ---------------------------------------------------------------- Andere SA-MP-Version
+
+        void SampFensterZeigen(SampPlan plan)
+        {
+            sampText.Text = "In deinem GTA-Verzeichnis liegt SA-MP " + (plan.Andere == "" ? "in einer anderen Version" : plan.Andere)
+                + ". German Samplife läuft nur mit SA-MP " + Ablauf.Benoetigt(manifest) + ". Soll der Launcher die passende Version "
+                + "für dich einrichten? Deine bisherigen SA-MP-Dateien verschiebt er dafür in den Ordner " + Installation.SicherungsOrdner
+                + " im GTA-Verzeichnis, gelöscht wird nichts. Deinstallierst du den Launcher, legt er sie zurück.";
+            sampFenster.Visibility = Visibility.Visible;
+        }
+
         // ---------------------------------------------------------------- Absturzbericht
 
         /// <summary>Nach dem Laden der Liste: Gibt es einen neuen Absturz und nimmt der Server Berichte an, fragen.</summary>
@@ -1570,7 +1609,7 @@ namespace SamplifeEssentials
                 return;
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
-                || zustand == "absturz" || zustand == "absturzgesendet")
+                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1585,6 +1624,7 @@ namespace SamplifeEssentials
                     absturzKommentar.Text = "Bin gerade aus dem Autohaus gefahren, dann ist das Spiel eingefroren.";
                     if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
                 }
+                if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
                 return;
             }
 
