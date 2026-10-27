@@ -56,7 +56,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.4.0";
+        public const string Version = "2.5.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";

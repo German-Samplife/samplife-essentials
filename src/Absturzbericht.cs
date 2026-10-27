@@ -10,8 +10,8 @@ namespace SamplifeEssentials
 {
     /// <summary>
     /// Absturzberichte: Stuerzt GTA San Andreas mit SA-MP ab, schreibt SA-MP die Datei crashinfo.txt nach
-    /// „Eigene Dokumente\GTA San Andreas User Files\SAMP“. Der Launcher hat sich dann schon geschlossen; beim naechsten Start
-    /// bietet er an, sie an die Adresse server.absturzbericht aus der Liste zu schicken (Website: /api/launcher/crash).
+    /// „Eigene Dokumente\GTA San Andreas User Files\SAMP“. Ist der Launcher noch offen, fragt er gleich
+    /// nach dem Ende des Spiels (Fenster.SpielBeendet), sonst beim naechsten Start, und bietet an, sie an die Adresse server.absturzbericht aus der Liste zu schicken (Website: /api/launcher/crash).
     /// Mitgeschickt werden nur Name im Spiel, Version des Launchers, Windows-Version, Zeitpunkt, der Inhalt der Datei und
     /// ein freiwilliger Kommentar. Ob ein Absturz schon gemeldet oder abgelehnt ist, merkt sich Einstellungen.AbsturzGemeldet.
     /// </summary>

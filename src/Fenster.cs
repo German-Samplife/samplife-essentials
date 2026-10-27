@@ -148,7 +148,7 @@ namespace SamplifeEssentials
     public class Fenster
     {
         // Was der Hauptknopf gerade tut
-        enum Modus { Spielen, Laeuft, Erneut, Schliessen, Download }
+        enum Modus { Spielen, Laeuft, Erneut, Schliessen, Download, Spiel }
 
         const string DownloadSeite = "https://github.com/German-Samplife/samplife-essentials/releases/latest";
         const string UpdatesSeite = "https://www.german-samplife.de/community/updates";
@@ -199,6 +199,13 @@ namespace SamplifeEssentials
         readonly TextBlock sampText;
         readonly Button knopfSampEinrichten, knopfSampAbbrechen;
         bool sampErsetzen;          // nur fuer den naechsten Start nach „Einrichten“, wird nicht gemerkt
+        // Nach dem Start: Der Launcher bleibt offen und beobachtet gta_sa.exe (SpielBeobachten)
+        DispatcherTimer spielTimer;
+        DateTime spielStartUtc;
+        bool spielGefunden, spielFensterDa;
+        string spielWarnung = "";
+        // So lange wartet der Launcher auf gta_sa.exe, bevor er wieder bereit ist
+        static readonly TimeSpan SpielWartezeit = TimeSpan.FromSeconds(60);
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
         readonly ObservableCollection<ProtokollZeile> zeilen = new ObservableCollection<ProtokollZeile>();
         readonly ObservableCollection<Neuigkeit> neuigkeiten = new ObservableCollection<Neuigkeit>();
@@ -1058,6 +1065,7 @@ namespace SamplifeEssentials
                 case Modus.Download: Oeffnen(DownloadSeite); return;
                 case Modus.Erneut: ZurueckZurListe(); return;
                 case Modus.Laeuft: return;
+                case Modus.Spiel: return;
             }
             if (brauchtAdmin) { AlsAdministratorStarten(); return; }
             Starten(false);
@@ -1151,20 +1159,7 @@ namespace SamplifeEssentials
             if (ergebnis.Erfolg && ergebnis.Gestartet)
             {
                 FortschrittZeigen(1);
-                modus = Modus.Schliessen;
-                knopfSpielen.Content = "Schließen";
-                titel.Text = "Viel Spaß auf German Samplife";
-                if (ergebnis.Warnung != "")
-                {
-                    // Spiel laeuft, aber die Anmeldung fehlt: Fenster offen lassen, damit der Grund lesbar bleibt
-                    untertitel.Text = "SA-MP startet. Die Anmeldung beim Server hat aber nicht geklappt, deshalb lässt dich der Server "
-                        + "vielleicht nicht herein. Der Grund steht unten.";
-                    return;
-                }
-                untertitel.Text = "SA-MP startet und verbindet dich mit " + manifest.ServerAdresse + ". Der Launcher schließt sich gleich.";
-                var zu = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-                zu.Tick += delegate { zu.Stop(); Wurzel.Close(); };
-                zu.Start();
+                SpielGestartet(ergebnis.Warnung != "");
                 return;
             }
             if (ergebnis.Erfolg)
@@ -1190,6 +1185,115 @@ namespace SamplifeEssentials
             }
             titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : ergebnis.Code == 8 ? "Anmeldung nicht möglich" : "Das hat nicht geklappt";
             untertitel.Text = ergebnis.Abgebrochen ? "Bereits geladene Dateien bleiben im GTA-Verzeichnis." : ergebnis.Fehler;
+        }
+
+        // ---------------------------------------------------------------- Spiel laeuft
+
+        /// <summary>
+        /// Nach „Spielen“: Der Launcher bleibt offen, zeigt „Starte Spiel …“ und dann „Spiel läuft“ und beobachtet gta_sa.exe.
+        /// Beendet sich das Spiel, ist er wieder bereit und fragt gleich nach einem neuen Absturz. Schliesst der Spieler den
+        /// Launcher, laeuft das Spiel weiter. warnung: Die Anmeldung beim Server hat nicht geklappt, der Grund steht unten.
+        /// </summary>
+        void SpielGestartet(bool warnung)
+        {
+            modus = Modus.Spiel;
+            spielStartUtc = DateTime.UtcNow;
+            spielGefunden = false;
+            spielFensterDa = false;
+            spielWarnung = warnung
+                ? "Die Anmeldung beim Server hat aber nicht geklappt, deshalb lässt dich der Server vielleicht nicht herein. Der Grund steht unten."
+                : "";
+            knopfSpielen.IsEnabled = false;
+            knopfSpielen.Content = "Starte Spiel …";
+            titel.Text = "Starte Spiel …";
+            untertitel.Text = "GTA San Andreas startet und verbindet dich mit " + manifest.ServerAdresse + "."
+                + (spielWarnung != "" ? " " + spielWarnung : "");
+            if (spielTimer == null)
+            {
+                spielTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                spielTimer.Tick += delegate { SpielBeobachten(); };
+            }
+            spielTimer.Start();
+        }
+
+        void SpielBeobachten()
+        {
+            if (modus != Modus.Spiel) { spielTimer.Stop(); return; }
+            bool fenster;
+            var laeuft = SpielProzessLaeuft(out fenster);
+            if (laeuft)
+            {
+                spielGefunden = true;
+                if (fenster && !spielFensterDa)
+                {
+                    spielFensterDa = true;
+                    knopfSpielen.Content = "Spiel läuft";
+                    titel.Text = "Spiel läuft";
+                    untertitel.Text = spielWarnung != ""
+                        ? "Das Spiel läuft. " + spielWarnung
+                        : "Viel Spaß auf German Samplife. Den Launcher kannst du offen lassen oder schließen, das Spiel läuft weiter.";
+                }
+                return;
+            }
+            if (spielGefunden)
+            {
+                SpielBeendet("Das Spiel ist beendet. Mit „Spielen“ verbindest du dich erneut.");
+                return;
+            }
+            // samp.exe startet gta_sa.exe erst kurz nach sich selbst; so lange warten
+            if (DateTime.UtcNow - spielStartUtc > SpielWartezeit)
+                SpielBeendet("Der Launcher hat GTA San Andreas nicht laufen sehen. Vielleicht hat es sich gleich wieder beendet. "
+                    + "Mit „Spielen“ versuchst du es erneut.");
+        }
+
+        void SpielBeendet(string text)
+        {
+            spielTimer.Stop();
+            ZurueckZurListe();
+            untertitel.Text = text;
+            // Neuer Absturz seit dem Start? Dann gleich fragen, nicht erst beim naechsten Oeffnen
+            if (manifest == null || manifest.Absturzbericht == "" || optionen.Bildschirmfoto != "") return;
+            var zeit = Absturzbericht.Neuer(einstellungen);
+            if (zeit.HasValue && zeit.Value >= spielStartUtc.AddSeconds(-5))
+            {
+                absturzGeprueft = true;
+                AbsturzZeigen(zeit.Value);
+            }
+        }
+
+        /// <summary>
+        /// Laeuft gta_sa.exe aus diesem GTA-Verzeichnis? Beim Start ueber samp.exe beendet sich samp.exe und startet gta_sa.exe,
+        /// beim Start ueber SampStart ist es gleich gta_sa.exe; deshalb nach Namen suchen und den Pfad vergleichen. Laesst sich
+        /// der Pfad nicht lesen (Rechte), zaehlt der Prozess trotzdem. fenster: Das Spiel hat schon ein Hauptfenster.
+        /// </summary>
+        bool SpielProzessLaeuft(out bool fenster)
+        {
+            fenster = false;
+            var gefunden = false;
+            string ziel;
+            Process[] prozesse;
+            try
+            {
+                ziel = Path.GetFullPath(Path.Combine(Gta, GtaVerzeichnis.SpielDatei));
+                prozesse = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(GtaVerzeichnis.SpielDatei));
+            }
+            catch (Exception) { return false; }
+            foreach (var prozess in prozesse)
+            {
+                try
+                {
+                    if (prozess.HasExited) continue;
+                    var passt = true;
+                    try { passt = string.Equals(Path.GetFullPath(prozess.MainModule.FileName), ziel, StringComparison.OrdinalIgnoreCase); }
+                    catch (Exception) { passt = true; }
+                    if (!passt) continue;
+                    gefunden = true;
+                    if (prozess.MainWindowHandle != IntPtr.Zero) fenster = true;
+                }
+                catch (Exception) { }
+                finally { prozess.Dispose(); }
+            }
+            return gefunden;
         }
 
         void ZurueckZurListe()
@@ -1637,7 +1741,7 @@ namespace SamplifeEssentials
             var n = 1;
             MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Prüfe die Dateien im GTA-Verzeichnis", Fertig = true });
             MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Browser-Oberfläche (CEF): neue Fassung", Fertig = true });
-            if (zustand == "fertig")
+            if (zustand == "fertig" || zustand == "spielstart" || zustand == "spiellaeuft")
             {
                 MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Download, Text = "Lade Browser-Oberfläche (CEF) herunter", Url = "https://github.com/German-Samplife/samplife-essentials/releases/download/cef-f14fe4f-sl4/samp-cef-client-cef-f14fe4f-sl4.zip", Erledigt = 152101349, Gesamt = 152101349, Fertig = true });
                 MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Prüfsumme von Browser-Oberfläche (CEF) stimmt (145,1 MB)", Fertig = true });
@@ -1647,10 +1751,14 @@ namespace SamplifeEssentials
                 FortschrittZeigen(1);
                 knopfAbbrechen.Visibility = Visibility.Collapsed;
                 knopfProtokoll.Visibility = Visibility.Visible;
-                knopfSpielen.Content = "Schließen";
-                knopfSpielen.IsEnabled = true;
-                titel.Text = "Viel Spaß auf German Samplife";
-                untertitel.Text = "SA-MP startet und verbindet dich mit german-samplife.de. Der Launcher schließt sich gleich.";
+                // Ab 2.5.0 bleibt der Launcher offen: „fertig“ zeigt wie „spielstart“ das Starten, „spiellaeuft“ das laufende Spiel
+                knopfSpielen.IsEnabled = false;
+                modus = Modus.Spiel;
+                knopfSpielen.Content = zustand == "spiellaeuft" ? "Spiel läuft" : "Starte Spiel …";
+                titel.Text = zustand == "spiellaeuft" ? "Spiel läuft" : "Starte Spiel …";
+                untertitel.Text = zustand == "spiellaeuft"
+                    ? "Viel Spaß auf German Samplife. Den Launcher kannst du offen lassen oder schließen, das Spiel läuft weiter."
+                    : "GTA San Andreas startet und verbindet dich mit german-samplife.de.";
             }
             else
             {
