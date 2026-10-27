@@ -40,6 +40,7 @@ namespace SamplifeEssentials
         public string Fremde = "";      // mit --still: fremde ASI Loader und Konflikte in diese Datei schreiben
         public bool Abschalten;         // mit --fremde: die gefundenen, die sich ausschalten lassen, ausschalten
         public bool Selbsttest;         // Fenster starten, 6 Sekunden laufen lassen, beenden; Rueckgabe 98/99 bei einem Absturz
+        public bool SampErsetzen;       // mit --spielen: eine andere SA-MP-Version sichern und ersetzen (wie „Einrichten“ im Fenster)
 
         public string AlsArgumente()
         {
@@ -55,7 +56,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.3.0";
+        public const string Version = "2.4.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -105,6 +106,7 @@ namespace SamplifeEssentials
                     case "--fremde": optionen.Fremde = naechstes; i++; break;
                     case "--abschalten": optionen.Abschalten = true; break;
                     case "--selbsttest": optionen.Selbsttest = true; break;
+                    case "--samp-ersetzen": optionen.SampErsetzen = true; break;
                     case "--systemordner": systemOrdner = naechstes; i++; break;
                 }
             }
@@ -321,7 +323,8 @@ namespace SamplifeEssentials
                     Passwort = optionen.Passwort,
                     Kontopasswort = optionen.Kontopasswort,
                     Manifest = manifest, ManifestJson = json, AusSicherung = ausSicherung, Optional = optionen.Optional,
-                    Gruendlich = optionen.Gruendlich, MitStart = optionen.Spielen, Testmodus = optionen.Testmodus
+                    Gruendlich = optionen.Gruendlich, MitStart = optionen.Spielen, Testmodus = optionen.Testmodus,
+                    SampErsetzen = optionen.SampErsetzen
                 };
                 var ergebnis = ablauf.Ausfuehren(CancellationToken.None);
                 return ergebnis.Erfolg ? 0 : ergebnis.Code;

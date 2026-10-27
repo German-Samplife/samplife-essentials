@@ -72,6 +72,14 @@ namespace SamplifeEssentials
         // Je installierter Komponente die Pakete und ihre Dateien, fuer die Sicherung des Stands
         public readonly List<KomponenteStand> Staende = new List<KomponenteStand>();
 
+        /// <summary>
+        /// Andere SA-MP-Version im GTA-Verzeichnis, der Spieler hat dem Ersetzen zugestimmt (Ablauf.SampErsetzen): Vor dem
+        /// ersten Paket von samp_client wandern samp.dll und samp.exe in die Sicherung, und samp_client ersetzt seine
+        /// Dateien wie jede andere Komponente (mit Sicherung), statt Vorhandenes liegen zu lassen.
+        /// </summary>
+        public bool SampErsetzen;
+        bool sampGesichert;
+
         public Action<Meldung> Melden = delegate { };
         public Action<double> Fortschritt = delegate { };
 
@@ -128,6 +136,12 @@ namespace SamplifeEssentials
                         Schritt(auftrag.Key.Name + " ist eingerichtet");
                         continue;
                     }
+                    // Erst jetzt, wo das Paket geladen und geprueft ist: das bisherige SA-MP aus dem Weg raeumen
+                    if (auftrag.Key.IstSampClient && SampErsetzen && !sampGesichert)
+                    {
+                        SampAltesSichern();
+                        sampGesichert = true;
+                    }
                     var paketStand = new PaketStand { Url = auftrag.Value.Url, Sha256 = auftrag.Value.Sha256 };
                     if (auftrag.Value.Typ == "zip") Entpacken(auftrag.Key, auftrag.Value, datei, paketStand, abbruch);
                     else DateiAblegen(auftrag.Key, auftrag.Value, datei, paketStand);
@@ -182,6 +196,48 @@ namespace SamplifeEssentials
             }
             ergebnis.Sicherung = sicherung;
             return ergebnis;
+        }
+
+        /// <summary>
+        /// samp.dll und samp.exe der anderen SA-MP-Version in die Sicherung verschieben (nicht kopieren: Liegt im
+        /// GTA-Verzeichnis keine samp.dll mehr, laedt der Launcher die aus samp_client). Klappt eine Datei nicht, kommen die
+        /// schon verschobenen zurueck, und nichts ist veraendert.
+        /// </summary>
+        void SampAltesSichern()
+        {
+            var verschoben = new List<KeyValuePair<string, string>>();
+            try
+            {
+                foreach (var name in new[] { GtaVerzeichnis.SampDatei, Spielstart.SampExe })
+                {
+                    var pfad = Path.Combine(gta, name);
+                    if (!File.Exists(pfad)) continue;
+                    if (sicherung == "")
+                        sicherung = Path.Combine(gta, SicherungsOrdner, DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture));
+                    Directory.CreateDirectory(sicherung);
+                    var kopie = Path.Combine(sicherung, name);
+                    File.Move(pfad, kopie);
+                    verschoben.Add(new KeyValuePair<string, string>(pfad, kopie));
+                }
+            }
+            catch (Exception fehler)
+            {
+                foreach (var paar in verschoben)
+                {
+                    try { File.Move(paar.Value, paar.Key); }
+                    catch (Exception) { }
+                }
+                throw new InstallationsFehler("Dein bisheriges SA-MP ließ sich nicht sichern: " + fehler.Message
+                    + " Schließe GTA San Andreas und SA-MP und versuche es erneut. Es wurde nichts verändert.");
+            }
+            foreach (var paar in verschoben)
+            {
+                var name = paar.Key.Substring(gta.Length + 1);
+                var ablage = paar.Value.Substring(gta.Length + 1);
+                ergebnis.Gesichert++;
+                Datei("Verschiebe " + name + " der bisherigen SA-MP-Version nach " + ablage);
+                verzeichnis.Sichern(name, ablage);
+            }
         }
 
         // ---------------------------------------------------------------- Download
@@ -374,8 +430,9 @@ namespace SamplifeEssentials
             if (!ziel.StartsWith(gta + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new InstallationsFehler("Ein Paket wollte außerhalb des GTA-Verzeichnisses schreiben (" + relativ + "). Die Installation wurde gestoppt.");
             var anzeige = ziel.Substring(gta.Length + 1);
-            // SA-MP legt nur ab, was fehlt: Vorhandenes (auch vom open.mp-Launcher kopiert) bleibt, wie es ist
-            if (sampErlaubt && File.Exists(ziel))
+            // SA-MP legt nur ab, was fehlt: Vorhandenes (auch vom open.mp-Launcher kopiert) bleibt, wie es ist. Ausnahme:
+            // Der Spieler hat dem Ersetzen einer anderen SA-MP-Version zugestimmt, dann wird gesichert und ersetzt.
+            if (sampErlaubt && File.Exists(ziel) && !SampErsetzen)
             {
                 ergebnis.Unveraendert++;
                 Datei(anzeige + " liegt schon da und bleibt, wie es ist");
@@ -407,7 +464,8 @@ namespace SamplifeEssentials
                 File.Copy(ziel, kopie, true);
                 ergebnis.Gesichert++;
                 Datei("Sichere vorhandene " + anzeige + " nach " + kopie.Substring(gta.Length + 1));
-                verzeichnis.Merken(anzeige, Installiert.Gesichert, kopie.Substring(gta.Length + 1));
+                if (sampErlaubt && SampErsetzen) verzeichnis.Sichern(anzeige, kopie.Substring(gta.Length + 1));
+                else verzeichnis.Merken(anzeige, Installiert.Gesichert, kopie.Substring(gta.Length + 1));
             }
             else verzeichnis.Merken(anzeige, Installiert.Neu, "");
             Directory.CreateDirectory(Path.GetDirectoryName(ziel));

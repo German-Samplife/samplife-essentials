@@ -501,6 +501,24 @@ def main():
         open(os.path.join(gta, 'samp.dll'), 'wb').write(b'samp-0.3.7-R3')
         pruefe(spielen(gta, url5, '--appdaten', os.path.join(arbeit, 'appdaten-24')) == 4, 'andere Version: Rueckgabe 4')
         pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R3', 'samp.dll unveraendert')
+
+        print('25b. Andere SA-MP-Version auf Wunsch sichern und ersetzen')
+        open(os.path.join(gta, 'samp.saa'), 'wb').write(b'saa von R3')
+        ad25 = os.path.join(arbeit, 'appdaten-25')
+        pruefe(spielen(gta, url5, '--samp-ersetzen', '--appdaten', ad25) == 0, 'Rueckgabe 0')
+        pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R1' and lesen(gta, 'samp.saa') == b'saa', 'SA-MP 0.3.7-R1 eingerichtet')
+        pruefe(gestartet(gta) is not None, 'samp.exe gestartet')
+        gesichert = {}
+        for wurzel, _, dateien in os.walk(os.path.join(gta, 'samplife-essentials-sicherung')):
+            for d in dateien:
+                gesichert[d] = lesen(wurzel, d)
+        pruefe(gesichert.get('samp.dll') == b'samp-0.3.7-R3' and gesichert.get('samp.saa') == b'saa von R3', 'bisheriges SA-MP gesichert')
+        verz = json.loads(lesen(gta, 'samplife-launcher', 'installiert.json').decode('utf-8'))
+        eintraege = {d['pfad'].lower(): d for d in verz['dateien']}
+        pruefe(eintraege.get('samp.dll', {}).get('vorher') == 'gesichert', 'samp.dll in installiert.json als gesichert')
+        weg = subprocess.run([EXE, '--still', '--test', '--deinstallieren', '--gta', gta, '--appdaten', ad25], timeout=120).returncode
+        pruefe(weg == 0 and lesen(gta, 'samp.dll') == b'samp-0.3.7-R3' and lesen(gta, 'samp.saa') == b'saa von R3',
+               'Deinstallieren holt das bisherige SA-MP zurueck')
         gta = ohne_samp(os.path.join(arbeit, 'ohne-samp2'))
         boese_liste = launcher_manifest('samp-boese.json', [{'id': 'b', 'name': 'Boese', 'pakete': [paket('samp-boese.zip', boeses_samp)]}])
         pruefe(starten(gta, boese_liste) == 1, 'andere Komponente darf samp.dll nicht ablegen: Rueckgabe 1')
