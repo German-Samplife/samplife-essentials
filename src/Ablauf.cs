@@ -307,6 +307,8 @@ namespace SamplifeEssentials
 
         public static string Benoetigt(Manifest manifest)
         {
+            // Ohne Liste (Bildschirmfotos) die Version, fuer die der Server gebaut ist
+            if (manifest == null) return "0.3.7-R1";
             var namen = new List<string>();
             foreach (var version in manifest.SampVersionen) namen.Add(version.Name);
             return namen.Count == 0 ? "0.3.7-R1" : string.Join(" oder ", namen.ToArray());
