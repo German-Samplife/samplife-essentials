@@ -151,7 +151,7 @@ namespace SamplifeEssentials
             anwendung.ShutdownMode = ShutdownMode.OnMainWindowClose;
             anwendung.DispatcherUnhandledException += delegate(object s, DispatcherUnhandledExceptionEventArgs e)
             {
-                if (optionen.Selbsttest) Environment.Exit(98);
+                if (optionen.Selbsttest) { SelbsttestFehler(e.Exception); Environment.Exit(98); }
                 MessageBox.Show("Unerwarteter Fehler: " + e.Exception.Message, "Samplife Launcher", MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
             };
@@ -159,7 +159,7 @@ namespace SamplifeEssentials
             // was passiert ist, statt dass sich der Launcher wortlos schliesst.
             AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
             {
-                if (optionen.Selbsttest) Environment.Exit(99);
+                if (optionen.Selbsttest) { SelbsttestFehler(e.ExceptionObject); Environment.Exit(99); }
                 var fehler = e.ExceptionObject as Exception;
                 MessageBox.Show("Der Launcher muss wegen eines unerwarteten Fehlers beendet werden:\n\n"
                     + (fehler != null ? fehler.GetType().Name + ": " + fehler.Message : "unbekannt")
@@ -187,6 +187,13 @@ namespace SamplifeEssentials
             }
             anwendung.Run(fenster.Wurzel);
             return 0;
+        }
+
+        /// <summary>Fuer Tests: was den Selbsttest beendet hat, nach %TEMP%\samplife-selbsttest-fehler.txt</summary>
+        static void SelbsttestFehler(object fehler)
+        {
+            try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "samplife-selbsttest-fehler.txt"), "" + fehler, new UTF8Encoding(false)); }
+            catch (Exception) { }
         }
 
         /// <summary>Rueckgabe 0: erledigt, 1: hat nicht geklappt, 2: keine Firewall-Schnittstelle oder kein GTA-Verzeichnis.</summary>

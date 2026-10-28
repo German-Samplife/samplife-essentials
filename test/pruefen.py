@@ -40,6 +40,12 @@ def zip_bauen(dateien):
     return puffer.getvalue()
 
 
+def zeige(titel, text):
+    """Mehrzeilige Ausgabe fuer die Fehlersuche, auch mit Zeichen, die die Konsole nicht kennt."""
+    text = text.encode('ascii', 'replace').decode('ascii')
+    print('          ' + titel + ': ' + text.replace('\n', '\n          '))
+
+
 def pruefe(bedingung, text):
     print(('  ok      ' if bedingung else '  FEHLER  ') + text)
     if not bedingung:
@@ -750,9 +756,14 @@ def main():
             if gemerkt:
                 with open(os.path.join(app, 'German Samplife', 'Launcher', 'einstellungen.json'), 'w', encoding='utf-8') as f:
                     json.dump({'gta': gta, 'optional': []}, f)
+            selbsttest_fehler = os.path.join(tempfile.gettempdir(), 'samplife-selbsttest-fehler.txt')
+            if os.path.exists(selbsttest_fehler):
+                os.remove(selbsttest_fehler)
             code = subprocess.run([EXE, '--test', '--selbsttest', '--appdaten', app, '--manifest', url9], timeout=120).returncode
             art = ('mit gemerktem Verzeichnis' if gemerkt else 'ohne gemerktes Verzeichnis') + (' und fremdem Loader' if mit_loader else '')
             pruefe(code == 0, art + ': laeuft und beendet sich sauber (Rueckgabe %d)' % code)
+            if code != 0 and os.path.exists(selbsttest_fehler):
+                zeige('Fehler', open(selbsttest_fehler, encoding='utf-8', errors='replace').read())
 
         print('36. Neues Release auf GitHub, auch ohne Eintrag in der Liste')
         gta = spiel_anlegen(os.path.join(arbeit, 'spiel-release'))
@@ -842,7 +853,7 @@ def main():
 
         code, werte = firewall_stand()
         pruefe(code == 0 and 'geprueft' in werte, 'Pruefen ohne Fehler (Rueckgabe %d, %s)' % (code, werte.get('grund', '')))
-        print('          Regeln gelesen: %s' % werte.get('regeln', '?'))
+        zeige('Regeln gelesen', werte.get('regeln', '?') + ', Pfad ' + programm)
         pruefe(werte.get('erlaubt') == '0' and werte.get('eigene_regel') == '0', 'neues Programm: keine Freigabe, keine eigene Regel')
         try:
             import ctypes
@@ -853,15 +864,16 @@ def main():
             print('          ohne Administratorrechte: Freigeben und Entfernen uebersprungen')
         else:
             sperre = 'Samplife-Test-Sperre'
-            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=' + sperre, 'dir=in', 'action=block',
-                            'program=' + programm, 'enable=yes'], stdout=subprocess.DEVNULL, timeout=60)
+            netsh = subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=' + sperre, 'dir=in', 'action=block',
+                                    'program=' + programm, 'enable=yes'], capture_output=True, timeout=60)
+            zeige('netsh add (Rueckgabe %d)' % netsh.returncode, (netsh.stdout + netsh.stderr).decode('cp850', 'replace'))
             try:
                 code, werte = firewall_stand()
                 aktiv = werte.get('geprueft') == '1'
-                print('          mit Sperre: %s, Regeln %s' % (werte.get('grund', ''), werte.get('regeln', '?')))
+                zeige('mit Sperre', werte.get('grund', '') + ', Regeln ' + werte.get('regeln', '?'))
                 for zeile in open(stand_datei, encoding='utf-8', errors='replace').read().splitlines():
                     if zeile.startswith('regel='):
-                        print('          ' + zeile)
+                        zeige('Regel', zeile[6:])
                 if aktiv:
                     pruefe(werte.get('blockiert') == '1', 'Sperr-Regel fuer gta_sa.exe erkannt')
                 else:
@@ -870,7 +882,7 @@ def main():
                 pruefe(code == 0, 'Freigeben (Rueckgabe %d)' % code)
                 protokoll_datei = os.path.join(gta, 'samplife-essentials-protokoll.txt')
                 if os.path.exists(protokoll_datei):
-                    print('          Protokoll: ' + open(protokoll_datei, encoding='utf-8', errors='replace').read().replace('\n', '\n          '))
+                    zeige('Protokoll', open(protokoll_datei, encoding='utf-8', errors='replace').read())
                 code, werte = firewall_stand()
                 pruefe(werte.get('eigene_regel') == '1', 'eigene Regel angelegt')
                 if aktiv:
