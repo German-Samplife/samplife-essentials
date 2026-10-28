@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 
@@ -158,6 +159,7 @@ namespace SamplifeEssentials
         /// </summary>
         public static int FreigabeSchreiben(string programm, StringBuilder protokoll)
         {
+            programm = Normalisieren(programm);
             var stand = Pruefen(programm);
             foreach (var name in stand.BlockNamen)
                 Netsh("advfirewall firewall set rule name=\"" + name + "\" dir=in program=\"" + programm + "\" new enable=no", protokoll);
@@ -335,14 +337,31 @@ namespace SamplifeEssentials
             return liste;
         }
 
-        /// <summary>Pfad vergleichbar machen: Umgebungsvariablen aufloesen, Anfuehrungszeichen weg, voller Pfad.</summary>
+        /// <summary>
+        /// Pfad vergleichbar machen: Umgebungsvariablen aufloesen, Anfuehrungszeichen weg, voller und langer Pfad (kurze 8.3-Namen
+        /// wie RUNNER~1 kennt netsh nicht, und die Firewall speichert den langen).
+        /// </summary>
         public static string Normalisieren(string pfad)
         {
             if (string.IsNullOrEmpty(pfad)) return "";
             var text = Environment.ExpandEnvironmentVariables(pfad.Trim().Trim('"'));
             try { text = Path.GetFullPath(text); }
             catch (Exception) { }
-            return text.TrimEnd('\\');
+            return LangerPfad(text).TrimEnd('\\');
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern uint GetLongPathName(string kurz, StringBuilder lang, uint groesse);
+
+        static string LangerPfad(string pfad)
+        {
+            try
+            {
+                var lang = new StringBuilder(1024);
+                var laenge = GetLongPathName(pfad, lang, (uint)lang.Capacity);
+                return laenge > 0 && laenge < lang.Capacity ? lang.ToString() : pfad;
+            }
+            catch (Exception) { return pfad; }
         }
 
         static object Holen(object com, string name, params object[] argumente)

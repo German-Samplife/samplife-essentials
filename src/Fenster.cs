@@ -429,7 +429,11 @@ namespace SamplifeEssentials
                 if (!optionen.OhneNetz) ListeLaden();
                 if (!bestaetigt && (optionen.Bildschirmfoto == "" || optionen.Zustand == "ablauf")) VerzeichnisSuchen();
                 // Mit gemerktem Verzeichnis lief die Pruefung im Konstruktor noch nicht (siehe FremdePruefen)
-                else FremdePruefen();
+                else
+                {
+                    FremdePruefen();
+                    FirewallVorpruefen();
+                }
             };
         }
 
@@ -1559,6 +1563,9 @@ namespace SamplifeEssentials
                 knopfFirewall.Visibility = Visibility.Collapsed;
                 return;
             }
+            // Wie FremdePruefen: vor dem Laden des Fensters kaeme das Warten auf einem fremden Thread zurueck. Loaded ruft
+            // die Pruefung danach noch einmal auf.
+            if (!Wurzel.IsLoaded) return;
             var gta = Gta;
             var stand = await Task.Run(() => Firewall.PruefenExtern(gta));
             if (runde != firewallRunde) return;

@@ -839,6 +839,13 @@ def main():
         os.makedirs(gta)
         open(os.path.join(gta, 'gta_sa.exe'), 'wb').write(b'spiel')
         programm = os.path.join(gta, 'gta_sa.exe')
+        try:
+            import ctypes
+            puffer = ctypes.create_unicode_buffer(1024)
+            if ctypes.windll.kernel32.GetLongPathNameW(programm, puffer, 1024):
+                programm = puffer.value
+        except Exception:
+            pass
         stand_datei = os.path.join(arbeit, 'firewall.txt')
 
         def firewall_stand():
