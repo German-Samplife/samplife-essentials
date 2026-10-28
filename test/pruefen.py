@@ -40,6 +40,12 @@ def zip_bauen(dateien):
     return puffer.getvalue()
 
 
+def zeige(titel, text):
+    """Mehrzeilige Ausgabe fuer die Fehlersuche, auch mit Zeichen, die die Konsole nicht kennt."""
+    text = text.encode('ascii', 'replace').decode('ascii')
+    print('          ' + titel + ': ' + text.replace('\n', '\n          '))
+
+
 def pruefe(bedingung, text):
     print(('  ok      ' if bedingung else '  FEHLER  ') + text)
     if not bedingung:
@@ -750,9 +756,14 @@ def main():
             if gemerkt:
                 with open(os.path.join(app, 'German Samplife', 'Launcher', 'einstellungen.json'), 'w', encoding='utf-8') as f:
                     json.dump({'gta': gta, 'optional': []}, f)
+            selbsttest_fehler = os.path.join(tempfile.gettempdir(), 'samplife-selbsttest-fehler.txt')
+            if os.path.exists(selbsttest_fehler):
+                os.remove(selbsttest_fehler)
             code = subprocess.run([EXE, '--test', '--selbsttest', '--appdaten', app, '--manifest', url9], timeout=120).returncode
             art = ('mit gemerktem Verzeichnis' if gemerkt else 'ohne gemerktes Verzeichnis') + (' und fremdem Loader' if mit_loader else '')
             pruefe(code == 0, art + ': laeuft und beendet sich sauber (Rueckgabe %d)' % code)
+            if code != 0 and os.path.exists(selbsttest_fehler):
+                zeige('Fehler', open(selbsttest_fehler, encoding='utf-8', errors='replace').read())
 
         print('36. Neues Release auf GitHub, auch ohne Eintrag in der Liste')
         gta = spiel_anlegen(os.path.join(arbeit, 'spiel-release'))
@@ -822,6 +833,75 @@ def main():
         pruefe(code == 0 and lesen(exe_kopie) == lesen(EXE), 'Fenster: falsche Pruefsumme, laeuft weiter (Rueckgabe %d)' % code)
         pruefe('/launcher-neu.bin' in abrufe, 'Fenster: neue Fassung versucht zu laden')
         pruefe(abrufe.count('/' + url9.rsplit('/', 1)[1]) >= 2, 'Fenster: Liste danach erneut geladen')
+
+        print('37. Sprach-Chat: Windows-Firewall pruefen (ohne Administratorrechte, ohne etwas zu aendern)')
+        gta = os.path.join(arbeit, 'spiel-firewall')
+        os.makedirs(gta)
+        open(os.path.join(gta, 'gta_sa.exe'), 'wb').write(b'spiel')
+        programm = os.path.join(gta, 'gta_sa.exe')
+        try:
+            import ctypes
+            puffer = ctypes.create_unicode_buffer(1024)
+            if ctypes.windll.kernel32.GetLongPathNameW(programm, puffer, 1024):
+                programm = puffer.value
+        except Exception:
+            pass
+        stand_datei = os.path.join(arbeit, 'firewall.txt')
+
+        def firewall_stand():
+            code = subprocess.run([EXE, '--firewall-pruefen', stand_datei, '--gta', gta], timeout=60).returncode
+            werte = {}
+            if code == 0 and os.path.exists(stand_datei):
+                for zeile in open(stand_datei, encoding='utf-8').read().splitlines():
+                    if '=' in zeile:
+                        k, v = zeile.split('=', 1)
+                        werte[k] = v
+            return code, werte
+
+        code, werte = firewall_stand()
+        pruefe(code == 0 and 'geprueft' in werte, 'Pruefen ohne Fehler (Rueckgabe %d, %s)' % (code, werte.get('grund', '')))
+        zeige('Regeln gelesen', werte.get('regeln', '?') + ', Pfad ' + programm)
+        pruefe(werte.get('erlaubt') == '0' and werte.get('blockiert') == '0', 'neues Programm: weder Freigabe noch Sperre')
+        try:
+            import ctypes
+            admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            admin = False
+        if not admin:
+            print('          ohne Administratorrechte: Regeln fuer den Test lassen sich nicht anlegen, uebersprungen')
+        else:
+            # Nur der Test legt Regeln an (als Administrator auf dem Rechner von GitHub); der Launcher aendert nie etwas
+            freigabe, sperre = 'Samplife-Test-Freigabe', 'Samplife-Test-Sperre'
+
+            def netsh(*teile):
+                lauf = subprocess.run(['netsh', 'advfirewall', 'firewall'] + list(teile), capture_output=True, timeout=60)
+                if lauf.returncode != 0:
+                    zeige('netsh (Rueckgabe %d)' % lauf.returncode, (lauf.stdout + lauf.stderr).decode('cp850', 'replace'))
+
+            try:
+                netsh('add', 'rule', 'name=' + freigabe, 'dir=in', 'action=allow', 'program=' + programm, 'enable=yes')
+                code, werte = firewall_stand()
+                aktiv = werte.get('geprueft') == '1'
+                if not aktiv:
+                    print('          Firewall auf dem Rechner aus oder eingehend alles erlaubt (%s): uebersprungen' % werte.get('grund', ''))
+                else:
+                    pruefe(werte.get('erlaubt') == '1' and werte.get('blockiert') == '0', 'Freigabe fuer gta_sa.exe erkannt')
+                    netsh('add', 'rule', 'name=' + sperre, 'dir=in', 'action=block', 'program=' + programm, 'enable=yes')
+                    code, werte = firewall_stand()
+                    pruefe(werte.get('blockiert') == '1', 'Sperre fuer gta_sa.exe erkannt (gewinnt gegen die Freigabe)')
+                    netsh('set', 'rule', 'name=' + sperre, 'new', 'enable=no')
+                    code, werte = firewall_stand()
+                    pruefe(werte.get('blockiert') == '0' and werte.get('erlaubt') == '1', 'abgeschaltete Sperre zaehlt nicht')
+                    andere = os.path.join(arbeit, 'anderes-gta', 'gta_sa.exe')
+                    os.makedirs(os.path.dirname(andere))
+                    open(andere, 'wb').write(b'spiel')
+                    code = subprocess.run([EXE, '--firewall-pruefen', stand_datei, '--gta', os.path.dirname(andere)], timeout=60).returncode
+                    andere_werte = dict(z.split('=', 1) for z in open(stand_datei, encoding='utf-8').read().splitlines() if '=' in z)
+                    pruefe(andere_werte.get('erlaubt') == '0', 'Freigabe gilt nur fuer genau diese gta_sa.exe')
+            finally:
+                for name in (freigabe, sperre):
+                    subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=' + name],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)

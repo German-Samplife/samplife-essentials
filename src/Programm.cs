@@ -41,6 +41,7 @@ namespace SamplifeEssentials
         public bool Abschalten;         // mit --fremde: die gefundenen, die sich ausschalten lassen, ausschalten
         public bool Selbsttest;         // Fenster starten, 6 Sekunden laufen lassen, beenden; Rueckgabe 98/99 bei einem Absturz
         public bool SampErsetzen;       // mit --spielen: eine andere SA-MP-Version sichern und ersetzen (wie „Einrichten“ im Fenster)
+        public string FirewallPruefen = "";  // Stand der Firewall zu gta_sa.exe aus --gta in diese Datei schreiben (Firewall.PruefenExtern)
 
         public string AlsArgumente()
         {
@@ -56,7 +57,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.5.0";
+        public const string Version = "2.6.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -107,6 +108,7 @@ namespace SamplifeEssentials
                     case "--abschalten": optionen.Abschalten = true; break;
                     case "--selbsttest": optionen.Selbsttest = true; break;
                     case "--samp-ersetzen": optionen.SampErsetzen = true; break;
+                    case "--firewall-pruefen": optionen.FirewallPruefen = naechstes; i++; break;
                     case "--systemordner": systemOrdner = naechstes; i++; break;
                 }
             }
@@ -136,13 +138,15 @@ namespace SamplifeEssentials
                 try { Spielstart.AdresseEintragen(optionen.Testmodus); return 0; }
                 catch (Exception) { return 1; }
             }
+            // Firewall (src/Firewall.cs): Die Pruefung laeuft in einem eigenen Aufruf ohne Fenster
+            if (optionen.FirewallPruefen != "") return FirewallAusfuehren(optionen);
             if (optionen.Still) return StillAusfuehren(optionen);
 
             var anwendung = new Application();
             anwendung.ShutdownMode = ShutdownMode.OnMainWindowClose;
             anwendung.DispatcherUnhandledException += delegate(object s, DispatcherUnhandledExceptionEventArgs e)
             {
-                if (optionen.Selbsttest) Environment.Exit(98);
+                if (optionen.Selbsttest) { SelbsttestFehler(e.Exception); Environment.Exit(98); }
                 MessageBox.Show("Unerwarteter Fehler: " + e.Exception.Message, "Samplife Launcher", MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
             };
@@ -150,7 +154,7 @@ namespace SamplifeEssentials
             // was passiert ist, statt dass sich der Launcher wortlos schliesst.
             AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
             {
-                if (optionen.Selbsttest) Environment.Exit(99);
+                if (optionen.Selbsttest) { SelbsttestFehler(e.ExceptionObject); Environment.Exit(99); }
                 var fehler = e.ExceptionObject as Exception;
                 MessageBox.Show("Der Launcher muss wegen eines unerwarteten Fehlers beendet werden:\n\n"
                     + (fehler != null ? fehler.GetType().Name + ": " + fehler.Message : "unbekannt")
@@ -178,6 +182,29 @@ namespace SamplifeEssentials
             }
             anwendung.Run(fenster.Wurzel);
             return 0;
+        }
+
+        /// <summary>Fuer Tests: was den Selbsttest beendet hat, nach %TEMP%\samplife-selbsttest-fehler.txt</summary>
+        static void SelbsttestFehler(object fehler)
+        {
+            try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "samplife-selbsttest-fehler.txt"), "" + fehler, new UTF8Encoding(false)); }
+            catch (Exception) { }
+        }
+
+        /// <summary>--firewall-pruefen: Rueckgabe 0 erledigt, 1 hat nicht geklappt, 2 kein GTA-Verzeichnis.</summary>
+        static int FirewallAusfuehren(Optionen optionen)
+        {
+            if (optionen.Gta == "") return 2;
+            try
+            {
+                var programm = Path.Combine(optionen.Gta.TrimEnd('\\'), GtaVerzeichnis.SpielDatei);
+                File.WriteAllText(optionen.FirewallPruefen, Firewall.AlsText(Firewall.Pruefen(programm)), new UTF8Encoding(false));
+                return 0;
+            }
+            catch (Exception)
+            {
+                return 1;
+            }
         }
 
         /// <summary>

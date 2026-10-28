@@ -199,6 +199,18 @@ namespace SamplifeEssentials
         readonly TextBlock sampText;
         readonly Button knopfSampEinrichten, knopfSampAbbrechen;
         bool sampErsetzen;          // nur fuer den naechsten Start nach „Einrichten“, wird nicht gemerkt
+        // Sprach-Chat: Anleitung, wie der Spieler gta_sa.exe in der Windows-Firewall freigibt (src/Firewall.cs). Geprueft wird im
+        // Hintergrund, sobald das Verzeichnis feststeht; ist die Pruefung beim Start noch nicht fertig, wird nicht gefragt. Der
+        // Launcher aendert selbst nichts an der Firewall und fragt nie nach Administratorrechten.
+        readonly FrameworkElement firewallFenster;
+        readonly TextBlock firewallText, firewallStatus;
+        readonly TextBox firewallPfad;
+        readonly Button knopfFirewall, knopfFirewallOeffnen, knopfFirewallSpaeter, knopfFirewallKopieren;
+        FirewallStand firewallStand;
+        int firewallRunde;
+        bool firewallGefragt;       // in diesem Start schon gefragt: nicht noch einmal vor dem Spielen
+        bool firewallVomStart;      // das Fenster kam beim Klick auf „Spielen“; danach geht es mit dem Start weiter
+        bool firewallGeoeffnet;     // „Firewall öffnen“ geklickt: der Hauptknopf heisst „Fertig“
         // Nach dem Start: Der Launcher bleibt offen und beobachtet gta_sa.exe (SpielBeobachten)
         DispatcherTimer spielTimer;
         DateTime spielStartUtc;
@@ -319,6 +331,18 @@ namespace SamplifeEssentials
                 sampErsetzen = true;
                 Starten(false);
             };
+            firewallFenster = Finde<FrameworkElement>("FirewallFenster");
+            firewallText = Finde<TextBlock>("FirewallText");
+            firewallStatus = Finde<TextBlock>("FirewallStatus");
+            firewallPfad = Finde<TextBox>("FirewallPfad");
+            knopfFirewall = Finde<Button>("KnopfFirewall");
+            knopfFirewallOeffnen = Finde<Button>("KnopfFirewallOeffnen");
+            knopfFirewallSpaeter = Finde<Button>("KnopfFirewallSpaeter");
+            knopfFirewallKopieren = Finde<Button>("KnopfFirewallKopieren");
+            knopfFirewall.Click += delegate { FirewallFensterZeigen(false); };
+            knopfFirewallSpaeter.Click += delegate { FirewallSpaeter(); };
+            knopfFirewallOeffnen.Click += delegate { if (firewallGeoeffnet) FirewallFertig(); else FirewallOeffnen(); };
+            knopfFirewallKopieren.Click += delegate { FirewallPfadKopieren(); };
             protokollFenster.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
             {
                 // Klick neben das Fenster schliesst es, wie auf der Website
@@ -406,7 +430,11 @@ namespace SamplifeEssentials
                 if (!optionen.OhneNetz) ListeLaden();
                 if (!bestaetigt && (optionen.Bildschirmfoto == "" || optionen.Zustand == "ablauf")) VerzeichnisSuchen();
                 // Mit gemerktem Verzeichnis lief die Pruefung im Konstruktor noch nicht (siehe FremdePruefen)
-                else FremdePruefen();
+                else
+                {
+                    FremdePruefen();
+                    FirewallVorpruefen();
+                }
             };
         }
 
@@ -565,6 +593,7 @@ namespace SamplifeEssentials
             KomponentenAbgleichen();
             KnoepfeAktualisieren();
             FremdePruefen();
+            FirewallVorpruefen();
         }
 
         /// <summary>Sucht im Hintergrund nach fremden ASI Loadern und Dateien aus "konflikte" und zeigt sie unter dem Verzeichnis.</summary>
@@ -1102,6 +1131,13 @@ namespace SamplifeEssentials
                     return;
                 }
             }
+            // Sprach-Chat in der Firewall nicht freigegeben: einmal je Start fragen (nicht, solange „Später“ jung ist). Nie den
+            // Start aufhalten: Ist die Pruefung noch nicht fertig, geht es ohne Frage weiter.
+            if (!nurPruefen && !firewallGefragt && firewallStand != null && firewallStand.Noetig && Firewall.FragenErlaubt(einstellungen))
+            {
+                FirewallFensterZeigen(true);
+                return;
+            }
             var ersetzen = sampErsetzen && !nurPruefen;
             sampErsetzen = false;
 
@@ -1308,6 +1344,7 @@ namespace SamplifeEssentials
             KomponentenAbgleichen();
             KnoepfeAktualisieren();
             FremdePruefen();
+            FirewallVorpruefen();
         }
 
         // ---------------------------------------------------------------- Deinstallieren
@@ -1393,6 +1430,7 @@ namespace SamplifeEssentials
             knopfSuchen.IsEnabled = !gesperrt;
             knopfGruendlich.IsEnabled = !gesperrt;
             knopfDeinstallieren.IsEnabled = !gesperrt;
+            knopfFirewall.IsEnabled = !gesperrt;
             knopfAbschalten.IsEnabled = !gesperrt;
             bereichVersion.IsEnabled = !gesperrt;
             foreach (var zeile in komponenten) zeile.Gesperrt = gesperrt;
@@ -1511,6 +1549,107 @@ namespace SamplifeEssentials
                 + "für dich einrichten? Deine bisherigen SA-MP-Dateien verschiebt er dafür in den Ordner " + Installation.SicherungsOrdner
                 + " im GTA-Verzeichnis, gelöscht wird nichts. Deinstallierst du den Launcher, legt er sie zurück.";
             sampFenster.Visibility = Visibility.Visible;
+        }
+
+        // ---------------------------------------------------------------- Firewall (Sprach-Chat)
+
+        /// <summary>Im Hintergrund nachsehen, ob die Firewall gta_sa.exe durchlaesst; zeigt bei Bedarf „Sprach-Chat freigeben“ im Fuss.</summary>
+        async void FirewallVorpruefen()
+        {
+            var runde = ++firewallRunde;
+            firewallStand = null;
+            if (optionen.Bildschirmfoto != "" || !bestaetigt || !verzeichnisGueltig)
+            {
+                knopfFirewall.Visibility = Visibility.Collapsed;
+                return;
+            }
+            // Wie FremdePruefen: vor dem Laden des Fensters kaeme das Warten auf einem fremden Thread zurueck. Loaded ruft
+            // die Pruefung danach noch einmal auf.
+            if (!Wurzel.IsLoaded) return;
+            var gta = Gta;
+            var stand = await Task.Run(() => Firewall.PruefenExtern(gta));
+            if (runde != firewallRunde) return;
+            firewallStand = stand;
+            knopfFirewall.Visibility = stand.Noetig ? Visibility.Visible : Visibility.Collapsed;
+            if (stand.Noetig) Firewall.Notieren(gta, "gta_sa.exe ist nicht freigegeben (" + stand.Grund + ").");
+        }
+
+        /// <summary>vomStart: kam beim Klick auf „Spielen“; „Später“ und „Fertig“ starten danach das Spiel.</summary>
+        void FirewallFensterZeigen(bool vomStart)
+        {
+            firewallVomStart = vomStart;
+            firewallGeoeffnet = false;
+            var blockiert = firewallStand != null && firewallStand.Blockiert;
+            firewallText.Text = "Damit der Sprach-Chat funktioniert, muss GTA San Andreas durch die Windows-Firewall. Klick auf „Firewall öffnen“, "
+                + "dann auf „Einstellungen ändern“ und setz bei gta_sa bzw. GTA San Andreas die Haken bei Privat und Öffentlich. "
+                + "Steht es nicht in der Liste: „Andere App zulassen …“ → „Durchsuchen“ und den Pfad unten wählen."
+                + (blockiert
+                    ? "\n\nWindows blockiert GTA bisher. Entferne deshalb die Einträge mit rotem Symbol: in der Windows-Firewall unter "
+                        + "„Erweiterte Einstellungen“ → „Eingehende Regeln“ bei gta_sa bzw. GTA San Andreas."
+                    : "");
+            firewallPfad.Text = optionen.Bildschirmfoto != "" ? @"D:\Spiele\GTA San Andreas\gta_sa.exe" : Path.Combine(Gta, GtaVerzeichnis.SpielDatei);
+            firewallStatus.Visibility = Visibility.Collapsed;
+            knopfFirewallSpaeter.Visibility = Visibility.Visible;
+            knopfFirewallOeffnen.Content = "Firewall öffnen";
+            firewallFenster.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>„Später“: beim Spielen 7 Tage nicht mehr fragen und das Spiel trotzdem starten; vom Fussknopf nur schliessen.</summary>
+        void FirewallSpaeter()
+        {
+            firewallFenster.Visibility = Visibility.Collapsed;
+            if (optionen.Bildschirmfoto != "" || !firewallVomStart) return;
+            Firewall.SpaeterMerken(einstellungen);
+            Firewall.Notieren(Gta, "Anleitung auf später verschoben (erst in " + Firewall.SpaeterTage + " Tagen wieder fragen).");
+            firewallGefragt = true;
+            Starten(false);
+        }
+
+        /// <summary>Oeffnet „Apps durch die Firewall zulassen“ von Windows, ohne Administratorrechte; die Anleitung bleibt sichtbar.</summary>
+        void FirewallOeffnen()
+        {
+            if (Firewall.Oeffnen())
+            {
+                Firewall.Notieren(Gta, "Fenster der Windows-Firewall geöffnet (" + (firewallStand != null ? firewallStand.Grund : "") + ").");
+                firewallGeoeffnet = true;
+                knopfFirewallOeffnen.Content = "Fertig";
+                FirewallStatusZeigen(Farben.Gedaempft, "Die Windows-Firewall ist offen. Hast du die Haken gesetzt, klick auf „Fertig“.");
+                return;
+            }
+            FirewallStatusZeigen(Farben.Fehler, "Die Windows-Firewall ließ sich nicht öffnen. Such im Startmenü nach „Firewall“ und öffne "
+                + "„App durch die Windows-Firewall zulassen“.");
+        }
+
+        /// <summary>„Fertig“: schliessen, neu pruefen und, wenn das Fenster beim Spielen kam, starten. Nichts wird aufgehalten.</summary>
+        void FirewallFertig()
+        {
+            firewallFenster.Visibility = Visibility.Collapsed;
+            firewallGefragt = true;
+            if (optionen.Bildschirmfoto != "") return;
+            FirewallVorpruefen();
+            if (firewallVomStart) Starten(false);
+        }
+
+        void FirewallPfadKopieren()
+        {
+            try
+            {
+                Clipboard.SetText(firewallPfad.Text);
+                FirewallStatusZeigen(Farben.Erfolg, "Pfad kopiert. Im Fenster „Durchsuchen“ fügst du ihn oben bei „Dateiname“ ein.");
+            }
+            catch (Exception)
+            {
+                firewallPfad.Focus();
+                firewallPfad.SelectAll();
+                FirewallStatusZeigen(Farben.Gedaempft, "Der Pfad ist markiert, kopier ihn mit Strg+C.");
+            }
+        }
+
+        void FirewallStatusZeigen(Brush farbe, string text)
+        {
+            firewallStatus.Foreground = farbe;
+            firewallStatus.Text = text;
+            firewallStatus.Visibility = Visibility.Visible;
         }
 
         // ---------------------------------------------------------------- Absturzbericht
@@ -1713,7 +1852,7 @@ namespace SamplifeEssentials
                 return;
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
-                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere")
+                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "firewall" || zustand == "firewallgesperrt")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1729,6 +1868,12 @@ namespace SamplifeEssentials
                     if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
                 }
                 if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
+                if (zustand == "firewall" || zustand == "firewallgesperrt")
+                {
+                    firewallStand = new FirewallStand { Geprueft = true, Blockiert = zustand == "firewallgesperrt" };
+                    knopfFirewall.Visibility = Visibility.Visible;
+                    FirewallFensterZeigen(true);
+                }
                 return;
             }
 
