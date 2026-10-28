@@ -19,6 +19,9 @@ namespace SamplifeEssentials
         public bool Blockiert;      // aktive Regel, die gta_sa.exe eingehend sperrt (gewinnt gegen jede Freigabe)
         public bool EigeneRegel;    // die Regel des Launchers (Firewall.RegelName) gibt es
         public string Grund = "";   // fuer das Protokoll
+        public int Regeln;          // so viele Regeln hat die Firewall gelesen (Diagnose)
+        public List<string> BlockNamen = new List<string>();     // Namen der Sperr-Regeln fuer gta_sa.exe
+        public List<string> Diagnose = new List<string>();       // Regeln, deren Programm gta_sa.exe heisst (fuer --firewall-pruefen)
 
         /// <summary>Der Sprach-Chat kommt vermutlich nicht durch: fehlende Freigabe oder eine Sperre.</summary>
         public bool Noetig
@@ -34,9 +37,10 @@ namespace SamplifeEssentials
     /// zum Sprechen tut nichts.
     ///
     /// Gelesen wird ohne Administratorrechte ueber die COM-Schnittstelle der Firewall (HNetCfg.FwPolicy2), unabhaengig von
-    /// der Sprache von Windows. Geschrieben wird nur in einem eigenen, erhoehten Aufruf des Launchers
-    /// (--firewall-freigeben bzw. --firewall-entfernen): Er schaltet die Sperr-Regeln fuer genau diese gta_sa.exe ab und legt
-    /// eine eigene Freigabe an (RegelName). Andere Regeln fasst er nicht an.
+    /// der Sprache von Windows, und zwar in einem eigenen Aufruf des Launchers (--firewall-pruefen, PruefenExtern), nicht im
+    /// Fenster. Geschrieben wird nur in einem eigenen, erhoehten Aufruf (--firewall-freigeben bzw. --firewall-entfernen) mit
+    /// netsh: Er schaltet die Sperr-Regeln fuer genau diese gta_sa.exe ab und legt eine eigene Freigabe an (RegelName).
+    /// Andere Regeln fasst er nicht an.
     /// </summary>
     public static class Firewall
     {
@@ -97,13 +101,25 @@ namespace SamplifeEssentials
                 if (!gesperrt) { stand.Grund = "eingehende Verbindungen sind ohnehin erlaubt"; return stand; }
 
                 var ziel = Normalisieren(programm);
-                foreach (var regel in Regeln(politik))
+                var alle = Regeln(politik);
+                stand.Regeln = alle.Count;
+                foreach (var regel in alle)
                 {
+                    var app = Text(Holen(regel, "ApplicationName"));
+                    if (app.EndsWith(GtaVerzeichnis.SpielDatei, StringComparison.OrdinalIgnoreCase))
+                        stand.Diagnose.Add(Text(Holen(regel, "Name")) + " | " + app + " | dir " + Zahl(Holen(regel, "Direction"))
+                            + " | action " + Zahl(Holen(regel, "Action")) + " | enabled " + Wahr(Holen(regel, "Enabled"))
+                            + " | profiles " + Zahl(Holen(regel, "Profiles")) + " | proto " + Zahl(Holen(regel, "Protocol")));
                     if (!Passt(regel, ziel)) continue;
                     if ((Zahl(Holen(regel, "Profiles")) & profile) == 0) continue;
                     var aktion = Zahl(Holen(regel, "Action"));
                     var protokoll = Zahl(Holen(regel, "Protocol"));
-                    if (aktion == AktionSperren) stand.Blockiert = true;
+                    if (aktion == AktionSperren)
+                    {
+                        stand.Blockiert = true;
+                        var name = Text(Holen(regel, "Name"));
+                        if (name != "" && !stand.BlockNamen.Contains(name)) stand.BlockNamen.Add(name);
+                    }
                     else if (aktion == AktionErlauben && (protokoll == ProtokollAlle || protokoll == ProtokollUdp)) stand.Erlaubt = true;
                 }
                 stand.Geprueft = true;
@@ -137,57 +153,105 @@ namespace SamplifeEssentials
 
         /// <summary>
         /// Laeuft im erhoehten Launcher (--firewall-freigeben): Sperr-Regeln fuer genau diese gta_sa.exe abschalten und die
-        /// eigene Freigabe anlegen bzw. wieder einschalten. Rueckgabe 0 bei Erfolg.
+        /// eigene Freigabe anlegen bzw. wieder einschalten. Geschrieben wird mit netsh: Es filtert beim Abschalten nach Name und
+        /// Programm, Regeln anderer Programme mit demselben Namen bleiben also. Rueckgabe 0 bei Erfolg.
         /// </summary>
-        public static int FreigabeSchreiben(string programm)
+        public static int FreigabeSchreiben(string programm, StringBuilder protokoll)
         {
-            var politik = Politik();
-            if (politik == null) return 2;
-            var ziel = Normalisieren(programm);
-            var regeln = Holen(politik, "Rules");
-            object eigene = null;
-            foreach (var regel in Regeln(politik))
-            {
-                if (Text(Holen(regel, "Name")) == RegelName) { eigene = regel; continue; }
-                if (Passt(regel, ziel) && Zahl(Holen(regel, "Action")) == AktionSperren) Setzen(regel, "Enabled", false);
-            }
-            if (eigene == null)
-            {
-                var typ = Type.GetTypeFromProgID("HNetCfg.FWRule");
-                if (typ == null) return 2;
-                eigene = Activator.CreateInstance(typ);
-                RegelFuellen(eigene, programm);
-                regeln.GetType().InvokeMember("Add", BindingFlags.InvokeMethod, null, regeln, new[] { eigene });
-            }
+            var stand = Pruefen(programm);
+            foreach (var name in stand.BlockNamen)
+                Netsh("advfirewall firewall set rule name=\"" + name + "\" dir=in program=\"" + programm + "\" new enable=no", protokoll);
+            if (stand.EigeneRegel)
+                Netsh("advfirewall firewall set rule name=\"" + RegelName + "\" new enable=yes action=allow program=\"" + programm
+                    + "\" profile=private,public", protokoll);
             else
-            {
-                RegelFuellen(eigene, programm);
-            }
-            return 0;
+                Netsh("advfirewall firewall add rule name=\"" + RegelName + "\" dir=in action=allow program=\"" + programm
+                    + "\" profile=private,public enable=yes description=\"" + RegelBeschreibung + "\"", protokoll);
+            var danach = Pruefen(programm);
+            protokoll.AppendLine("danach: " + danach.Grund + ", eigene Regel " + (danach.EigeneRegel ? "ja" : "nein"));
+            if (!danach.EigeneRegel) return 1;
+            return danach.Noetig ? 1 : 0;
         }
 
         /// <summary>Laeuft im erhoehten Launcher (--firewall-entfernen): die eigene Freigabe loeschen. Rueckgabe 0 bei Erfolg.</summary>
-        public static int FreigabeLoeschen()
+        public static int FreigabeLoeschen(StringBuilder protokoll)
         {
-            var politik = Politik();
-            if (politik == null) return 2;
-            var regeln = Holen(politik, "Rules");
-            // Remove loescht je Aufruf eine Regel dieses Namens; mehr als eine sollte es nie geben
-            for (var i = 0; i < 10 && RegelVorhanden(); i++)
-                regeln.GetType().InvokeMember("Remove", BindingFlags.InvokeMethod, null, regeln, new object[] { RegelName });
+            if (!RegelVorhanden()) return 0;
+            Netsh("advfirewall firewall delete rule name=\"" + RegelName + "\"", protokoll);
             return RegelVorhanden() ? 1 : 0;
         }
 
-        static void RegelFuellen(object regel, string programm)
+        static int Netsh(string argumente, StringBuilder protokoll)
         {
-            Setzen(regel, "Name", RegelName);
-            Setzen(regel, "Description", RegelBeschreibung);
-            Setzen(regel, "ApplicationName", programm);
-            Setzen(regel, "Protocol", ProtokollAlle);
-            Setzen(regel, "Direction", RichtungEin);
-            Setzen(regel, "Action", AktionErlauben);
-            Setzen(regel, "Profiles", ProfilPrivat | ProfilOeffentlich);
-            Setzen(regel, "Enabled", true);
+            var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "netsh.exe"), argumente);
+            start.UseShellExecute = false;
+            start.CreateNoWindow = true;
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+            using (var prozess = Process.Start(start))
+            {
+                var ausgabe = prozess.StandardOutput.ReadToEnd() + prozess.StandardError.ReadToEnd();
+                prozess.WaitForExit(30000);
+                protokoll.AppendLine("netsh " + argumente + " -> " + prozess.ExitCode + " " + ausgabe.Trim());
+                return prozess.ExitCode;
+            }
+        }
+
+        /// <summary>
+        /// Prueft in einem eigenen Aufruf des Launchers (--firewall-pruefen): Die COM-Schnittstelle der Firewall laeuft so im
+        /// Hauptthread eines eigenen Prozesses und nicht im Fenster. Faellt der Aufruf aus, gilt: nicht geprueft.
+        /// </summary>
+        public static FirewallStand PruefenExtern(string gta)
+        {
+            var stand = new FirewallStand();
+            var datei = Path.Combine(Path.GetTempPath(), "samplife-firewall-" + Guid.NewGuid().ToString("N") + ".txt");
+            try
+            {
+                var start = new ProcessStartInfo(Aktualisierung.EigeneDatei, "--firewall-pruefen \"" + datei + "\" --gta \"" + gta.TrimEnd('\\') + "\"");
+                start.UseShellExecute = false;
+                start.CreateNoWindow = true;
+                using (var prozess = Process.Start(start))
+                {
+                    if (!prozess.WaitForExit(20000)) { try { prozess.Kill(); } catch (Exception) { } stand.Grund = "Prüfung dauert zu lange"; return stand; }
+                    if (prozess.ExitCode != 0 || !File.Exists(datei)) { stand.Grund = "Prüfung nicht möglich (" + prozess.ExitCode + ")"; return stand; }
+                }
+                foreach (var zeile in File.ReadAllLines(datei, Encoding.UTF8))
+                {
+                    var teile = zeile.Split(new[] { '=' }, 2);
+                    if (teile.Length != 2) continue;
+                    switch (teile[0])
+                    {
+                        case "geprueft": stand.Geprueft = teile[1] == "1"; break;
+                        case "erlaubt": stand.Erlaubt = teile[1] == "1"; break;
+                        case "blockiert": stand.Blockiert = teile[1] == "1"; break;
+                        case "eigene_regel": stand.EigeneRegel = teile[1] == "1"; break;
+                        case "grund": stand.Grund = teile[1]; break;
+                    }
+                }
+            }
+            catch (Exception fehler)
+            {
+                stand = new FirewallStand { Grund = "Prüfung nicht möglich: " + fehler.Message };
+            }
+            finally
+            {
+                try { File.Delete(datei); } catch (Exception) { }
+            }
+            return stand;
+        }
+
+        /// <summary>Stand als Text fuer --firewall-pruefen (eine Angabe je Zeile, dazu Diagnose).</summary>
+        public static string AlsText(FirewallStand stand)
+        {
+            var text = new StringBuilder();
+            text.Append("geprueft=").Append(stand.Geprueft ? 1 : 0).Append('\n');
+            text.Append("erlaubt=").Append(stand.Erlaubt ? 1 : 0).Append('\n');
+            text.Append("blockiert=").Append(stand.Blockiert ? 1 : 0).Append('\n');
+            text.Append("eigene_regel=").Append(stand.EigeneRegel ? 1 : 0).Append('\n');
+            text.Append("grund=").Append(stand.Grund).Append('\n');
+            text.Append("regeln=").Append(stand.Regeln).Append('\n');
+            foreach (var zeile in stand.Diagnose) text.Append("regel=").Append(zeile).Append('\n');
+            return text.ToString();
         }
 
         // ---------------------------------------------------------------- Erhoehter Aufruf aus dem Fenster
@@ -284,11 +348,6 @@ namespace SamplifeEssentials
         static object Holen(object com, string name, params object[] argumente)
         {
             return com.GetType().InvokeMember(name, BindingFlags.GetProperty, null, com, argumente.Length == 0 ? null : argumente);
-        }
-
-        static void Setzen(object com, string name, object wert)
-        {
-            com.GetType().InvokeMember(name, BindingFlags.SetProperty, null, com, new[] { wert });
         }
 
         static int Zahl(object wert)

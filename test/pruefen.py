@@ -842,6 +842,7 @@ def main():
 
         code, werte = firewall_stand()
         pruefe(code == 0 and 'geprueft' in werte, 'Pruefen ohne Fehler (Rueckgabe %d, %s)' % (code, werte.get('grund', '')))
+        print('          Regeln gelesen: %s' % werte.get('regeln', '?'))
         pruefe(werte.get('erlaubt') == '0' and werte.get('eigene_regel') == '0', 'neues Programm: keine Freigabe, keine eigene Regel')
         try:
             import ctypes
@@ -857,12 +858,19 @@ def main():
             try:
                 code, werte = firewall_stand()
                 aktiv = werte.get('geprueft') == '1'
+                print('          mit Sperre: %s, Regeln %s' % (werte.get('grund', ''), werte.get('regeln', '?')))
+                for zeile in open(stand_datei, encoding='utf-8', errors='replace').read().splitlines():
+                    if zeile.startswith('regel='):
+                        print('          ' + zeile)
                 if aktiv:
                     pruefe(werte.get('blockiert') == '1', 'Sperr-Regel fuer gta_sa.exe erkannt')
                 else:
                     print('          Firewall auf dem Rechner aus oder eingehend alles erlaubt (%s): nur Anlegen und Entfernen' % werte.get('grund', ''))
                 code = subprocess.run([EXE, '--firewall-freigeben', '--gta', gta], timeout=60).returncode
                 pruefe(code == 0, 'Freigeben (Rueckgabe %d)' % code)
+                protokoll_datei = os.path.join(gta, 'samplife-essentials-protokoll.txt')
+                if os.path.exists(protokoll_datei):
+                    print('          Protokoll: ' + open(protokoll_datei, encoding='utf-8', errors='replace').read().replace('\n', '\n          '))
                 code, werte = firewall_stand()
                 pruefe(werte.get('eigene_regel') == '1', 'eigene Regel angelegt')
                 if aktiv:

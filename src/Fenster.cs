@@ -1560,8 +1560,7 @@ namespace SamplifeEssentials
                 return;
             }
             var gta = Gta;
-            var programm = Path.Combine(gta, GtaVerzeichnis.SpielDatei);
-            var stand = await Task.Run(() => Firewall.Pruefen(programm));
+            var stand = await Task.Run(() => Firewall.PruefenExtern(gta));
             if (runde != firewallRunde) return;
             firewallStand = stand;
             knopfFirewall.Visibility = stand.Noetig ? Visibility.Visible : Visibility.Collapsed;
@@ -1623,8 +1622,7 @@ namespace SamplifeEssentials
                 knopfFirewallSpaeter.IsEnabled = true;
                 return;
             }
-            var programm = Path.Combine(gta, GtaVerzeichnis.SpielDatei);
-            var stand = await Task.Run(() => Firewall.Pruefen(programm));
+            var stand = await Task.Run(() => Firewall.PruefenExtern(gta));
             firewallStand = stand;
             if (code != 0 || stand.Noetig)
             {
@@ -1671,7 +1669,8 @@ namespace SamplifeEssentials
         /// <summary>Beim Deinstallieren: die eigene Freigabe wieder entfernen (Windows fragt nach Administratorrechten).</summary>
         async Task FirewallRegelEntfernen()
         {
-            if (!await Task.Run(() => Firewall.RegelVorhanden())) return;
+            var gta = Gta;
+            if (!(await Task.Run(() => Firewall.PruefenExtern(gta))).EigeneRegel) return;
             const int nummer = 900000;
             MeldungZeigen(new Meldung { Nummer = nummer, Art = MeldungArt.Schritt, Text = "Entferne die Freigabe „" + Firewall.RegelName + "“ aus der Windows-Firewall" });
             try

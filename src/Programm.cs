@@ -192,25 +192,31 @@ namespace SamplifeEssentials
         /// <summary>Rueckgabe 0: erledigt, 1: hat nicht geklappt, 2: keine Firewall-Schnittstelle oder kein GTA-Verzeichnis.</summary>
         static int FirewallAusfuehren(Optionen optionen)
         {
-            var programm = optionen.Gta == "" ? "" : Path.Combine(optionen.Gta, GtaVerzeichnis.SpielDatei);
+            var programm = optionen.Gta == "" ? "" : Path.Combine(optionen.Gta.TrimEnd('\\'), GtaVerzeichnis.SpielDatei);
+            var protokoll = new StringBuilder();
             try
             {
                 if (optionen.FirewallPruefen != "")
                 {
                     if (programm == "") return 2;
-                    var stand = Firewall.Pruefen(programm);
-                    File.WriteAllText(optionen.FirewallPruefen, "geprueft=" + (stand.Geprueft ? 1 : 0) + "\nerlaubt=" + (stand.Erlaubt ? 1 : 0)
-                        + "\nblockiert=" + (stand.Blockiert ? 1 : 0) + "\neigene_regel=" + (stand.EigeneRegel ? 1 : 0) + "\ngrund=" + stand.Grund + "\n",
-                        new UTF8Encoding(false));
+                    File.WriteAllText(optionen.FirewallPruefen, Firewall.AlsText(Firewall.Pruefen(programm)), new UTF8Encoding(false));
                     return 0;
                 }
-                if (optionen.FirewallEntfernen) return Firewall.FreigabeLoeschen();
+                if (optionen.FirewallEntfernen) return Firewall.FreigabeLoeschen(protokoll);
                 if (programm == "" || !File.Exists(programm)) return 2;
-                return Firewall.FreigabeSchreiben(programm);
+                return Firewall.FreigabeSchreiben(programm, protokoll);
             }
-            catch (Exception)
+            catch (Exception fehler)
             {
+                protokoll.AppendLine("Fehler: " + fehler.GetType().Name + ": " + fehler.Message);
                 return 1;
+            }
+            finally
+            {
+                // Was netsh gesagt hat, steht im Protokoll im GTA-Verzeichnis
+                if (optionen.Gta != "")
+                    foreach (var zeile in protokoll.ToString().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                        Firewall.Notieren(optionen.Gta, zeile);
             }
         }
 
