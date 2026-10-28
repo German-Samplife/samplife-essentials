@@ -41,6 +41,9 @@ namespace SamplifeEssentials
         public bool Abschalten;         // mit --fremde: die gefundenen, die sich ausschalten lassen, ausschalten
         public bool Selbsttest;         // Fenster starten, 6 Sekunden laufen lassen, beenden; Rueckgabe 98/99 bei einem Absturz
         public bool SampErsetzen;       // mit --spielen: eine andere SA-MP-Version sichern und ersetzen (wie „Einrichten“ im Fenster)
+        public bool FirewallFreigeben;  // erhoeht: gta_sa.exe aus --gta in der Windows-Firewall freigeben (Firewall.FreigabeSchreiben)
+        public bool FirewallEntfernen;  // erhoeht: die eigene Freigabe wieder entfernen (Deinstallieren)
+        public string FirewallPruefen = "";  // Stand der Firewall zu gta_sa.exe aus --gta in diese Datei schreiben (fuer Tests)
 
         public string AlsArgumente()
         {
@@ -56,7 +59,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.5.0";
+        public const string Version = "2.6.0";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -107,6 +110,9 @@ namespace SamplifeEssentials
                     case "--abschalten": optionen.Abschalten = true; break;
                     case "--selbsttest": optionen.Selbsttest = true; break;
                     case "--samp-ersetzen": optionen.SampErsetzen = true; break;
+                    case "--firewall-freigeben": optionen.FirewallFreigeben = true; break;
+                    case "--firewall-entfernen": optionen.FirewallEntfernen = true; break;
+                    case "--firewall-pruefen": optionen.FirewallPruefen = naechstes; i++; break;
                     case "--systemordner": systemOrdner = naechstes; i++; break;
                 }
             }
@@ -136,6 +142,9 @@ namespace SamplifeEssentials
                 try { Spielstart.AdresseEintragen(optionen.Testmodus); return 0; }
                 catch (Exception) { return 1; }
             }
+            // Firewall (src/Firewall.cs): Freigeben und Entfernen laufen in einem erhoehten Aufruf ohne Fenster
+            if (optionen.FirewallFreigeben || optionen.FirewallEntfernen || optionen.FirewallPruefen != "")
+                return FirewallAusfuehren(optionen);
             if (optionen.Still) return StillAusfuehren(optionen);
 
             var anwendung = new Application();
@@ -178,6 +187,31 @@ namespace SamplifeEssentials
             }
             anwendung.Run(fenster.Wurzel);
             return 0;
+        }
+
+        /// <summary>Rueckgabe 0: erledigt, 1: hat nicht geklappt, 2: keine Firewall-Schnittstelle oder kein GTA-Verzeichnis.</summary>
+        static int FirewallAusfuehren(Optionen optionen)
+        {
+            var programm = optionen.Gta == "" ? "" : Path.Combine(optionen.Gta, GtaVerzeichnis.SpielDatei);
+            try
+            {
+                if (optionen.FirewallPruefen != "")
+                {
+                    if (programm == "") return 2;
+                    var stand = Firewall.Pruefen(programm);
+                    File.WriteAllText(optionen.FirewallPruefen, "geprueft=" + (stand.Geprueft ? 1 : 0) + "\nerlaubt=" + (stand.Erlaubt ? 1 : 0)
+                        + "\nblockiert=" + (stand.Blockiert ? 1 : 0) + "\neigene_regel=" + (stand.EigeneRegel ? 1 : 0) + "\ngrund=" + stand.Grund + "\n",
+                        new UTF8Encoding(false));
+                    return 0;
+                }
+                if (optionen.FirewallEntfernen) return Firewall.FreigabeLoeschen();
+                if (programm == "" || !File.Exists(programm)) return 2;
+                return Firewall.FreigabeSchreiben(programm);
+            }
+            catch (Exception)
+            {
+                return 1;
+            }
         }
 
         /// <summary>

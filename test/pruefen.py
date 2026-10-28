@@ -822,6 +822,61 @@ def main():
         pruefe(code == 0 and lesen(exe_kopie) == lesen(EXE), 'Fenster: falsche Pruefsumme, laeuft weiter (Rueckgabe %d)' % code)
         pruefe('/launcher-neu.bin' in abrufe, 'Fenster: neue Fassung versucht zu laden')
         pruefe(abrufe.count('/' + url9.rsplit('/', 1)[1]) >= 2, 'Fenster: Liste danach erneut geladen')
+
+        print('37. Sprach-Chat: Freigabe in der Windows-Firewall')
+        gta = os.path.join(arbeit, 'spiel-firewall')
+        os.makedirs(gta)
+        open(os.path.join(gta, 'gta_sa.exe'), 'wb').write(b'spiel')
+        programm = os.path.join(gta, 'gta_sa.exe')
+        stand_datei = os.path.join(arbeit, 'firewall.txt')
+
+        def firewall_stand():
+            code = subprocess.run([EXE, '--firewall-pruefen', stand_datei, '--gta', gta], timeout=60).returncode
+            werte = {}
+            if code == 0 and os.path.exists(stand_datei):
+                for zeile in open(stand_datei, encoding='utf-8').read().splitlines():
+                    if '=' in zeile:
+                        k, v = zeile.split('=', 1)
+                        werte[k] = v
+            return code, werte
+
+        code, werte = firewall_stand()
+        pruefe(code == 0 and 'geprueft' in werte, 'Pruefen ohne Fehler (Rueckgabe %d, %s)' % (code, werte.get('grund', '')))
+        pruefe(werte.get('erlaubt') == '0' and werte.get('eigene_regel') == '0', 'neues Programm: keine Freigabe, keine eigene Regel')
+        try:
+            import ctypes
+            admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            admin = False
+        if not admin:
+            print('          ohne Administratorrechte: Freigeben und Entfernen uebersprungen')
+        else:
+            sperre = 'Samplife-Test-Sperre'
+            subprocess.run(['netsh', 'advfirewall', 'firewall', 'add', 'rule', 'name=' + sperre, 'dir=in', 'action=block',
+                            'program=' + programm, 'enable=yes'], stdout=subprocess.DEVNULL, timeout=60)
+            try:
+                code, werte = firewall_stand()
+                aktiv = werte.get('geprueft') == '1'
+                if aktiv:
+                    pruefe(werte.get('blockiert') == '1', 'Sperr-Regel fuer gta_sa.exe erkannt')
+                else:
+                    print('          Firewall auf dem Rechner aus oder eingehend alles erlaubt (%s): nur Anlegen und Entfernen' % werte.get('grund', ''))
+                code = subprocess.run([EXE, '--firewall-freigeben', '--gta', gta], timeout=60).returncode
+                pruefe(code == 0, 'Freigeben (Rueckgabe %d)' % code)
+                code, werte = firewall_stand()
+                pruefe(werte.get('eigene_regel') == '1', 'eigene Regel angelegt')
+                if aktiv:
+                    pruefe(werte.get('erlaubt') == '1' and werte.get('blockiert') == '0', 'danach freigegeben, Sperre abgeschaltet')
+                code = subprocess.run([EXE, '--firewall-freigeben', '--gta', gta], timeout=60).returncode
+                pruefe(code == 0, 'zweites Freigeben laeuft ohne Fehler (Rueckgabe %d)' % code)
+                code = subprocess.run([EXE, '--firewall-entfernen'], timeout=60).returncode
+                pruefe(code == 0, 'Entfernen (Rueckgabe %d)' % code)
+                code, werte = firewall_stand()
+                pruefe(werte.get('eigene_regel') == '0', 'eigene Regel wieder weg')
+            finally:
+                subprocess.run(['netsh', 'advfirewall', 'firewall', 'delete', 'rule', 'name=' + sperre],
+                               stdout=subprocess.DEVNULL, timeout=60)
+                subprocess.run([EXE, '--firewall-entfernen'], timeout=60)
     finally:
         server.shutdown()
         shutil.rmtree(arbeit, ignore_errors=True)
