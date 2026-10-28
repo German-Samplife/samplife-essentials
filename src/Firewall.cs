@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -18,10 +17,8 @@ namespace SamplifeEssentials
         public bool Geprueft;       // false: Firewall aus, eingehend ohnehin erlaubt oder Pruefung nicht moeglich: nichts tun
         public bool Erlaubt;        // aktive Regel, die gta_sa.exe eingehend erlaubt (UDP oder alle Protokolle)
         public bool Blockiert;      // aktive Regel, die gta_sa.exe eingehend sperrt (gewinnt gegen jede Freigabe)
-        public bool EigeneRegel;    // die Regel des Launchers (Firewall.RegelName) gibt es
         public string Grund = "";   // fuer das Protokoll
         public int Regeln;          // so viele Regeln hat die Firewall gelesen (Diagnose)
-        public List<string> BlockNamen = new List<string>();     // Namen der Sperr-Regeln fuer gta_sa.exe
         public List<string> Diagnose = new List<string>();       // Regeln, deren Programm gta_sa.exe heisst (fuer --firewall-pruefen)
 
         /// <summary>Der Sprach-Chat kommt vermutlich nicht durch: fehlende Freigabe oder eine Sperre.</summary>
@@ -32,22 +29,18 @@ namespace SamplifeEssentials
     }
 
     /// <summary>
-    /// Freigabe von gta_sa.exe in der Windows-Firewall fuer den Sprach-Chat. SampVoice spricht per UDP mit dem Voice-Server;
-    /// startet GTA zum ersten Mal, fragt Windows, ob es ins Netz darf. Im Vollbild liegt diese Frage hinter dem Spiel und
-    /// wird abgelehnt, dann legt Windows Sperr-Regeln fuer gta_sa.exe an. Der Spieler hoert dann niemanden, und die Taste
-    /// zum Sprechen tut nichts.
+    /// Prueft, ob die Windows-Firewall gta_sa.exe fuer den Sprach-Chat durchlaesst. SampVoice spricht per UDP mit dem
+    /// Voice-Server; startet GTA zum ersten Mal, fragt Windows, ob es ins Netz darf. Im Vollbild liegt diese Frage hinter dem
+    /// Spiel und wird abgelehnt, dann legt Windows Sperr-Regeln fuer gta_sa.exe an. Der Spieler hoert dann niemanden, und die
+    /// Taste zum Sprechen tut nichts.
     ///
     /// Gelesen wird ohne Administratorrechte ueber die COM-Schnittstelle der Firewall (HNetCfg.FwPolicy2), unabhaengig von
     /// der Sprache von Windows, und zwar in einem eigenen Aufruf des Launchers (--firewall-pruefen, PruefenExtern), nicht im
-    /// Fenster. Geschrieben wird nur in einem eigenen, erhoehten Aufruf (--firewall-freigeben bzw. --firewall-entfernen) mit
-    /// netsh: Er schaltet die Sperr-Regeln fuer genau diese gta_sa.exe ab und legt eine eigene Freigabe an (RegelName).
-    /// Andere Regeln fasst er nicht an.
+    /// Fenster. Der Launcher aendert selbst nichts an der Firewall und fragt nie nach Administratorrechten: Er zeigt eine
+    /// Anleitung und oeffnet das Fenster „Apps durch die Firewall zulassen“ von Windows (Oeffnen).
     /// </summary>
     public static class Firewall
     {
-        public const string RegelName = "German Samplife – GTA San Andreas";
-        public const string RegelBeschreibung = "Vom Samplife Launcher angelegt: Sprach-Chat (SampVoice) auf German Samplife. Entfernt sich beim Deinstallieren des Launchers.";
-
         // Werte der Firewall-Schnittstelle (NET_FW_*)
         const int RichtungEin = 1;
         const int AktionSperren = 0;
@@ -94,10 +87,6 @@ namespace SamplifeEssentials
                     aktiv = true;
                     if (Zahl(Holen(politik, "DefaultInboundAction", profil)) != AktionErlauben) gesperrt = true;
                 }
-                foreach (var regel in Regeln(politik))
-                {
-                    if (Text(Holen(regel, "Name")) == RegelName) stand.EigeneRegel = true;
-                }
                 if (!aktiv) { stand.Grund = "die Windows-Firewall ist aus"; return stand; }
                 if (!gesperrt) { stand.Grund = "eingehende Verbindungen sind ohnehin erlaubt"; return stand; }
 
@@ -115,12 +104,7 @@ namespace SamplifeEssentials
                     if ((Zahl(Holen(regel, "Profiles")) & profile) == 0) continue;
                     var aktion = Zahl(Holen(regel, "Action"));
                     var protokoll = Zahl(Holen(regel, "Protocol"));
-                    if (aktion == AktionSperren)
-                    {
-                        stand.Blockiert = true;
-                        var name = Text(Holen(regel, "Name"));
-                        if (name != "" && !stand.BlockNamen.Contains(name)) stand.BlockNamen.Add(name);
-                    }
+                    if (aktion == AktionSperren) stand.Blockiert = true;
                     else if (aktion == AktionErlauben && (protokoll == ProtokollAlle || protokoll == ProtokollUdp)) stand.Erlaubt = true;
                 }
                 stand.Geprueft = true;
@@ -132,71 +116,6 @@ namespace SamplifeEssentials
                 stand.Grund = "Prüfung nicht möglich: " + fehler.Message;
             }
             return stand;
-        }
-
-        /// <summary>Gibt es die Regel des Launchers? Ohne Administratorrechte; false, wenn sich das nicht lesen laesst.</summary>
-        public static bool RegelVorhanden()
-        {
-            try
-            {
-                var politik = Politik();
-                if (politik == null) return false;
-                foreach (var regel in Regeln(politik))
-                {
-                    if (Text(Holen(regel, "Name")) == RegelName) return true;
-                }
-            }
-            catch (Exception) { }
-            return false;
-        }
-
-        // ---------------------------------------------------------------- Schreiben (nur im erhoehten Aufruf)
-
-        /// <summary>
-        /// Laeuft im erhoehten Launcher (--firewall-freigeben): Sperr-Regeln fuer genau diese gta_sa.exe abschalten und die
-        /// eigene Freigabe anlegen bzw. wieder einschalten. Geschrieben wird mit netsh: Es filtert beim Abschalten nach Name und
-        /// Programm, Regeln anderer Programme mit demselben Namen bleiben also. Rueckgabe 0 bei Erfolg.
-        /// </summary>
-        public static int FreigabeSchreiben(string programm, StringBuilder protokoll)
-        {
-            programm = Normalisieren(programm);
-            var stand = Pruefen(programm);
-            foreach (var name in stand.BlockNamen)
-                Netsh("advfirewall firewall set rule name=\"" + name + "\" dir=in program=\"" + programm + "\" new enable=no", protokoll);
-            if (stand.EigeneRegel)
-                Netsh("advfirewall firewall set rule name=\"" + RegelName + "\" new enable=yes action=allow program=\"" + programm
-                    + "\" profile=private,public", protokoll);
-            else
-                Netsh("advfirewall firewall add rule name=\"" + RegelName + "\" dir=in action=allow program=\"" + programm
-                    + "\" profile=private,public enable=yes description=\"" + RegelBeschreibung + "\"", protokoll);
-            var danach = Pruefen(programm);
-            protokoll.AppendLine("danach: " + danach.Grund + ", eigene Regel " + (danach.EigeneRegel ? "ja" : "nein"));
-            if (!danach.EigeneRegel) return 1;
-            return danach.Noetig ? 1 : 0;
-        }
-
-        /// <summary>Laeuft im erhoehten Launcher (--firewall-entfernen): die eigene Freigabe loeschen. Rueckgabe 0 bei Erfolg.</summary>
-        public static int FreigabeLoeschen(StringBuilder protokoll)
-        {
-            if (!RegelVorhanden()) return 0;
-            Netsh("advfirewall firewall delete rule name=\"" + RegelName + "\"", protokoll);
-            return RegelVorhanden() ? 1 : 0;
-        }
-
-        static int Netsh(string argumente, StringBuilder protokoll)
-        {
-            var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "netsh.exe"), argumente);
-            start.UseShellExecute = false;
-            start.CreateNoWindow = true;
-            start.RedirectStandardOutput = true;
-            start.RedirectStandardError = true;
-            using (var prozess = Process.Start(start))
-            {
-                var ausgabe = prozess.StandardOutput.ReadToEnd() + prozess.StandardError.ReadToEnd();
-                prozess.WaitForExit(30000);
-                protokoll.AppendLine("netsh " + argumente + " -> " + prozess.ExitCode + " " + ausgabe.Trim());
-                return prozess.ExitCode;
-            }
         }
 
         /// <summary>
@@ -226,7 +145,6 @@ namespace SamplifeEssentials
                         case "geprueft": stand.Geprueft = teile[1] == "1"; break;
                         case "erlaubt": stand.Erlaubt = teile[1] == "1"; break;
                         case "blockiert": stand.Blockiert = teile[1] == "1"; break;
-                        case "eigene_regel": stand.EigeneRegel = teile[1] == "1"; break;
                         case "grund": stand.Grund = teile[1]; break;
                     }
                 }
@@ -249,47 +167,33 @@ namespace SamplifeEssentials
             text.Append("geprueft=").Append(stand.Geprueft ? 1 : 0).Append('\n');
             text.Append("erlaubt=").Append(stand.Erlaubt ? 1 : 0).Append('\n');
             text.Append("blockiert=").Append(stand.Blockiert ? 1 : 0).Append('\n');
-            text.Append("eigene_regel=").Append(stand.EigeneRegel ? 1 : 0).Append('\n');
             text.Append("grund=").Append(stand.Grund).Append('\n');
             text.Append("regeln=").Append(stand.Regeln).Append('\n');
             foreach (var zeile in stand.Diagnose) text.Append("regel=").Append(zeile).Append('\n');
             return text.ToString();
         }
 
-        // ---------------------------------------------------------------- Erhoehter Aufruf aus dem Fenster
+        // ---------------------------------------------------------------- Windows-Fenster „Apps durch die Firewall zulassen“
 
         /// <summary>
-        /// Startet den Launcher erhoeht mit --firewall-freigeben (Windows fragt nach Administratorrechten) und wartet auf ihn.
-        /// Wirft Win32Exception mit NativeErrorCode 1223, wenn der Spieler die Abfrage ablehnt.
+        /// Oeffnet ohne Administratorrechte die Einstellung „Apps durch die Firewall zulassen“ der Systemsteuerung, sonst die
+        /// Seite der Windows-Firewall. false, wenn beides nicht ging.
         /// </summary>
-        public static int Freigeben(string gta)
+        public static bool Oeffnen()
         {
-            return Erhoeht("--firewall-freigeben --gta \"" + gta.TrimEnd('\\') + "\"");
-        }
-
-        public static int Entfernen()
-        {
-            return Erhoeht("--firewall-entfernen");
-        }
-
-        static int Erhoeht(string argumente)
-        {
-            var start = new ProcessStartInfo(Aktualisierung.EigeneDatei, argumente);
-            start.Verb = "runas";
-            start.UseShellExecute = true;
-            start.WindowStyle = ProcessWindowStyle.Hidden;
-            using (var prozess = Process.Start(start))
+            var control = Path.Combine(Environment.SystemDirectory, "control.exe");
+            foreach (var argumente in new[] { "/name Microsoft.WindowsFirewall /page pageConfigureApps", "firewall.cpl" })
             {
-                if (prozess == null) return -1;
-                if (!prozess.WaitForExit(60000)) return -1;
-                return prozess.ExitCode;
+                try
+                {
+                    var start = new ProcessStartInfo(control, argumente);
+                    start.UseShellExecute = false;
+                    using (Process.Start(start)) { }
+                    return true;
+                }
+                catch (Exception) { }
             }
-        }
-
-        public static bool Abgelehnt(Exception fehler)
-        {
-            var win32 = fehler as Win32Exception;
-            return win32 != null && win32.NativeErrorCode == 1223;
+            return false;
         }
 
         /// <summary>Eine Zeile ins Protokoll des Launchers im GTA-Verzeichnis (samplife-essentials-protokoll.txt).</summary>

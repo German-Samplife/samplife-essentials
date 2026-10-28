@@ -199,17 +199,18 @@ namespace SamplifeEssentials
         readonly TextBlock sampText;
         readonly Button knopfSampEinrichten, knopfSampAbbrechen;
         bool sampErsetzen;          // nur fuer den naechsten Start nach „Einrichten“, wird nicht gemerkt
-        // Sprach-Chat: gta_sa.exe in der Windows-Firewall freigeben (src/Firewall.cs). Geprueft wird im Hintergrund, sobald das
-        // Verzeichnis feststeht; ist die Pruefung beim Start noch nicht fertig, wird nicht gefragt.
+        // Sprach-Chat: Anleitung, wie der Spieler gta_sa.exe in der Windows-Firewall freigibt (src/Firewall.cs). Geprueft wird im
+        // Hintergrund, sobald das Verzeichnis feststeht; ist die Pruefung beim Start noch nicht fertig, wird nicht gefragt. Der
+        // Launcher aendert selbst nichts an der Firewall und fragt nie nach Administratorrechten.
         readonly FrameworkElement firewallFenster;
-        readonly TextBlock firewallTitel, firewallText, firewallStatus, firewallSymbol;
-        readonly Border firewallKreis;
-        readonly Button knopfFirewall, knopfFirewallFreigeben, knopfFirewallSpaeter;
+        readonly TextBlock firewallText, firewallStatus;
+        readonly TextBox firewallPfad;
+        readonly Button knopfFirewall, knopfFirewallOeffnen, knopfFirewallSpaeter, knopfFirewallKopieren;
         FirewallStand firewallStand;
         int firewallRunde;
-        bool firewallGefragt;       // in diesem Start schon gefragt (oder freigegeben): nicht noch einmal vor dem Spielen
+        bool firewallGefragt;       // in diesem Start schon gefragt: nicht noch einmal vor dem Spielen
         bool firewallVomStart;      // das Fenster kam beim Klick auf „Spielen“; danach geht es mit dem Start weiter
-        bool firewallFertig;        // freigegeben: der Hauptknopf heisst „Weiter“ bzw. „Schließen“
+        bool firewallGeoeffnet;     // „Firewall öffnen“ geklickt: der Hauptknopf heisst „Fertig“
         // Nach dem Start: Der Launcher bleibt offen und beobachtet gta_sa.exe (SpielBeobachten)
         DispatcherTimer spielTimer;
         DateTime spielStartUtc;
@@ -331,17 +332,17 @@ namespace SamplifeEssentials
                 Starten(false);
             };
             firewallFenster = Finde<FrameworkElement>("FirewallFenster");
-            firewallTitel = Finde<TextBlock>("FirewallTitel");
             firewallText = Finde<TextBlock>("FirewallText");
             firewallStatus = Finde<TextBlock>("FirewallStatus");
-            firewallSymbol = Finde<TextBlock>("FirewallSymbol");
-            firewallKreis = Finde<Border>("FirewallKreis");
+            firewallPfad = Finde<TextBox>("FirewallPfad");
             knopfFirewall = Finde<Button>("KnopfFirewall");
-            knopfFirewallFreigeben = Finde<Button>("KnopfFirewallFreigeben");
+            knopfFirewallOeffnen = Finde<Button>("KnopfFirewallOeffnen");
             knopfFirewallSpaeter = Finde<Button>("KnopfFirewallSpaeter");
+            knopfFirewallKopieren = Finde<Button>("KnopfFirewallKopieren");
             knopfFirewall.Click += delegate { FirewallFensterZeigen(false); };
             knopfFirewallSpaeter.Click += delegate { FirewallSpaeter(); };
-            knopfFirewallFreigeben.Click += delegate { if (firewallFertig) FirewallWeiter(); else FirewallFreigeben(); };
+            knopfFirewallOeffnen.Click += delegate { if (firewallGeoeffnet) FirewallFertig(); else FirewallOeffnen(); };
+            knopfFirewallKopieren.Click += delegate { FirewallPfadKopieren(); };
             protokollFenster.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
             {
                 // Klick neben das Fenster schliesst es, wie auf der Website
@@ -1397,7 +1398,6 @@ namespace SamplifeEssentials
             deinstallation.Melden = m => ((IProgress<Meldung>)meldungen).Report(m);
             var ergebnis = await Task.Run(() => deinstallation.Ausfuehren());
             await Task.Delay(150);
-            if (ergebnis.Erfolg) await FirewallRegelEntfernen();
             knopfSpielen.IsEnabled = true;
             if (ergebnis.Erfolg)
             {
@@ -1574,96 +1574,75 @@ namespace SamplifeEssentials
             if (stand.Noetig) Firewall.Notieren(gta, "gta_sa.exe ist nicht freigegeben (" + stand.Grund + ").");
         }
 
-        /// <summary>vomStart: kam beim Klick auf „Spielen“; „Später“ und „Weiter“ starten danach das Spiel.</summary>
+        /// <summary>vomStart: kam beim Klick auf „Spielen“; „Später“ und „Fertig“ starten danach das Spiel.</summary>
         void FirewallFensterZeigen(bool vomStart)
         {
             firewallVomStart = vomStart;
-            firewallFertig = false;
+            firewallGeoeffnet = false;
             var blockiert = firewallStand != null && firewallStand.Blockiert;
-            firewallTitel.Text = "Sprach-Chat freigeben";
-            firewallText.Text = (blockiert
-                    ? "Windows hat GTA San Andreas bisher in der Firewall blockiert. Deshalb hörst du die anderen nicht, und sie hören dich nicht. "
-                    : "Damit der Sprach-Chat funktioniert, muss GTA San Andreas durch die Windows-Firewall. ")
-                + "Der Launcher trägt die Freigabe einmal für dich ein: eingehend, für private und öffentliche Netzwerke und nur für "
-                + "die gta_sa.exe in deinem GTA-Ordner" + (blockiert ? "; die Sperre für sie schaltet er dabei ab" : "")
-                + ". Windows fragt dafür nach Administratorrechten.";
-            firewallSymbol.Text = "";
-            firewallSymbol.Foreground = Farben.Warnung;
-            firewallKreis.Background = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xB5, 0x47));
+            firewallText.Text = "Damit der Sprach-Chat funktioniert, muss GTA San Andreas durch die Windows-Firewall. Klick auf „Firewall öffnen“, "
+                + "dann auf „Einstellungen ändern“ und setz bei gta_sa bzw. GTA San Andreas die Haken bei Privat und Öffentlich. "
+                + "Steht es nicht in der Liste: „Andere App zulassen …“ → „Durchsuchen“ und den Pfad unten wählen."
+                + (blockiert
+                    ? "\n\nWindows blockiert GTA bisher. Entferne deshalb die Einträge mit rotem Symbol: in der Windows-Firewall unter "
+                        + "„Erweiterte Einstellungen“ → „Eingehende Regeln“ bei gta_sa bzw. GTA San Andreas."
+                    : "");
+            firewallPfad.Text = optionen.Bildschirmfoto != "" ? @"D:\Spiele\GTA San Andreas\gta_sa.exe" : Path.Combine(Gta, GtaVerzeichnis.SpielDatei);
             firewallStatus.Visibility = Visibility.Collapsed;
             knopfFirewallSpaeter.Visibility = Visibility.Visible;
-            knopfFirewallSpaeter.IsEnabled = true;
-            knopfFirewallFreigeben.IsEnabled = true;
-            knopfFirewallFreigeben.Content = "Freigeben";
+            knopfFirewallOeffnen.Content = "Firewall öffnen";
             firewallFenster.Visibility = Visibility.Visible;
         }
 
+        /// <summary>„Später“: beim Spielen 7 Tage nicht mehr fragen und das Spiel trotzdem starten; vom Fussknopf nur schliessen.</summary>
         void FirewallSpaeter()
         {
             firewallFenster.Visibility = Visibility.Collapsed;
-            if (optionen.Bildschirmfoto != "") return;
+            if (optionen.Bildschirmfoto != "" || !firewallVomStart) return;
             Firewall.SpaeterMerken(einstellungen);
-            Firewall.Notieren(Gta, "Freigabe auf später verschoben (erst in " + Firewall.SpaeterTage + " Tagen wieder fragen).");
+            Firewall.Notieren(Gta, "Anleitung auf später verschoben (erst in " + Firewall.SpaeterTage + " Tagen wieder fragen).");
             firewallGefragt = true;
+            Starten(false);
+        }
+
+        /// <summary>Oeffnet „Apps durch die Firewall zulassen“ von Windows, ohne Administratorrechte; die Anleitung bleibt sichtbar.</summary>
+        void FirewallOeffnen()
+        {
+            if (Firewall.Oeffnen())
+            {
+                Firewall.Notieren(Gta, "Fenster der Windows-Firewall geöffnet (" + (firewallStand != null ? firewallStand.Grund : "") + ").");
+                firewallGeoeffnet = true;
+                knopfFirewallOeffnen.Content = "Fertig";
+                FirewallStatusZeigen(Farben.Gedaempft, "Die Windows-Firewall ist offen. Hast du die Haken gesetzt, klick auf „Fertig“.");
+                return;
+            }
+            FirewallStatusZeigen(Farben.Fehler, "Die Windows-Firewall ließ sich nicht öffnen. Such im Startmenü nach „Firewall“ und öffne "
+                + "„App durch die Windows-Firewall zulassen“.");
+        }
+
+        /// <summary>„Fertig“: schliessen, neu pruefen und, wenn das Fenster beim Spielen kam, starten. Nichts wird aufgehalten.</summary>
+        void FirewallFertig()
+        {
+            firewallFenster.Visibility = Visibility.Collapsed;
+            firewallGefragt = true;
+            if (optionen.Bildschirmfoto != "") return;
+            FirewallVorpruefen();
             if (firewallVomStart) Starten(false);
         }
 
-        async void FirewallFreigeben()
+        void FirewallPfadKopieren()
         {
-            var gta = Gta;
-            knopfFirewallFreigeben.IsEnabled = false;
-            knopfFirewallSpaeter.IsEnabled = false;
-            FirewallStatusZeigen(Farben.Gedaempft, "Windows fragt gleich nach Administratorrechten …");
-            int code;
             try
             {
-                code = await Task.Run(() => Firewall.Freigeben(gta));
+                Clipboard.SetText(firewallPfad.Text);
+                FirewallStatusZeigen(Farben.Erfolg, "Pfad kopiert. Im Fenster „Durchsuchen“ fügst du ihn oben bei „Dateiname“ ein.");
             }
-            catch (Exception fehler)
+            catch (Exception)
             {
-                FirewallStatusZeigen(Farben.Fehler, Firewall.Abgelehnt(fehler)
-                    ? "Ohne Administratorrechte kann der Launcher die Freigabe nicht eintragen. Versuch es noch einmal oder klick auf „Später“."
-                    : "Das hat nicht geklappt: " + fehler.Message);
-                Firewall.Notieren(gta, Firewall.Abgelehnt(fehler) ? "Administratorrechte abgelehnt." : "Freigeben fehlgeschlagen: " + fehler.Message);
-                knopfFirewallFreigeben.IsEnabled = true;
-                knopfFirewallSpaeter.IsEnabled = true;
-                return;
+                firewallPfad.Focus();
+                firewallPfad.SelectAll();
+                FirewallStatusZeigen(Farben.Gedaempft, "Der Pfad ist markiert, kopier ihn mit Strg+C.");
             }
-            var stand = await Task.Run(() => Firewall.PruefenExtern(gta));
-            firewallStand = stand;
-            if (code != 0 || stand.Noetig)
-            {
-                Firewall.Notieren(gta, "Freigeben hat nicht geklappt (Rückgabe " + code + ", danach: " + stand.Grund + ").");
-                FirewallStatusZeigen(Farben.Fehler, "Das hat nicht geklappt. Gib GTA San Andreas in den Einstellungen der Windows-Firewall "
-                    + "selbst frei („Zugriff von App durch Firewall zulassen“). Ein Antivirus mit eigener Firewall muss es ebenfalls durchlassen.");
-                knopfFirewallFreigeben.IsEnabled = true;
-                knopfFirewallSpaeter.IsEnabled = true;
-                return;
-            }
-            Firewall.Notieren(gta, "gta_sa.exe freigegeben (Regel „" + Firewall.RegelName + "“).");
-            FirewallFreigegebenZeigen();
-        }
-
-        void FirewallFreigegebenZeigen()
-        {
-            firewallFertig = true;
-            firewallGefragt = true;
-            knopfFirewall.Visibility = Visibility.Collapsed;
-            firewallTitel.Text = "Freigegeben";
-            firewallText.Text = "GTA San Andreas darf jetzt durch die Windows-Firewall. Der Sprach-Chat sollte beim nächsten Verbinden funktionieren.";
-            firewallSymbol.Text = "";
-            firewallSymbol.Foreground = Farben.Erfolg;
-            firewallKreis.Background = new SolidColorBrush(Color.FromArgb(0x26, 0x39, 0xD8, 0x74));
-            firewallStatus.Visibility = Visibility.Collapsed;
-            knopfFirewallSpaeter.Visibility = Visibility.Collapsed;
-            knopfFirewallFreigeben.IsEnabled = true;
-            knopfFirewallFreigeben.Content = firewallVomStart ? "Weiter" : "Schließen";
-        }
-
-        void FirewallWeiter()
-        {
-            firewallFenster.Visibility = Visibility.Collapsed;
-            if (firewallVomStart && optionen.Bildschirmfoto == "") Starten(false);
         }
 
         void FirewallStatusZeigen(Brush farbe, string text)
@@ -1671,34 +1650,6 @@ namespace SamplifeEssentials
             firewallStatus.Foreground = farbe;
             firewallStatus.Text = text;
             firewallStatus.Visibility = Visibility.Visible;
-        }
-
-        /// <summary>Beim Deinstallieren: die eigene Freigabe wieder entfernen (Windows fragt nach Administratorrechten).</summary>
-        async Task FirewallRegelEntfernen()
-        {
-            var gta = Gta;
-            if (!(await Task.Run(() => Firewall.PruefenExtern(gta))).EigeneRegel) return;
-            const int nummer = 900000;
-            MeldungZeigen(new Meldung { Nummer = nummer, Art = MeldungArt.Schritt, Text = "Entferne die Freigabe „" + Firewall.RegelName + "“ aus der Windows-Firewall" });
-            try
-            {
-                var code = await Task.Run(() => Firewall.Entfernen());
-                if (code == 0)
-                    MeldungZeigen(new Meldung { Nummer = nummer, Art = MeldungArt.Schritt, Fertig = true,
-                        Text = "Freigabe „" + Firewall.RegelName + "“ aus der Windows-Firewall entfernt" });
-                else
-                    MeldungZeigen(new Meldung { Nummer = nummer, Art = MeldungArt.Warnung, Fertig = true,
-                        Text = "Die Freigabe „" + Firewall.RegelName + "“ ließ sich nicht entfernen. Du findest sie in der Windows-Firewall unter den eingehenden Regeln." });
-            }
-            catch (Exception fehler)
-            {
-                MeldungZeigen(new Meldung
-                {
-                    Nummer = nummer, Art = MeldungArt.Warnung, Fertig = true,
-                    Text = (Firewall.Abgelehnt(fehler) ? "Ohne Administratorrechte bleibt" : "Es bleibt") + " die Freigabe „" + Firewall.RegelName
-                        + "“ in der Windows-Firewall. Du kannst sie dort unter den eingehenden Regeln selbst löschen."
-                });
-            }
         }
 
         // ---------------------------------------------------------------- Absturzbericht
@@ -1901,7 +1852,7 @@ namespace SamplifeEssentials
                 return;
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
-                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "firewall" || zustand == "firewallfrei")
+                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "firewall" || zustand == "firewallgesperrt")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1917,12 +1868,11 @@ namespace SamplifeEssentials
                     if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
                 }
                 if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
-                if (zustand == "firewall" || zustand == "firewallfrei")
+                if (zustand == "firewall" || zustand == "firewallgesperrt")
                 {
-                    firewallStand = new FirewallStand { Geprueft = true, Blockiert = true };
+                    firewallStand = new FirewallStand { Geprueft = true, Blockiert = zustand == "firewallgesperrt" };
                     knopfFirewall.Visibility = Visibility.Visible;
                     FirewallFensterZeigen(true);
-                    if (zustand == "firewallfrei") FirewallFreigegebenZeigen();
                 }
                 return;
             }

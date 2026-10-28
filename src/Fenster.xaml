@@ -631,7 +631,7 @@
                    Text="Der Launcher schreibt nur ins GTA-Verzeichnis und sichert vorher, was er ersetzt. Deine eigenen Mods fasst er nicht an."/>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
           <Button x:Name="KnopfFirewall" Style="{StaticResource Nebenknopf}" Content="Sprach-Chat freigeben" Height="40" FontSize="14" Margin="8,0,0,0"
-                  Visibility="Collapsed" ToolTip="Gibt GTA San Andreas in der Windows-Firewall frei, damit du die anderen hörst und sie dich."/>
+                  Visibility="Collapsed" ToolTip="Zeigt, wie du GTA San Andreas in der Windows-Firewall freigibst, damit du die anderen hörst und sie dich."/>
           <Button x:Name="KnopfDeinstallieren" Style="{StaticResource Nebenknopf}" Content="Deinstallieren" Height="40" FontSize="14" Margin="8,0,0,0"
                   ToolTip="Entfernt alles, was der Launcher eingerichtet hat, und holt ersetzte Dateien in der Fassung von vorher zurück."/>
           <Button x:Name="KnopfGruendlich" Style="{StaticResource Nebenknopf}" Content="Gründlich prüfen" Height="40" FontSize="14" Margin="8,0,0,0"
@@ -694,23 +694,37 @@
         </Border>
       </Grid>
 
-      <!-- Sprach-Chat: gta_sa.exe ist in der Windows-Firewall nicht freigegeben oder gesperrt (src/Firewall.cs) -->
+      <!-- Sprach-Chat: gta_sa.exe ist in der Windows-Firewall nicht freigegeben oder gesperrt (src/Firewall.cs). Der Launcher
+           aendert nichts an der Firewall, er zeigt nur, wie es geht, und oeffnet das Fenster von Windows. -->
       <Grid x:Name="FirewallFenster" Grid.RowSpan="3" Background="#A6000000" Visibility="Collapsed">
-        <Border Width="620" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
+        <Border Width="640" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
                 VerticalAlignment="Center">
           <StackPanel Margin="28,26,28,24">
-            <Border x:Name="FirewallKreis" Width="56" Height="56" CornerRadius="28" Background="#26FFB547" HorizontalAlignment="Left">
-              <TextBlock x:Name="FirewallSymbol" Text="&#xE720;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{StaticResource Warnung}"
+            <Border Width="56" Height="56" CornerRadius="28" Background="#26FFB547" HorizontalAlignment="Left">
+              <TextBlock Text="&#xE720;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{StaticResource Warnung}"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <TextBlock x:Name="FirewallTitel" Text="Sprach-Chat freigeben" FontFamily="{DynamicResource Anzeige}" FontSize="26"
+            <TextBlock Text="Sprach-Chat freigeben" FontFamily="{DynamicResource Anzeige}" FontSize="26"
                        FontWeight="Bold" Margin="0,16,0,0"/>
             <TextBlock x:Name="FirewallText" Foreground="{StaticResource Gedaempft}" FontSize="15" TextWrapping="Wrap" Margin="0,6,0,0"/>
-            <TextBlock x:Name="FirewallStatus" FontSize="14" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed"/>
+            <TextBlock Text="Pfad zur gta_sa.exe" Foreground="{StaticResource Gedaempft}" FontSize="13" Margin="0,16,0,0"/>
+            <Grid Margin="0,6,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <Border Style="{StaticResource Feld}" Height="44">
+                <TextBox x:Name="FirewallPfad" IsReadOnly="True" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                         CaretBrush="White" Padding="12,0" FontSize="13" VerticalContentAlignment="Center"/>
+              </Border>
+              <Button x:Name="KnopfFirewallKopieren" Grid.Column="1" Style="{StaticResource Nebenknopf}" Content="Pfad kopieren"
+                      Height="44" FontSize="14" Padding="16,0" Margin="8,0,0,0"/>
+            </Grid>
+            <TextBlock x:Name="FirewallStatus" FontSize="14" TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
               <Button x:Name="KnopfFirewallSpaeter" Style="{StaticResource Nebenknopf}" Content="Später" Height="48" FontSize="15"
                       Padding="22,0" Margin="0,0,10,0"/>
-              <Button x:Name="KnopfFirewallFreigeben" Style="{StaticResource Hauptknopf}" Content="Freigeben" MinWidth="170"/>
+              <Button x:Name="KnopfFirewallOeffnen" Style="{StaticResource Hauptknopf}" Content="Firewall öffnen" MinWidth="170"/>
             </StackPanel>
           </StackPanel>
         </Border>
