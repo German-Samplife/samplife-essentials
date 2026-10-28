@@ -206,7 +206,6 @@ namespace SamplifeEssentials
                 return 1;
             }
         }
-        }
 
         /// <summary>
         /// Holt die Liste von der eingestellten Adresse. Antwortet sie mit einem HTTP-Fehler oder gar nicht,
