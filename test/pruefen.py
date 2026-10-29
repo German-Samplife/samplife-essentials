@@ -523,7 +523,7 @@ def main():
         gta = spiel_anlegen(os.path.join(arbeit, 'dl'), samp=b'samp-0.3.DL')
         ad25c = os.path.join(arbeit, 'appdaten-25c')
         pruefe(starten(gta, url5, '--gruendlich', '--appdaten', ad25c) == 4,
-               'ohne Zustimmung: Rueckgabe 4 mit Grund statt Abbruch bei SampVoice (vorher Rueckgabe 1)')
+               'ohne Zustimmung: Rueckgabe 4 mit Grund, nichts nach Version geladen')
         pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.DL' and not os.path.exists(os.path.join(gta, 'sampvoice.asi')),
                'ohne Zustimmung nichts veraendert')
         pruefe(starten(gta, url5, '--gruendlich', '--samp-ersetzen', '--appdaten', ad25c) == 0, 'mit Zustimmung: Rueckgabe 0')
