@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -191,7 +192,7 @@ namespace SamplifeEssentials
         readonly TextBlock absturzTitel, absturzText, absturzStatus, absturzSymbol, absturzFrage, absturzHinweis;
         readonly Border absturzKreis;
         readonly TextBox absturzKommentar;
-        readonly Button knopfAbsturzSenden, knopfAbsturzNein;
+        readonly Button knopfAbsturzSenden, knopfAbsturzNein, knopfAbsturzAnsehen;
         DateTime absturzZeit;
         bool absturzGeprueft, absturzGesendet;
         // Dasselbe Fenster fragt nach einer Diagnose (src/Diagnose.cs), wenn SampVoice die Grafik von GTA nicht gefunden hat;
@@ -322,6 +323,8 @@ namespace SamplifeEssentials
             absturzKommentar = Finde<TextBox>("AbsturzKommentar");
             knopfAbsturzSenden = Finde<Button>("KnopfAbsturzSenden");
             knopfAbsturzNein = Finde<Button>("KnopfAbsturzNein");
+            knopfAbsturzAnsehen = Finde<Button>("KnopfAbsturzAnsehen");
+            knopfAbsturzAnsehen.Click += delegate { BerichtAnsehen(); };
             knopfAbsturzSenden.Click += delegate { if (absturzGesendet) AbsturzSchliessen(); else AbsturzSenden(); };
             knopfAbsturzNein.Click += delegate { AbsturzMerken(); AbsturzSchliessen(); };
             sampFenster = Finde<FrameworkElement>("SampFenster");
@@ -1617,8 +1620,9 @@ namespace SamplifeEssentials
             absturzTitel.Text = "Dein Spiel ist abgestürzt";
             absturzText.Text = AbsturzZeitText() + " Schick uns den Bericht von SA-MP, damit wir den Fehler finden und beheben können.";
             absturzFrage.Text = "Was hast du gerade gemacht? (freiwillig)";
-            absturzHinweis.Text = "Mitgeschickt werden die Datei crashinfo.txt von SA-MP, die Liste der Programme, die im Spiel geladen waren, "
-                + "dein Name im Spiel, die Version des Launchers und deine Windows-Version.";
+            absturzHinweis.Text = "Mitgeschickt werden die Datei crashinfo.txt von SA-MP, welche Programme (DLL-Dateien) im Spiel geladen waren, "
+                + "mit Hersteller und Version, dein Name im Spiel, die Version des Launchers und deine Windows-Version. Keine Passwörter "
+                + "und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
             FensterBerichtZeigen();
         }
 
@@ -1634,8 +1638,9 @@ namespace SamplifeEssentials
                 : "SampVoice hat in diesem Spiel die Grafik von GTA nicht gefunden. Deshalb ging der Sprach-Chat nicht, und oft "
                     + "laden dann auch die Browser-Oberflächen nicht richtig. Schick uns die Diagnose, damit wir sehen, welches Programm sich dazwischenhängt.";
             absturzFrage.Text = gemeldet ? "Was ging nicht?" : "Was ging nicht? (freiwillig)";
-            absturzHinweis.Text = "Mitgeschickt werden die Liste der Programme, die im Spiel geladen waren, die Logs von SampVoice und CEF, "
-                + "dein Name im Spiel, die Version des Launchers und deine Windows-Version. Dein Windows-Benutzername wird dabei entfernt.";
+            absturzHinweis.Text = "Mitgeschickt werden: welche Programme (DLL-Dateien) im Spiel geladen waren, mit Hersteller und Version, "
+                + "ob für GTA ein Kompatibilitätsmodus an ist, die Logs von SampVoice (svlog.txt) und CEF (cef_client.log), dein Name im Spiel, "
+                + "die Version des Launchers und deine Windows-Version. Keine Passwörter und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
             FensterBerichtZeigen();
         }
 
@@ -1662,36 +1667,86 @@ namespace SamplifeEssentials
                 + " Uhr ist GTA San Andreas abgestürzt.";
         }
 
-        async void AbsturzSenden()
+        /// <summary>
+        /// Was gesendet wuerde: Inhalt der crashinfo.txt (nur Absturz) und die weiteren Felder. false mit Hinweis im Fenster,
+        /// wenn es nichts zu senden gibt.
+        /// </summary>
+        bool BerichtSammeln(out string inhalt, out Dictionary<string, object> zusatz)
         {
-            var inhalt = "";
-            var zusatz = new Dictionary<string, object>();
+            inhalt = "";
+            zusatz = new Dictionary<string, object>();
             if (absturzIstDiagnose)
             {
                 if (diagnoseModule == "" && diagnoseSvLog == "")
                 {
                     AbsturzStatusZeigen(Farben.Fehler, "Vom letzten Spiel gibt es noch nichts zu schicken. Starte das Spiel über den Launcher, "
                         + "bleib etwa eine Minute im Spiel und melde es danach.");
-                    return;
+                    return false;
                 }
                 zusatz["art"] = "diagnose";
                 zusatz["befund"] = diagnoseBefund;
                 zusatz["svlog"] = diagnoseSvLog;
                 zusatz["ceflog"] = diagnoseCefLog;
                 if (diagnoseModule != "") zusatz["module"] = diagnoseModule;
+                return true;
             }
-            else
+            try { inhalt = Absturzbericht.Lesen(); }
+            catch (Exception fehler)
             {
-                try { inhalt = Absturzbericht.Lesen(); }
-                catch (Exception fehler)
-                {
-                    AbsturzStatusZeigen(Farben.Fehler, "Die Datei crashinfo.txt ließ sich nicht lesen: " + fehler.Message);
-                    return;
-                }
-                // DLLs aus dem Spiel, das abgestuerzt ist: gelesen hoechstens drei Stunden davor
-                var module = Diagnose.GemerkteModule(absturzZeit.AddHours(-3), absturzZeit.AddMinutes(1));
-                if (module != "") zusatz["module"] = module;
+                AbsturzStatusZeigen(Farben.Fehler, "Die Datei crashinfo.txt ließ sich nicht lesen: " + fehler.Message);
+                return false;
             }
+            // DLLs aus dem Spiel, das abgestuerzt ist: gelesen hoechstens drei Stunden davor
+            var module = Diagnose.GemerkteModule(absturzZeit.AddHours(-3), absturzZeit.AddMinutes(1));
+            if (module != "") zusatz["module"] = module;
+            return true;
+        }
+
+        /// <summary>„Ansehen, was gesendet wird“: genau diese Daten als Textdatei im Editor, bevor der Spieler sendet.</summary>
+        void BerichtAnsehen()
+        {
+            string inhalt;
+            Dictionary<string, object> zusatz;
+            if (!BerichtSammeln(out inhalt, out zusatz)) return;
+            var text = new StringBuilder();
+            text.Append("Das schickt der Samplife Launcher an German Samplife (").Append(manifest.Absturzbericht).Append("),\r\n");
+            text.Append("wenn du auf „").Append(knopfAbsturzSenden.Content).Append("“ klickst. Nichts anderes.\r\n");
+            text.Append("Wie bei jeder Verbindung sieht der Server dabei deine IP-Adresse.\r\n\r\n");
+            text.Append("Name im Spiel: ").Append(name.Text.Trim()).Append("\r\n");
+            text.Append("Launcher: ").Append(Programm.Version).Append("\r\n");
+            text.Append("Windows: ").Append(Absturzbericht.Windows()).Append("\r\n");
+            text.Append("Zeitpunkt: ").Append(Absturzbericht.Iso(absturzZeit)).Append("\r\n");
+            object wert;
+            if (zusatz.TryGetValue("befund", out wert)) text.Append("Befund: ").Append(wert).Append("\r\n");
+            text.Append("Dein Kommentar: ").Append(absturzKommentar.Text.Trim()).Append("\r\n");
+            Abschnitt(text, "crashinfo.txt von SA-MP", inhalt);
+            if (zusatz.TryGetValue("module", out wert)) Abschnitt(text, "Programme (DLL-Dateien) im Spiel", (string)wert);
+            if (zusatz.TryGetValue("svlog", out wert)) Abschnitt(text, "svlog.txt von SampVoice", (string)wert);
+            if (zusatz.TryGetValue("ceflog", out wert)) Abschnitt(text, "Logs von CEF", (string)wert);
+            try
+            {
+                Directory.CreateDirectory(Pfade.Launcher);
+                var datei = Path.Combine(Pfade.Launcher, "bericht-vorschau.txt");
+                File.WriteAllText(datei, text.ToString().Replace("\r\n", "\n").Replace("\n", "\r\n"), new UTF8Encoding(true));
+                Process.Start(new ProcessStartInfo("notepad.exe", "\"" + datei + "\"") { UseShellExecute = false });
+            }
+            catch (Exception fehler)
+            {
+                AbsturzStatusZeigen(Farben.Fehler, "Die Vorschau ließ sich nicht öffnen: " + fehler.Message);
+            }
+        }
+
+        static void Abschnitt(StringBuilder text, string titel, string inhalt)
+        {
+            if (string.IsNullOrEmpty(inhalt)) return;
+            text.Append("\r\n==== ").Append(titel).Append(" ====\r\n").Append(inhalt).Append("\r\n");
+        }
+
+        async void AbsturzSenden()
+        {
+            string inhalt;
+            Dictionary<string, object> zusatz;
+            if (!BerichtSammeln(out inhalt, out zusatz)) return;
             knopfAbsturzSenden.IsEnabled = false;
             knopfAbsturzNein.IsEnabled = false;
             AbsturzStatusZeigen(Farben.Gedaempft, "Sende den Bericht …");
