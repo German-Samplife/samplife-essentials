@@ -662,6 +662,9 @@
                          VerticalScrollBarVisibility="Auto"/>
               </Border>
               <TextBlock x:Name="AbsturzHinweis" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0"/>
+              <!-- Genau den Text zeigen, der gesendet wuerde (Editor), bevor der Spieler auf Senden klickt -->
+              <Button x:Name="KnopfAbsturzAnsehen" Style="{StaticResource Verweis}" Content="Ansehen, was gesendet wird" HorizontalAlignment="Left"
+                      Margin="0,8,0,0"/>
             </StackPanel>
             <TextBlock x:Name="AbsturzStatus" FontSize="14" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
