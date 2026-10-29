@@ -248,7 +248,8 @@ namespace SamplifeEssentials
         /// Wie SA-MP startet. Liegt im GTA-Verzeichnis eine samp.dll, entscheidet sie: passende Version mit samp.exe
         /// startet ueber samp.exe, ohne samp.exe wird sie geladen, eine andere Version haelt den Start an (sie wird nie
         /// ersetzt). Ohne samp.dll im GTA-Verzeichnis: eigene Kopie oder die des open.mp-Launchers laden, sonst
-        /// samp_client einrichten.
+        /// samp_client einrichten. Die Kopie reicht nur, wenn auch die uebrigen Dateien von SA-MP im GTA-Verzeichnis liegen
+        /// (SampDateien); hat jemand SA-MP dort deinstalliert, richtet der Launcher sie wieder ein.
         /// </summary>
         public SampPlan SampPlanen()
         {
@@ -281,7 +282,7 @@ namespace SamplifeEssentials
             string version;
             bool vonOpenMp;
             var dll = SampStart.DllFinden(manifest, out version, out vonOpenMp);
-            if (dll != "")
+            if (dll != "" && SampDateienDa(gta))
             {
                 plan.Art = "dll";
                 plan.Dll = dll;
@@ -297,6 +298,26 @@ namespace SamplifeEssentials
             }
             plan.Grund = "Im GTA-Verzeichnis fehlt SA-MP " + Benoetigt(manifest) + ". Installiere es in diesen Ordner.";
             return plan;
+        }
+
+        // Was SA-MP ausser samp.dll im GTA-Verzeichnis braucht (Paket samp-client-0.3.7-R1-dateien.zip). Fehlt eins, startet
+        // das Spiel mit der geladenen samp.dll nicht richtig.
+        static readonly string[] SampDateien =
+        {
+            "samp.saa", "bass.dll", "gtaweap3.ttf", "sampaux3.ttf", "sampgui.png", "mouse.png",
+            @"SAMP\SAMP.img", @"SAMP\SAMPCOL.img", @"SAMP\SAMP.ide", @"SAMP\CUSTOM.ide", @"SAMP\custom.img", @"SAMP\SAMP.ipl",
+            @"SAMP\samaps.txd", @"SAMPlanktex.txd"
+        };
+
+        static bool SampDateienDa(string gta)
+        {
+            try
+            {
+                foreach (var datei in SampDateien)
+                    if (!File.Exists(Path.Combine(gta, datei))) return false;
+                return true;
+            }
+            catch (Exception) { return false; }
         }
 
         /// <summary>Leer, wenn gestartet werden kann; sonst der Grund (Name, Server, SA-MP).</summary>

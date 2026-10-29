@@ -639,7 +639,8 @@
         </StackPanel>
       </Grid>
 
-      <!-- Absturzbericht: SA-MP hat seit dem letzten Start eine neue crashinfo.txt geschrieben (src/Absturzbericht.cs) -->
+      <!-- Absturzbericht: SA-MP hat seit dem letzten Start eine neue crashinfo.txt geschrieben (src/Absturzbericht.cs);
+           dasselbe Fenster fragt nach einer Diagnose, wenn SampVoice die Grafik von GTA nicht gefunden hat (src/Diagnose.cs) -->
       <Grid x:Name="AbsturzFenster" Grid.RowSpan="3" Background="#A6000000" Visibility="Collapsed">
         <Border Width="620" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
                 VerticalAlignment="Center">
@@ -652,14 +653,13 @@
                        FontWeight="Bold" Margin="0,16,0,0"/>
             <TextBlock x:Name="AbsturzText" Foreground="{StaticResource Gedaempft}" FontSize="15" TextWrapping="Wrap" Margin="0,6,0,0"/>
             <StackPanel x:Name="AbsturzEingabe" Margin="0,18,0,0">
-              <TextBlock Text="Was hast du gerade gemacht? (freiwillig)" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
+              <TextBlock x:Name="AbsturzFrage" Text="Was hast du gerade gemacht? (freiwillig)" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
               <Border Style="{StaticResource Feld}" Height="104" Margin="0,6,0,0">
                 <TextBox x:Name="AbsturzKommentar" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
                          CaretBrush="White" Padding="12,10" FontSize="14" TextWrapping="Wrap" AcceptsReturn="True" MaxLength="1000"
                          VerticalScrollBarVisibility="Auto"/>
               </Border>
-              <TextBlock Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0"
-                         Text="Mitgeschickt werden die Datei crashinfo.txt von SA-MP, dein Name im Spiel, die Version des Launchers und deine Windows-Version."/>
+              <TextBlock x:Name="AbsturzHinweis" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0"/>
             </StackPanel>
             <TextBlock x:Name="AbsturzStatus" FontSize="14" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">

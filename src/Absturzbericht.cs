@@ -12,8 +12,8 @@ namespace SamplifeEssentials
     /// Absturzberichte: Stuerzt GTA San Andreas mit SA-MP ab, schreibt SA-MP die Datei crashinfo.txt nach
     /// „Eigene Dokumente\GTA San Andreas User Files\SAMP“. Ist der Launcher noch offen, fragt er gleich
     /// nach dem Ende des Spiels (Fenster.SpielBeendet), sonst beim naechsten Start, und bietet an, sie an die Adresse server.absturzbericht aus der Liste zu schicken (Website: /api/launcher/crash).
-    /// Mitgeschickt werden nur Name im Spiel, Version des Launchers, Windows-Version, Zeitpunkt, der Inhalt der Datei und
-    /// ein freiwilliger Kommentar. Ob ein Absturz schon gemeldet oder abgelehnt ist, merkt sich Einstellungen.AbsturzGemeldet.
+    /// Mitgeschickt werden nur Name im Spiel, Version des Launchers, Windows-Version, Zeitpunkt, der Inhalt der Datei,
+    /// ein freiwilliger Kommentar und, falls vorhanden, die DLLs im Spiel und die Logs von SampVoice und samp-cef (Diagnose). Ob ein Absturz schon gemeldet oder abgelehnt ist, merkt sich Einstellungen.AbsturzGemeldet.
     /// </summary>
     public static class Absturzbericht
     {
@@ -85,8 +85,12 @@ namespace SamplifeEssentials
                 + (Environment.Is64BitOperatingSystem ? "64 Bit" : "32 Bit");
         }
 
-        /// <summary>Schickt den Bericht. Rueckgabe leer bei Erfolg (nummer = Nummer des Berichts), sonst der Grund.</summary>
-        public static string Senden(string url, string name, string kommentar, DateTime zeitUtc, string inhalt, bool testmodus, out int nummer)
+        /// <summary>
+        /// Schickt den Bericht. Rueckgabe leer bei Erfolg (nummer = Nummer des Berichts), sonst der Grund. zusatz: weitere Felder
+        /// (Diagnose: art, befund, module, svlog, ceflog).
+        /// </summary>
+        public static string Senden(string url, string name, string kommentar, DateTime zeitUtc, string inhalt, bool testmodus, out int nummer,
+            Dictionary<string, object> zusatz = null)
         {
             nummer = 0;
             Uri adresse;
@@ -103,6 +107,7 @@ namespace SamplifeEssentials
                 { "name", name }, { "launcher", Programm.Version }, { "windows", Windows() }, { "zeit", Iso(zeitUtc) },
                 { "crashinfo", inhalt }, { "kommentar", kommentar }
             };
+            if (zusatz != null) foreach (var feld in zusatz) felder[feld.Key] = feld.Value;
             var daten = Encoding.UTF8.GetBytes(serialisierer.Serialize(felder));
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var anfrage = (HttpWebRequest)WebRequest.Create(adresse);
