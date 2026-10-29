@@ -519,6 +519,19 @@ def main():
         weg = subprocess.run([EXE, '--still', '--test', '--deinstallieren', '--gta', gta, '--appdaten', ad25], timeout=120).returncode
         pruefe(weg == 0 and lesen(gta, 'samp.dll') == b'samp-0.3.7-R3' and lesen(gta, 'samp.saa') == b'saa von R3',
                'Deinstallieren holt das bisherige SA-MP zurueck')
+        print('25c. Andere SA-MP-Version (0.3.DL) bei Gruendlich pruefen: erst Zustimmung, dann Pakete fuer 0.3.7-R1')
+        gta = spiel_anlegen(os.path.join(arbeit, 'dl'), samp=b'samp-0.3.DL')
+        ad25c = os.path.join(arbeit, 'appdaten-25c')
+        pruefe(starten(gta, url5, '--gruendlich', '--appdaten', ad25c) == 4,
+               'ohne Zustimmung: Rueckgabe 4 mit Grund, nichts nach Version geladen')
+        pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.DL' and not os.path.exists(os.path.join(gta, 'sampvoice.asi')),
+               'ohne Zustimmung nichts veraendert')
+        pruefe(starten(gta, url5, '--gruendlich', '--samp-ersetzen', '--appdaten', ad25c) == 0, 'mit Zustimmung: Rueckgabe 0')
+        pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R1', 'SA-MP 0.3.7-R1 eingerichtet')
+        pruefe(lesen(gta, 'sampvoice.asi') == b'voice r1', 'SampVoice fuer 0.3.7-R1 eingeplant und installiert')
+        gesichert = [d for _, _, ds in os.walk(os.path.join(gta, 'samplife-essentials-sicherung')) for d in ds]
+        pruefe('samp.dll' in gesichert, 'bisherige samp.dll (0.3.DL) gesichert')
+
         gta = ohne_samp(os.path.join(arbeit, 'ohne-samp2'))
         boese_liste = launcher_manifest('samp-boese.json', [{'id': 'b', 'name': 'Boese', 'pakete': [paket('samp-boese.zip', boeses_samp)]}])
         pruefe(starten(gta, boese_liste) == 1, 'andere Komponente darf samp.dll nicht ablegen: Rueckgabe 1')
