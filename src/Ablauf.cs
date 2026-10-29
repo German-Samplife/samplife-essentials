@@ -248,7 +248,8 @@ namespace SamplifeEssentials
         /// Wie SA-MP startet. Liegt im GTA-Verzeichnis eine samp.dll, entscheidet sie: passende Version mit samp.exe
         /// startet ueber samp.exe, ohne samp.exe wird sie geladen, eine andere Version haelt den Start an (sie wird nie
         /// ersetzt). Ohne samp.dll im GTA-Verzeichnis: eigene Kopie oder die des open.mp-Launchers laden, sonst
-        /// samp_client einrichten.
+        /// samp_client einrichten. Die Kopie reicht nur, wenn auch die uebrigen Dateien von SA-MP im GTA-Verzeichnis liegen
+        /// (SampDateien); hat jemand SA-MP dort deinstalliert, richtet der Launcher sie wieder ein.
         /// </summary>
         public SampPlan SampPlanen()
         {
@@ -281,7 +282,7 @@ namespace SamplifeEssentials
             string version;
             bool vonOpenMp;
             var dll = SampStart.DllFinden(manifest, out version, out vonOpenMp);
-            if (dll != "")
+            if (dll != "" && SampDateienDa(gta))
             {
                 plan.Art = "dll";
                 plan.Dll = dll;
@@ -297,6 +298,22 @@ namespace SamplifeEssentials
             }
             plan.Grund = "Im GTA-Verzeichnis fehlt SA-MP " + Benoetigt(manifest) + ". Installiere es in diesen Ordner.";
             return plan;
+        }
+
+        // Woran der Launcher erkennt, dass SA-MP ausser samp.dll im GTA-Verzeichnis liegt (aus dem Paket
+        // samp-client-0.3.7-R1-dateien.zip). Deinstalliert jemand SA-MP, sind sie weg, und das Spiel startet mit der
+        // geladenen samp.dll nicht richtig. Fehlt nur eine andere Datei, legt samp_client sie beim Einrichten mit hin.
+        static readonly string[] SampDateien = { "samp.saa", @"SAMP\SAMP.img" };
+
+        static bool SampDateienDa(string gta)
+        {
+            try
+            {
+                foreach (var datei in SampDateien)
+                    if (!File.Exists(Path.Combine(gta, datei))) return false;
+                return true;
+            }
+            catch (Exception) { return false; }
         }
 
         /// <summary>Leer, wenn gestartet werden kann; sonst der Grund (Name, Server, SA-MP).</summary>

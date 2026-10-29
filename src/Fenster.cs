@@ -188,12 +188,16 @@ namespace SamplifeEssentials
         bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
         // Absturzbericht (src/Absturzbericht.cs): Fenster ueber dem Launcher, einmal je Start geprueft
         readonly FrameworkElement absturzFenster, absturzEingabe;
-        readonly TextBlock absturzTitel, absturzText, absturzStatus, absturzSymbol;
+        readonly TextBlock absturzTitel, absturzText, absturzStatus, absturzSymbol, absturzFrage, absturzHinweis;
         readonly Border absturzKreis;
         readonly TextBox absturzKommentar;
         readonly Button knopfAbsturzSenden, knopfAbsturzNein;
         DateTime absturzZeit;
         bool absturzGeprueft, absturzGesendet;
+        // Dasselbe Fenster fragt nach einer Diagnose (src/Diagnose.cs), wenn SampVoice die Grafik von GTA nicht gefunden hat;
+        // einmal je Start des Launchers
+        bool absturzIstDiagnose, diagnoseGefragt;
+        string diagnoseSvLog = "", diagnoseCefLog = "";
         // Andere SA-MP-Version im GTA-Verzeichnis: vor dem Start fragen, ob der Launcher die passende einrichten soll
         readonly FrameworkElement sampFenster;
         readonly TextBlock sampText;
@@ -206,6 +210,11 @@ namespace SamplifeEssentials
         DateTime spielStartUtc;
         bool spielGefunden, spielFensterDa;
         string spielWarnung = "";
+        // DLLs in gta_sa.exe (Diagnose.ModuleLesen), einmal je Spiel, sobald das Fenster eine Weile steht
+        DateTime spielFensterUtc;
+        bool spielModuleGelesen;
+        string spielModule = "";
+        static readonly TimeSpan ModulWartezeit = TimeSpan.FromSeconds(40);
         // So lange wartet der Launcher auf gta_sa.exe, bevor er wieder bereit ist
         static readonly TimeSpan SpielWartezeit = TimeSpan.FromSeconds(60);
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
@@ -304,6 +313,8 @@ namespace SamplifeEssentials
             absturzText = Finde<TextBlock>("AbsturzText");
             absturzStatus = Finde<TextBlock>("AbsturzStatus");
             absturzSymbol = Finde<TextBlock>("AbsturzSymbol");
+            absturzFrage = Finde<TextBlock>("AbsturzFrage");
+            absturzHinweis = Finde<TextBlock>("AbsturzHinweis");
             absturzKreis = Finde<Border>("AbsturzKreis");
             absturzKommentar = Finde<TextBox>("AbsturzKommentar");
             knopfAbsturzSenden = Finde<Button>("KnopfAbsturzSenden");
@@ -1221,6 +1232,8 @@ namespace SamplifeEssentials
             spielStartUtc = DateTime.UtcNow;
             spielGefunden = false;
             spielFensterDa = false;
+            spielModuleGelesen = false;
+            spielModule = "";
             spielWarnung = warnung
                 ? "Die Anmeldung beim Server hat aber nicht geklappt, deshalb lässt dich der Server vielleicht nicht herein. Der Grund steht unten."
                 : "";
@@ -1248,12 +1261,14 @@ namespace SamplifeEssentials
                 if (fenster && !spielFensterDa)
                 {
                     spielFensterDa = true;
+                    spielFensterUtc = DateTime.UtcNow;
                     knopfSpielen.Content = "Spiel läuft";
                     titel.Text = "Spiel läuft";
                     untertitel.Text = spielWarnung != ""
                         ? "Das Spiel läuft. " + spielWarnung
                         : "Viel Spaß auf German Samplife. Den Launcher kannst du offen lassen oder schließen, das Spiel läuft weiter.";
                 }
+                if (spielFensterDa && !spielModuleGelesen && DateTime.UtcNow - spielFensterUtc > ModulWartezeit) SpielModuleLesen();
                 return;
             }
             if (spielGefunden)
@@ -1279,7 +1294,33 @@ namespace SamplifeEssentials
             {
                 absturzGeprueft = true;
                 AbsturzZeigen(zeit.Value);
+                return;
             }
+            DiagnosePruefen();
+        }
+
+        /// <summary>Liest die DLLs in gta_sa.exe im Hintergrund und merkt sie fuer einen Bericht (src/Diagnose.cs).</summary>
+        async void SpielModuleLesen()
+        {
+            spielModuleGelesen = true;
+            var gta = Gta;
+            var text = await Task.Run(() => Diagnose.ModuleLesen(gta));
+            if (text == "") return;
+            spielModule = text;
+            Diagnose.ModuleMerken(text);
+        }
+
+        /// <summary>Nach dem Spiel: Hat SampVoice die Grafik von GTA nicht gefunden, nach einer Diagnose fragen.</summary>
+        void DiagnosePruefen()
+        {
+            if (diagnoseGefragt) return;
+            var svlog = Diagnose.SvLogLesen(Gta, spielStartUtc);
+            if (!Diagnose.SampVoiceOhneGrafik(svlog)) return;
+            diagnoseGefragt = true;
+            diagnoseSvLog = svlog;
+            diagnoseCefLog = Diagnose.CefLogsLesen(Gta, spielStartUtc);
+            if (spielModule == "") spielModule = Diagnose.GemerkteModule(spielStartUtc, DateTime.UtcNow);
+            DiagnoseZeigen();
         }
 
         /// <summary>
@@ -1548,9 +1589,31 @@ namespace SamplifeEssentials
         void AbsturzZeigen(DateTime zeitUtc)
         {
             absturzZeit = zeitUtc;
-            absturzGesendet = false;
+            absturzIstDiagnose = false;
             absturzTitel.Text = "Dein Spiel ist abgestürzt";
             absturzText.Text = AbsturzZeitText() + " Schick uns den Bericht von SA-MP, damit wir den Fehler finden und beheben können.";
+            absturzFrage.Text = "Was hast du gerade gemacht? (freiwillig)";
+            absturzHinweis.Text = "Mitgeschickt werden die Datei crashinfo.txt von SA-MP, die Liste der Programme, die im Spiel geladen waren, "
+                + "dein Name im Spiel, die Version des Launchers und deine Windows-Version.";
+            FensterBerichtZeigen();
+        }
+
+        void DiagnoseZeigen()
+        {
+            absturzZeit = DateTime.UtcNow;
+            absturzIstDiagnose = true;
+            absturzTitel.Text = "Sprach-Chat hat nicht geladen";
+            absturzText.Text = "SampVoice hat in diesem Spiel die Grafik von GTA nicht gefunden. Deshalb ging der Sprach-Chat nicht, und oft "
+                + "laden dann auch die Browser-Oberflächen nicht richtig. Schick uns die Diagnose, damit wir sehen, welches Programm sich dazwischenhängt.";
+            absturzFrage.Text = "Was ging nicht? (freiwillig)";
+            absturzHinweis.Text = "Mitgeschickt werden die Liste der Programme, die im Spiel geladen waren, die Logs von SampVoice und CEF, "
+                + "dein Name im Spiel, die Version des Launchers und deine Windows-Version. Dein Windows-Benutzername wird dabei entfernt.";
+            FensterBerichtZeigen();
+        }
+
+        void FensterBerichtZeigen()
+        {
+            absturzGesendet = false;
             absturzSymbol.Text = "\uE7BA";
             absturzSymbol.Foreground = Farben.Warnung;
             absturzKreis.Background = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xB5, 0x47));
@@ -1559,7 +1622,7 @@ namespace SamplifeEssentials
             knopfAbsturzNein.Visibility = Visibility.Visible;
             knopfAbsturzNein.IsEnabled = true;
             knopfAbsturzSenden.IsEnabled = true;
-            knopfAbsturzSenden.Content = "Bericht senden";
+            knopfAbsturzSenden.Content = absturzIstDiagnose ? "Diagnose senden" : "Bericht senden";
             absturzFenster.Visibility = Visibility.Visible;
         }
 
@@ -1572,12 +1635,27 @@ namespace SamplifeEssentials
 
         async void AbsturzSenden()
         {
-            string inhalt;
-            try { inhalt = Absturzbericht.Lesen(); }
-            catch (Exception fehler)
+            var inhalt = "";
+            var zusatz = new Dictionary<string, object>();
+            if (absturzIstDiagnose)
             {
-                AbsturzStatusZeigen(Farben.Fehler, "Die Datei crashinfo.txt ließ sich nicht lesen: " + fehler.Message);
-                return;
+                zusatz["art"] = "diagnose";
+                zusatz["befund"] = "SampVoice hat das Grafikgerät von GTA nicht gefunden";
+                zusatz["svlog"] = diagnoseSvLog;
+                zusatz["ceflog"] = diagnoseCefLog;
+                if (spielModule != "") zusatz["module"] = spielModule;
+            }
+            else
+            {
+                try { inhalt = Absturzbericht.Lesen(); }
+                catch (Exception fehler)
+                {
+                    AbsturzStatusZeigen(Farben.Fehler, "Die Datei crashinfo.txt ließ sich nicht lesen: " + fehler.Message);
+                    return;
+                }
+                // DLLs aus dem Spiel, das abgestuerzt ist: gelesen hoechstens drei Stunden davor
+                var module = Diagnose.GemerkteModule(absturzZeit.AddHours(-3), absturzZeit.AddMinutes(1));
+                if (module != "") zusatz["module"] = module;
             }
             knopfAbsturzSenden.IsEnabled = false;
             knopfAbsturzNein.IsEnabled = false;
@@ -1591,7 +1669,7 @@ namespace SamplifeEssentials
             var fehlerText = await Task.Run(() =>
             {
                 int n;
-                var f = Absturzbericht.Senden(url, spieler, kommentar, zeit, inhalt, testmodus, out n);
+                var f = Absturzbericht.Senden(url, spieler, kommentar, zeit, inhalt, testmodus, out n, zusatz);
                 nummer = n;
                 return f;
             });
@@ -1611,7 +1689,7 @@ namespace SamplifeEssentials
         {
             absturzGesendet = true;
             absturzTitel.Text = "Danke";
-            absturzText.Text = AbsturzZeitText();
+            absturzText.Text = absturzIstDiagnose ? "Die Diagnose ist unterwegs zum Team." : AbsturzZeitText();
             absturzSymbol.Text = "\uE73E";
             absturzSymbol.Foreground = Farben.Erfolg;
             absturzKreis.Background = new SolidColorBrush(Color.FromArgb(0x26, 0x39, 0xD8, 0x74));
@@ -1634,7 +1712,7 @@ namespace SamplifeEssentials
         /// <summary>Gesendet oder abgelehnt: Fuer diesen Absturz kommt der Hinweis nicht wieder.</summary>
         void AbsturzMerken()
         {
-            if (optionen.Bildschirmfoto != "") return;
+            if (optionen.Bildschirmfoto != "" || absturzIstDiagnose) return;
             Absturzbericht.Merken(einstellungen, absturzZeit);
         }
 
@@ -1734,7 +1812,7 @@ namespace SamplifeEssentials
                 return;
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
-                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere")
+                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1748,6 +1826,11 @@ namespace SamplifeEssentials
                     AbsturzZeigen(new DateTime(2026, 10, 26, 20, 43, 0, DateTimeKind.Utc));
                     absturzKommentar.Text = "Bin gerade aus dem Autohaus gefahren, dann ist das Spiel eingefroren.";
                     if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
+                }
+                if (zustand == "diagnose")
+                {
+                    DiagnoseZeigen();
+                    absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
                 }
                 if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
                 return;

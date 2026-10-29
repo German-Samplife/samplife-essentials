@@ -567,6 +567,10 @@ def main():
         openmp_dll = os.path.join(appdaten, 'mp.open.launcher', 'samp', '0.3.7-R1', 'samp.dll')
         open(openmp_dll, 'wb').write(dll_daten)
         gta = nur_gta(os.path.join(arbeit, 'laden1'))
+        # Die Dateien von SA-MP liegen schon im GTA-Verzeichnis, nur samp.dll nicht
+        open(os.path.join(gta, 'samp.saa'), 'wb').write(b'saa')
+        os.makedirs(os.path.join(gta, 'SAMP'))
+        open(os.path.join(gta, 'SAMP', 'SAMP.img'), 'wb').write(b'img')
         pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', appdaten) == 0, 'Rueckgabe 0')
         parameter = warten_auf(os.path.join(gta, 'gta-gestartet.txt'))
         pruefe(parameter == '-c|-n|Max_Mustermann|-h|127.0.0.1|-p|7777', 'gta_sa.exe mit den Parametern von SA-MP gestartet')
@@ -608,6 +612,17 @@ def main():
         pruefe(spielen(gta, url6, '--appdaten', appdaten) == 0, 'zweiter Start: Rueckgabe 0')
         pruefe(len([a for a in Stiller.abrufe if a.endswith('samp-r1.dll')]) == vorher, 'SA-MP nicht noch einmal geladen')
         pruefe(warten_auf(os.path.join(gta, 'gta-geladen.txt')) is not None, 'wieder geladen')
+
+        print('27b. samp.dll des open.mp-Launchers, aber SA-MP im GTA-Verzeichnis deinstalliert')
+        gta = nur_gta(os.path.join(arbeit, 'laden-ohne-dateien'))
+        pruefe(spielen(gta, lade_manifest('laden1.json'), '--appdaten', os.path.join(arbeit, 'appdaten-openmp')) == 4,
+               'ohne samp_client: Rueckgabe 4 statt Start ohne die Dateien von SA-MP')
+        pruefe(not os.path.exists(os.path.join(gta, 'gta-gestartet.txt')), 'nicht gestartet')
+        appdaten = os.path.join(arbeit, 'appdaten-openmp-eigen')
+        shutil.copytree(os.path.join(arbeit, 'appdaten-openmp'), appdaten)
+        pruefe(spielen(gta, url6, '--appdaten', appdaten) == 0, 'mit samp_client: Rueckgabe 0')
+        pruefe(lesen(gta, 'samp.saa') == b'saa vom paket' and lesen(gta, 'SAMP', 'SAMP.img') == b'img', 'Dateien von SA-MP wieder eingerichtet')
+        pruefe(warten_auf(os.path.join(gta, 'gta-geladen.txt')) is not None, 'danach gestartet')
 
         print('28. Liste: Ablage nur fuer samp_client')
         gta = nur_gta(os.path.join(arbeit, 'laden3'))
