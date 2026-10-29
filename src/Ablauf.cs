@@ -83,6 +83,10 @@ namespace SamplifeEssentials
                 }
                 var sampEinrichten = plan.Art == "einrichten";
                 if (SampVersion == "") SampVersion = plan.Version;
+                // Andere SA-MP-Version ohne Zustimmung und ohne gewählte Version: nichts nach Version laden. Sonst scheiterte
+                // schon die erste versionsgebundene Komponente mit „… gibt es nicht für deine SA-MP-Version“, ohne dass der
+                // Spieler erfährt, warum (auch bei „Gründlich prüfen“).
+                if (plan.AndereVersion && !sampErsetzen && SampVersion == "") return Fehlschlag(ergebnis, plan.Grund, 4);
 
                 if (MitStart)
                 {

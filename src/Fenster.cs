@@ -199,6 +199,8 @@ namespace SamplifeEssentials
         readonly TextBlock sampText;
         readonly Button knopfSampEinrichten, knopfSampAbbrechen;
         bool sampErsetzen;          // nur fuer den naechsten Start nach „Einrichten“, wird nicht gemerkt
+        bool sampNurPruefen;        // die Frage kam von „Gründlich prüfen“: nach „Einrichten“ nur pruefen, nicht starten
+        bool sampAndere;            // im GTA-Verzeichnis liegt eine andere SA-MP-Version, die der Launcher einrichten kann
         // Nach dem Start: Der Launcher bleibt offen und beobachtet gta_sa.exe (SpielBeobachten)
         DispatcherTimer spielTimer;
         DateTime spielStartUtc;
@@ -317,7 +319,7 @@ namespace SamplifeEssentials
             {
                 sampFenster.Visibility = Visibility.Collapsed;
                 sampErsetzen = true;
-                Starten(false);
+                Starten(sampNurPruefen);
             };
             protokollFenster.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e)
             {
@@ -513,6 +515,7 @@ namespace SamplifeEssentials
             verzeichnisGueltig = false;
             brauchtAdmin = false;
             sampVersion = "";
+            sampAndere = false;
             if (verzeichnis == "")
             {
                 PfadMeldung("\uE946", Farben.Gedaempft, "Wähle den Ordner, in dem gta_sa.exe liegt.");
@@ -538,6 +541,7 @@ namespace SamplifeEssentials
                     // Wie SA-MP startet, entscheidet derselbe Plan wie beim Klick auf „Spielen“ (Ablauf.Planen)
                     var plan = Ablauf.Planen(verzeichnis, manifest);
                     sampVersion = plan.Version;
+                    sampAndere = plan.AndereVersion && manifest.SampClient != null && manifest.SampVersionen.Count > 0;
                     switch (plan.Art)
                     {
                         case "exe":
@@ -804,7 +808,10 @@ namespace SamplifeEssentials
                 versionTitel.Foreground = Farben.Warnung;
                 versionPflicht.Text = "Der Server läuft ausschließlich mit SA-MP " + unterstuetzt + ".";
                 versionHinweis.Text = "Der Launcher erkennt die Version an der samp.dll in deinem GTA-Verzeichnis. Liegt dort eine andere Version, "
-                    + "zum Beispiel 0.3.7-R3 oder 0.3.DL, installiere SA-MP " + unterstuetzt + " in diesen Ordner.";
+                    + "zum Beispiel 0.3.7-R3 oder 0.3.DL, "
+                    + (manifest.SampClient != null
+                        ? "fragt er beim Klick auf „Spielen“, ob er SA-MP " + unterstuetzt + " für dich einrichten soll."
+                        : "installiere SA-MP " + unterstuetzt + " in diesen Ordner.");
                 versionen.Visibility = Visibility.Collapsed;
             }
             else
@@ -831,18 +838,29 @@ namespace SamplifeEssentials
         }
 
         /// <summary>Groesse, Verfuegbarkeit und – wenn schon moeglich – der Stand jeder Komponente auf der Platte.</summary>
+        /// <summary>
+        /// Version, mit der die Liste die Komponenten zeigt: die erkannte, bei einer anderen Version, die der Launcher auf
+        /// Wunsch einrichtet, die Zielversion (sonst sähe es aus, als gäbe es für den Spieler nichts).
+        /// </summary>
+        string ListenVersion()
+        {
+            if (sampVersion == "" && sampAndere) return manifest.SampVersionen[0].Name;
+            return sampVersion;
+        }
+
         void KomponentenAbgleichen()
         {
+            var listenVersion = manifest != null ? ListenVersion() : sampVersion;
             foreach (var zeile in komponenten)
             {
-                var pakete = Manifest.PassendePakete(zeile.Komponente, sampVersion);
+                var pakete = Manifest.PassendePakete(zeile.Komponente, listenVersion);
                 if (pakete.Count == 0)
                 {
                     zeile.Verfuegbar = false;
                     // Den Schritt nennen, der wirklich als naechster dran ist: erst das Verzeichnis, dann die Version
                     if (!bestaetigt || !verzeichnisGueltig) zeile.Info = "bestätige zuerst oben dein GTA-Verzeichnis";
-                    else if (sampVersion == "") zeile.Info = "wähle oben deine SA-MP-Version";
-                    else zeile.Info = "nicht für SA-MP " + sampVersion;
+                    else if (listenVersion == "") zeile.Info = "wähle oben deine SA-MP-Version";
+                    else zeile.Info = "nicht für SA-MP " + listenVersion;
                     zeile.InfoFarbe = Farben.Warnung;
                 }
                 else
@@ -873,11 +891,11 @@ namespace SamplifeEssentials
         async void VorschauPruefen()
         {
             var runde = ++pruefRunde;
-            if (manifest == null || !bestaetigt || !verzeichnisGueltig || sampVersion == "" || modus == Modus.Laeuft) return;
+            if (manifest == null || !bestaetigt || !verzeichnisGueltig || ListenVersion() == "" || modus == Modus.Laeuft) return;
             // Wie bei FremdePruefen: nur mit laufendem Fenster, sonst kaeme das Warten auf einem fremden Thread zurueck
             if (!Wurzel.IsLoaded) return;
             var gta = Gta;
-            var version = sampVersion;
+            var version = ListenVersion();
             var liste = manifest;
             var verwaltet = manifest.Verwaltet(GewaehlteOptionale());
             List<Pruefung> ergebnis;
@@ -1092,17 +1110,20 @@ namespace SamplifeEssentials
         {
             if (manifest == null || modus != Modus.Spielen) return;
             if (!nurPruefen && !NamePruefen(true)) { name.Focus(); return; }
-            // Andere SA-MP-Version: erst fragen. „Einrichten“ ruft Starten noch einmal auf, „Abbrechen“ laesst alles, wie es ist.
-            if (!nurPruefen && !sampErsetzen)
+            // Andere SA-MP-Version: erst fragen, auch bei „Gründlich prüfen“ (sonst laedt der Ablauf Pakete fuer eine Version,
+            // die es nicht gibt, und bricht mit „… gibt es nicht für deine SA-MP-Version“ ab). „Einrichten“ ruft Starten noch
+            // einmal auf, „Abbrechen“ laesst alles, wie es ist.
+            if (!sampErsetzen)
             {
                 var plan = Ablauf.Planen(Gta, manifest);
                 if (plan.AndereVersion && manifest.SampClient != null && manifest.SampVersionen.Count > 0)
                 {
+                    sampNurPruefen = nurPruefen;
                     SampFensterZeigen(plan);
                     return;
                 }
             }
-            var ersetzen = sampErsetzen && !nurPruefen;
+            var ersetzen = sampErsetzen;
             sampErsetzen = false;
 
             einstellungen.Gta = Gta;

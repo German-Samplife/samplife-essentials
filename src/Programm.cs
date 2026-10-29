@@ -56,7 +56,7 @@ namespace SamplifeEssentials
 
     public static class Programm
     {
-        public const string Version = "2.6.1";
+        public const string Version = "2.6.2";
         public const string StandardManifest = "https://www.german-samplife.de/essentials/manifest.json";
         // Fruehere Adresse der Website; dient als Ersatz, falls die neue nicht antwortet
         public const string AusweichManifest = "https://samplife.isjustfucking.pro/essentials/manifest.json";
@@ -315,7 +315,10 @@ namespace SamplifeEssentials
 
                 var sampVersion = GtaVerzeichnis.SampVersion(gta, manifest);
                 if (sampVersion == "") sampVersion = optionen.Samp;
-                if (sampVersion == "" && manifest.SampVersionen.Count == 1 && !optionen.Spielen) sampVersion = manifest.SampVersionen[0].Name;
+                // Liegt eine andere Version im Verzeichnis, die die Liste selbst einrichten kann (samp_client), nicht einfach die
+                // eine Version der Liste annehmen: Ohne --samp-ersetzen hielte der Ablauf sonst die fremde Version für passend
+                var andere = manifest.SampClient != null && Ablauf.Planen(gta, manifest).AndereVersion;
+                if (sampVersion == "" && manifest.SampVersionen.Count == 1 && !optionen.Spielen && !andere) sampVersion = manifest.SampVersionen[0].Name;
 
                 var ablauf = new Ablauf
                 {
