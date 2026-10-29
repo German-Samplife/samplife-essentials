@@ -529,7 +529,6 @@ def main():
         pruefe(starten(gta, url5, '--gruendlich', '--samp-ersetzen', '--appdaten', ad25c) == 0, 'mit Zustimmung: Rueckgabe 0')
         pruefe(lesen(gta, 'samp.dll') == b'samp-0.3.7-R1', 'SA-MP 0.3.7-R1 eingerichtet')
         pruefe(lesen(gta, 'sampvoice.asi') == b'voice r1', 'SampVoice fuer 0.3.7-R1 eingeplant und installiert')
-        pruefe(lesen(gta, 'vorbisFile.dll') != b'alte fassung' or True, 'fremder ASI Loader verhindert nichts')
         gesichert = [d for _, _, ds in os.walk(os.path.join(gta, 'samplife-essentials-sicherung')) for d in ds]
         pruefe('samp.dll' in gesichert, 'bisherige samp.dll (0.3.DL) gesichert')
 
