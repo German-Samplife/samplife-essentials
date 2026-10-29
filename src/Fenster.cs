@@ -160,7 +160,7 @@ namespace SamplifeEssentials
         readonly TextBlock pfadSymbol, pfadStatus, listeStatus, prozent, fusszeile, pfadTitel, sucheText, titel, untertitel,
             hinweisText, nameStatus, neuStatus;
         readonly Button knopfSpielen, knopfAbbrechen, knopfProtokoll, knopfErneut, knopfDurchsuchen, knopfSuchen, knopfAnderer, knopfGruendlich,
-            knopfDeinstallieren, knopfAbschalten;
+            knopfDeinstallieren, knopfAbschalten, knopfProblem;
         // Fremde ASI Loader und Konflikte im GTA-Verzeichnis
         readonly FrameworkElement bereichFremd;
         readonly TextBlock fremdTitel;
@@ -196,8 +196,9 @@ namespace SamplifeEssentials
         bool absturzGeprueft, absturzGesendet;
         // Dasselbe Fenster fragt nach einer Diagnose (src/Diagnose.cs), wenn SampVoice die Grafik von GTA nicht gefunden hat;
         // einmal je Start des Launchers
-        bool absturzIstDiagnose, diagnoseGefragt;
-        string diagnoseSvLog = "", diagnoseCefLog = "";
+        // „Problem melden“ oeffnet es von Hand (diagnoseGemeldet)
+        bool absturzIstDiagnose, diagnoseGefragt, diagnoseGemeldet;
+        string diagnoseSvLog = "", diagnoseCefLog = "", diagnoseModule = "", diagnoseBefund = "";
         // Andere SA-MP-Version im GTA-Verzeichnis: vor dem Start fragen, ob der Launcher die passende einrichten soll
         readonly FrameworkElement sampFenster;
         readonly TextBlock sampText;
@@ -279,6 +280,8 @@ namespace SamplifeEssentials
             knopfDurchsuchen = Finde<Button>("KnopfDurchsuchen");
             knopfGruendlich = Finde<Button>("KnopfGruendlich");
             knopfDeinstallieren = Finde<Button>("KnopfDeinstallieren");
+            knopfProblem = Finde<Button>("KnopfProblem");
+            knopfProblem.Click += delegate { ProblemMelden(); };
             knopfAbschalten = Finde<Button>("KnopfAbschalten");
             bereichFremd = Finde<FrameworkElement>("BereichFremd");
             fremdTitel = Finde<TextBlock>("FremdTitel");
@@ -1084,6 +1087,8 @@ namespace SamplifeEssentials
             knopfGruendlich.IsEnabled = bereit && !brauchtAdmin;
             // Deinstallieren geht auch ohne Server-Liste, aber nur mit bestaetigtem Verzeichnis
             knopfDeinstallieren.IsEnabled = bestaetigt && verzeichnisGueltig;
+            knopfProblem.Visibility = manifest != null && manifest.Absturzbericht != "" ? Visibility.Visible : Visibility.Collapsed;
+            knopfProblem.IsEnabled = bestaetigt && verzeichnisGueltig;
         }
 
         void HauptknopfGedrueckt()
@@ -1319,8 +1324,26 @@ namespace SamplifeEssentials
             diagnoseGefragt = true;
             diagnoseSvLog = svlog;
             diagnoseCefLog = Diagnose.CefLogsLesen(Gta, spielStartUtc);
-            if (spielModule == "") spielModule = Diagnose.GemerkteModule(spielStartUtc, DateTime.UtcNow);
-            DiagnoseZeigen();
+            diagnoseModule = spielModule != "" ? spielModule : Diagnose.GemerkteModule(spielStartUtc, DateTime.UtcNow);
+            diagnoseBefund = "SampVoice hat das Grafikgerät von GTA nicht gefunden";
+            DiagnoseZeigen(false);
+        }
+
+        /// <summary>
+        /// „Problem melden“: Diagnose vom letzten Spiel (hoechstens drei Tage alt) schicken, auch wenn der Launcher selbst
+        /// nichts bemerkt hat, z. B. wenn nur die Browser-Oberflaechen nicht laden.
+        /// </summary>
+        void ProblemMelden()
+        {
+            if (modus != Modus.Spielen || manifest == null || manifest.Absturzbericht == "" || !verzeichnisGueltig) return;
+            var seit = DateTime.UtcNow.AddDays(-3);
+            diagnoseSvLog = Diagnose.SvLogLesen(Gta, seit);
+            diagnoseCefLog = Diagnose.CefLogsLesen(Gta, seit);
+            diagnoseModule = Diagnose.GemerkteModule(seit, DateTime.UtcNow);
+            diagnoseBefund = Diagnose.SampVoiceOhneGrafik(diagnoseSvLog)
+                ? "Vom Spieler gemeldet, SampVoice hat das Grafikgerät von GTA nicht gefunden"
+                : "Vom Spieler gemeldet";
+            DiagnoseZeigen(true);
         }
 
         /// <summary>
@@ -1455,6 +1478,7 @@ namespace SamplifeEssentials
             knopfSuchen.IsEnabled = !gesperrt;
             knopfGruendlich.IsEnabled = !gesperrt;
             knopfDeinstallieren.IsEnabled = !gesperrt;
+            knopfProblem.IsEnabled = !gesperrt;
             knopfAbschalten.IsEnabled = !gesperrt;
             bereichVersion.IsEnabled = !gesperrt;
             foreach (var zeile in komponenten) zeile.Gesperrt = gesperrt;
@@ -1598,14 +1622,18 @@ namespace SamplifeEssentials
             FensterBerichtZeigen();
         }
 
-        void DiagnoseZeigen()
+        void DiagnoseZeigen(bool gemeldet)
         {
             absturzZeit = DateTime.UtcNow;
             absturzIstDiagnose = true;
-            absturzTitel.Text = "Sprach-Chat hat nicht geladen";
-            absturzText.Text = "SampVoice hat in diesem Spiel die Grafik von GTA nicht gefunden. Deshalb ging der Sprach-Chat nicht, und oft "
-                + "laden dann auch die Browser-Oberflächen nicht richtig. Schick uns die Diagnose, damit wir sehen, welches Programm sich dazwischenhängt.";
-            absturzFrage.Text = "Was ging nicht? (freiwillig)";
+            diagnoseGemeldet = gemeldet;
+            absturzTitel.Text = gemeldet ? "Problem melden" : "Sprach-Chat hat nicht geladen";
+            absturzText.Text = gemeldet
+                ? "Geht der Sprach-Chat nicht oder laden die Browser-Oberflächen nicht, schick dem Team die Diagnose vom letzten Spiel "
+                    + "über den Launcher. Schreib kurz dazu, was nicht ging."
+                : "SampVoice hat in diesem Spiel die Grafik von GTA nicht gefunden. Deshalb ging der Sprach-Chat nicht, und oft "
+                    + "laden dann auch die Browser-Oberflächen nicht richtig. Schick uns die Diagnose, damit wir sehen, welches Programm sich dazwischenhängt.";
+            absturzFrage.Text = gemeldet ? "Was ging nicht?" : "Was ging nicht? (freiwillig)";
             absturzHinweis.Text = "Mitgeschickt werden die Liste der Programme, die im Spiel geladen waren, die Logs von SampVoice und CEF, "
                 + "dein Name im Spiel, die Version des Launchers und deine Windows-Version. Dein Windows-Benutzername wird dabei entfernt.";
             FensterBerichtZeigen();
@@ -1621,6 +1649,7 @@ namespace SamplifeEssentials
             absturzStatus.Visibility = Visibility.Collapsed;
             knopfAbsturzNein.Visibility = Visibility.Visible;
             knopfAbsturzNein.IsEnabled = true;
+            knopfAbsturzNein.Content = absturzIstDiagnose && diagnoseGemeldet ? "Abbrechen" : "Nicht senden";
             knopfAbsturzSenden.IsEnabled = true;
             knopfAbsturzSenden.Content = absturzIstDiagnose ? "Diagnose senden" : "Bericht senden";
             absturzFenster.Visibility = Visibility.Visible;
@@ -1639,11 +1668,17 @@ namespace SamplifeEssentials
             var zusatz = new Dictionary<string, object>();
             if (absturzIstDiagnose)
             {
+                if (diagnoseModule == "" && diagnoseSvLog == "")
+                {
+                    AbsturzStatusZeigen(Farben.Fehler, "Vom letzten Spiel gibt es noch nichts zu schicken. Starte das Spiel über den Launcher, "
+                        + "bleib etwa eine Minute im Spiel und melde es danach.");
+                    return;
+                }
                 zusatz["art"] = "diagnose";
-                zusatz["befund"] = "SampVoice hat das Grafikgerät von GTA nicht gefunden";
+                zusatz["befund"] = diagnoseBefund;
                 zusatz["svlog"] = diagnoseSvLog;
                 zusatz["ceflog"] = diagnoseCefLog;
-                if (spielModule != "") zusatz["module"] = spielModule;
+                if (diagnoseModule != "") zusatz["module"] = diagnoseModule;
             }
             else
             {
@@ -1774,6 +1809,8 @@ namespace SamplifeEssentials
             knopfSpielen.IsEnabled = true;
             knopfGruendlich.IsEnabled = true;
             knopfDeinstallieren.IsEnabled = true;
+            knopfProblem.Visibility = Visibility.Visible;
+            knopfProblem.IsEnabled = true;
 
             if (zustand == "passwort") serverpasswortHaken.IsChecked = true;
             if (zustand == "dateien" || zustand == "directx") DateienUmschalten();
@@ -1812,7 +1849,8 @@ namespace SamplifeEssentials
                 return;
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
-                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose")
+                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose"
+                || zustand == "problem")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1829,8 +1867,13 @@ namespace SamplifeEssentials
                 }
                 if (zustand == "diagnose")
                 {
-                    DiagnoseZeigen();
+                    DiagnoseZeigen(false);
                     absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
+                }
+                if (zustand == "problem")
+                {
+                    DiagnoseZeigen(true);
+                    absturzKommentar.Text = "Login und Handy laden nur manchmal, dann ist der Bildschirm leer.";
                 }
                 if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
                 return;

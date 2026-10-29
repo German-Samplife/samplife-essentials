@@ -630,6 +630,8 @@
         <TextBlock x:Name="Fusszeile" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,20,0"
                    Text="Der Launcher schreibt nur ins GTA-Verzeichnis und sichert vorher, was er ersetzt. Deine eigenen Mods fasst er nicht an."/>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <Button x:Name="KnopfProblem" Style="{StaticResource Nebenknopf}" Content="Problem melden" Height="40" FontSize="14" Margin="8,0,0,0" Visibility="Collapsed"
+                  ToolTip="Schickt dem Team die Programme und Logs vom letzten Spiel, wenn Sprach-Chat oder Browser-Oberflächen nicht gehen."/>
           <Button x:Name="KnopfDeinstallieren" Style="{StaticResource Nebenknopf}" Content="Deinstallieren" Height="40" FontSize="14" Margin="8,0,0,0"
                   ToolTip="Entfernt alles, was der Launcher eingerichtet hat, und holt ersetzte Dateien in der Fassung von vorher zurück."/>
           <Button x:Name="KnopfGruendlich" Style="{StaticResource Nebenknopf}" Content="Gründlich prüfen" Height="40" FontSize="14" Margin="8,0,0,0"

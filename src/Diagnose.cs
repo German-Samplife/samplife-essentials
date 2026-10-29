@@ -181,16 +181,21 @@ namespace SamplifeEssentials
                 && svlog.IndexOf("device interface", StringComparison.Ordinal) < 0;
         }
 
-        /// <summary>Logs von samp-cef (Ordner cef im GTA-Verzeichnis), die seit seitUtc geschrieben wurden.</summary>
+        /// <summary>
+        /// Logs von samp-cef, die seit seitUtc geschrieben wurden: cef_client.log im GTA-Verzeichnis und die Logs im Ordner cef.
+        /// </summary>
         public static string CefLogsLesen(string gta, DateTime seitUtc)
         {
             var text = new StringBuilder();
             try
             {
+                var dateien = new List<string> { Path.Combine(gta, "cef_client.log") };
                 var ordner = Path.Combine(gta, "cef");
-                if (!Directory.Exists(ordner)) return "";
-                var dateien = new List<string>(Directory.GetFiles(ordner, "*.log", SearchOption.TopDirectoryOnly));
-                dateien.AddRange(Directory.GetFiles(ordner, "*.txt", SearchOption.TopDirectoryOnly));
+                if (Directory.Exists(ordner))
+                {
+                    dateien.AddRange(Directory.GetFiles(ordner, "*.log", SearchOption.TopDirectoryOnly));
+                    dateien.AddRange(Directory.GetFiles(ordner, "*.txt", SearchOption.TopDirectoryOnly));
+                }
                 foreach (var datei in dateien)
                 {
                     var inhalt = LogLesen(datei, seitUtc);
