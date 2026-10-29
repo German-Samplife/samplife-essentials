@@ -54,7 +54,7 @@ Der gesamte Quelltext liegt in diesem Repository. Die `.exe` in den Releases bau
 | eine `samp.dll` in einer anderen Version | Fenster „Andere SA-MP-Version gefunden“: Mit „Einrichten“ sichert der Launcher das bisherige SA-MP und richtet `samp_client` ein (Punkt 14), mit „Abbrechen“ startet er nicht |
 | keine `samp.dll` | wie oben, mit der eigenen Kopie (`%LOCALAPPDATA%\German Samplife\Launcher\samp\<Version>\samp.dll`) oder der des open.mp-Launchers (`%LOCALAPPDATA%\mp.open.launcher\samp\<Version>\samp.dll`); gibt es keine, richtet der Launcher `samp_client` ein |
 
-Das Laden der `samp.dll` (`src/SampStart.cs`) macht es wie der [open.mp-Launcher](https://github.com/openmultiplayer/launcher/blob/master/src-tauri/src/injector.rs): `LoadLibraryW` im gerade gestarteten `gta_sa.exe`, bis zu zehn Versuche im Abstand einer halben Sekunde. Geladen wird nur eine `samp.dll`, deren Prüfsumme oder Dateiversion zu `samp_versionen` passt.
+Das Laden der `samp.dll` (`src/SampStart.cs`) macht es wie der [open.mp-Launcher](https://github.com/openmultiplayer/launcher/blob/master/src-tauri/src/injector.rs): `LoadLibraryW` im gerade gestarteten `gta_sa.exe`, das ab 2.7.2 wie bei `samp.exe` angehalten startet (`CREATE_SUSPENDED`) und erst nach dem Laden weiterläuft; vorher lief es gleich los, und samp-cef meldete auf langsamen Rechnern „unsupported SA:MP version“, weil es vor SA-MP fertig war, bis zu zehn Versuche im Abstand einer halben Sekunde. Geladen wird nur eine `samp.dll`, deren Prüfsumme oder Dateiversion zu `samp_versionen` passt.
 
 ### SA-MP-Client 0.3.7-R1 (Release `samp-client-0.3.7-R1`)
 

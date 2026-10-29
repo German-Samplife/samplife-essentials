@@ -12,7 +12,9 @@ namespace SamplifeEssentials
 {
     /// <summary>
     /// Start ohne samp.exe, so wie der open.mp-Launcher es macht (openmultiplayer/launcher, src-tauri/src/injector.rs):
-    /// gta_sa.exe mit den Parametern von SA-MP starten und die samp.dll in das laufende Spiel laden. Die samp.dll liegt
+    /// gta_sa.exe mit den Parametern von SA-MP starten und die samp.dll in das Spiel laden. Wie samp.exe startet der
+    /// Launcher das Spiel angehalten und laesst es erst weiterlaufen, wenn samp.dll geladen ist (ab 2.7.2). Vorher lief es
+    /// schon los; auf langsamen Rechnern kamen samp-cef („unsupported SA:MP version“) und SampVoice dann vor SA-MP. Die samp.dll liegt
     /// dafuer nicht im GTA-Verzeichnis, sondern im Ordner des Launchers (aus samp_client) oder im Ordner des
     /// open.mp-Launchers. Geladen wird nur eine samp.dll, deren Version in der Liste des Servers steht, und nur in das
     /// gerade gestartete gta_sa.exe.
@@ -66,17 +68,31 @@ namespace SamplifeEssentials
                 var wert = passwort.Replace("\"", "");
                 parameter += " -z " + (wert.Contains(" ") ? "\"" + wert + "\"" : wert);
             }
-            var start = new ProcessStartInfo(Path.Combine(gta, GtaVerzeichnis.SpielDatei), parameter);
-            start.WorkingDirectory = gta;
-            start.UseShellExecute = false;
-            var spiel = Process.Start(start);
-            try { Laden(spiel, dll); }
+            var exe = Path.Combine(gta, GtaVerzeichnis.SpielDatei);
+            var info = new STARTUPINFO();
+            info.cb = Marshal.SizeOf(typeof(STARTUPINFO));
+            PROCESS_INFORMATION neu;
+            // CREATE_SUSPENDED: Der Hauptfaden wartet, bis samp.dll geladen ist
+            if (!CreateProcess(exe, new StringBuilder("\"" + exe + "\" " + parameter), IntPtr.Zero, IntPtr.Zero, false, 0x00000004,
+                IntPtr.Zero, gta, ref info, out neu))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            Process spiel = null;
+            try
+            {
+                spiel = Process.GetProcessById(neu.dwProcessId);
+                Laden(spiel, dll);
+                if (ResumeThread(neu.hThread) == 0xFFFFFFFF) throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
             catch (Exception)
             {
                 // Ohne SA-MP liefe nur der Einzelspieler; das Spiel wieder schliessen, damit der Fehler klar ist
-                try { if (!spiel.HasExited) spiel.Kill(); }
-                catch (Exception) { }
+                TerminateProcess(neu.hProcess, 1);
                 throw;
+            }
+            finally
+            {
+                CloseHandle(neu.hThread);
+                CloseHandle(neu.hProcess);
             }
             return spiel;
         }
@@ -130,8 +146,8 @@ namespace SamplifeEssentials
         }
 
         /// <summary>
-        /// Laedt die DLL ueber LoadLibraryW im Spiel. Direkt nach dem Start ist der Prozess unter Umstaenden noch nicht
-        /// bereit; wie der open.mp-Launcher mehrere Versuche im Abstand von einer halben Sekunde.
+        /// Laedt die DLL ueber LoadLibraryW im (noch angehaltenen) Spiel. Klappt es nicht gleich, wie der open.mp-Launcher
+        /// mehrere Versuche im Abstand von einer halben Sekunde.
         /// </summary>
         static void Laden(Process spiel, string dll)
         {
@@ -186,6 +202,30 @@ namespace SamplifeEssentials
             }
         }
 
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct STARTUPINFO
+        {
+            public int cb;
+            public string lpReserved, lpDesktop, lpTitle;
+            public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+            public short wShowWindow, cbReserved2;
+            public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct PROCESS_INFORMATION
+        {
+            public IntPtr hProcess, hThread;
+            public int dwProcessId, dwThreadId;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern bool CreateProcess(string anwendung, StringBuilder befehlszeile, IntPtr prozessAttribute, IntPtr fadenAttribute,
+            bool erben, uint flags, IntPtr umgebung, string verzeichnis, ref STARTUPINFO start, out PROCESS_INFORMATION prozess);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern uint ResumeThread(IntPtr faden);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool TerminateProcess(IntPtr prozess, uint code);
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern IntPtr OpenProcess(uint zugriff, bool erben, int prozessId);
         [DllImport("kernel32.dll", SetLastError = true)]
