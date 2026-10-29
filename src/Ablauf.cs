@@ -300,14 +300,10 @@ namespace SamplifeEssentials
             return plan;
         }
 
-        // Was SA-MP ausser samp.dll im GTA-Verzeichnis braucht (Paket samp-client-0.3.7-R1-dateien.zip). Fehlt eins, startet
-        // das Spiel mit der geladenen samp.dll nicht richtig.
-        static readonly string[] SampDateien =
-        {
-            "samp.saa", "bass.dll", "gtaweap3.ttf", "sampaux3.ttf", "sampgui.png", "mouse.png",
-            @"SAMP\SAMP.img", @"SAMP\SAMPCOL.img", @"SAMP\SAMP.ide", @"SAMP\CUSTOM.ide", @"SAMP\custom.img", @"SAMP\SAMP.ipl",
-            @"SAMP\samaps.txd", @"SAMPlanktex.txd"
-        };
+        // Woran der Launcher erkennt, dass SA-MP ausser samp.dll im GTA-Verzeichnis liegt (aus dem Paket
+        // samp-client-0.3.7-R1-dateien.zip). Deinstalliert jemand SA-MP, sind sie weg, und das Spiel startet mit der
+        // geladenen samp.dll nicht richtig. Fehlt nur eine andere Datei, legt samp_client sie beim Einrichten mit hin.
+        static readonly string[] SampDateien = { "samp.saa", @"SAMP\SAMP.img" };
 
         static bool SampDateienDa(string gta)
         {
