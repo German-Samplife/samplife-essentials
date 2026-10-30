@@ -16,7 +16,14 @@ Eine einzige Stelle in [`ohne-sprecheranzeige.patch`](ohne-sprecheranzeige.patch
 - In `client/Plugin.cpp` (`Plugin::OnInitGame`) entfallen die Aufrufe `SpeakerList::Show()` und `MicroIcon::Show()`.
 - Ohne sie zeichnen `SpeakerList::Render` und `MicroIcon::Render` nichts. Liste, Kopf-Symbol und Mikrofon-Symbol fallen damit weg. Nichts sonst im Client ruft `Show()` auf.
 
-Dazu kommt [`neuer-compiler.patch`](neuer-compiler.patch). Er ändert nichts am Verhalten. Er setzt nur an einer Stelle in `client/Network.cpp` eine ausdrückliche Typumwandlung, die der heutige Compiler verlangt (Fehler C2398).
+Dazu kommt [`cef-reihenfolge.patch`](cef-reihenfolge.patch) (ab `sampvoice-3.1-sl3`):
+
+- SampVoice und samp-cef hängen sich beide an GTAs Aufruf von `Direct3DCreate9` (`0x807C2B`). SampVoice sofort beim Laden, `cef.asi` später aus einem eigenen Faden. Wer zuletzt kommt, liegt außen.
+- Liegt samp-cef außen (bei Windows 10 die Regel), merkt sich GTA die Hülle von samp-cef unter `0xC97C20`. `IDirect3D9Hook::CreateDevice` in `client/include/util/Render.cpp` übernahm das Gerät nur, wenn `this` genau dieser Zeiger ist, und stieg sonst still aus.
+- Ohne Gerät läuft `Plugin::OnRender` nie: Die Uhr (`Timer::Tick`) bleibt auf 0, der Sprachfaden schickt nie ein Keep-Alive an Port 7780 (der Server meldet nie `identified`), B und F11 tun nichts.
+- Die Prüfung auf `this` entfällt. GTAs Gerät erkennt weiter der Zeiger `&pGameDevice` (`0xC97C28`), den samp-cef unverändert durchreicht. Kette dann GTA → samp-cef → SampVoice → Gerät, in beiden Reihenfolgen.
+
+Und [`neuer-compiler.patch`](neuer-compiler.patch). Er ändert nichts am Verhalten. Er setzt nur an einer Stelle in `client/Network.cpp` eine ausdrückliche Typumwandlung, die der heutige Compiler verlangt (Fehler C2398).
 
 Alles andere bleibt wie im Original:
 - Menü mit den Einstellungen
