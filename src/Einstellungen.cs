@@ -22,8 +22,9 @@ namespace SamplifeEssentials
         public string Serverpasswort = "";
         // Zeitpunkt (UTC, ISO) des zuletzt gemeldeten oder abgelehnten Absturzes (Absturzbericht)
         public string AbsturzGemeldet = "";
-        // Haken „4GB-Patch“ (src/Laa.cs)
-        public bool Laa;
+        // Haken „4GB-Patch“ (src/Laa.cs). Ab 2.7.5 standardmaessig an; gespeichert unter „laa_an“, weil 2.7.4 unter „laa“
+        // bei allen „aus“ abgelegt hat, ohne dass jemand gewaehlt hatte
+        public bool Laa = true;
 
         static readonly byte[] Zusatz = Encoding.UTF8.GetBytes("German Samplife Launcher");
 
@@ -52,7 +53,7 @@ namespace SamplifeEssentials
                 if (daten.TryGetValue("kontopasswort", out wert) && wert is string) einstellungen.Kontopasswort = Entschluesseln((string)wert);
                 if (daten.TryGetValue("serverpasswort", out wert) && wert is string) einstellungen.Serverpasswort = Entschluesseln((string)wert);
                 if (daten.TryGetValue("absturz_gemeldet", out wert) && wert is string) einstellungen.AbsturzGemeldet = (string)wert;
-                if (daten.TryGetValue("laa", out wert) && wert is bool) einstellungen.Laa = (bool)wert;
+                if (daten.TryGetValue("laa_an", out wert) && wert is bool) einstellungen.Laa = (bool)wert;
             }
             catch (Exception) { }
             return einstellungen;
@@ -67,7 +68,7 @@ namespace SamplifeEssentials
                 {
                     { "gta", Gta }, { "optional", Optional },
                     { "kontopasswort", Verschluesseln(Kontopasswort) }, { "serverpasswort", Verschluesseln(Serverpasswort) },
-                    { "absturz_gemeldet", AbsturzGemeldet }, { "laa", Laa }
+                    { "absturz_gemeldet", AbsturzGemeldet }, { "laa_an", Laa }
                 });
                 File.WriteAllText(Datei, json, new UTF8Encoding(false));
             }
