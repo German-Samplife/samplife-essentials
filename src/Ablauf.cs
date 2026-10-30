@@ -191,6 +191,21 @@ namespace SamplifeEssentials
                     if (laa != "") Schritt(laa);
                 }
 
+                // Browser-Oberflaeche (src/CefOrdner.cs): als Administrator Schreibrecht im Ordner cef geben; vor dem Start
+                // cef-renderer.exe eines abgestuerzten Spiels beenden; warnen, wenn CEF trotzdem nicht schreiben darf
+                var cefRecht = CefOrdner.SchreibrechtGeben(Gta);
+                if (cefRecht != "") Schritt(cefRecht);
+                if (MitStart)
+                {
+                    var alte = CefOrdner.VerwaisteBeenden(Gta);
+                    if (alte > 0) Schritt("Browser-Oberfläche: " + alte + (alte == 1 ? " übrig gebliebener Prozess" : " übrig gebliebene Prozesse")
+                        + " von einem früheren Spiel beendet");
+                    if (!CefOrdner.Beschreibbar(Gta))
+                        Melden(new Meldung { Nummer = naechsteNummer++, Art = MeldungArt.Warnung, Fertig = true,
+                            Text = "Die Browser-Oberfläche darf im Ordner cef nicht schreiben und startet deshalb vermutlich nicht. "
+                                + "Starte den Launcher einmal als Administrator oder verschiebe GTA aus „Programme“ heraus, zum Beispiel nach C:\\Spiele." });
+                }
+
                 if (MitStart)
                 {
                     abbruch.ThrowIfCancellationRequested();
