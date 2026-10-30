@@ -1322,7 +1322,7 @@ namespace SamplifeEssentials
         void DiagnosePruefen()
         {
             if (diagnoseGefragt) return;
-            var svlog = Diagnose.SvLogLesen(Gta, spielStartUtc);
+            var svlog = Diagnose.SvLogLesen(spielStartUtc);
             if (!Diagnose.SampVoiceOhneGrafik(svlog)) return;
             diagnoseGefragt = true;
             diagnoseSvLog = svlog;
@@ -1340,7 +1340,7 @@ namespace SamplifeEssentials
         {
             if (modus != Modus.Spielen || manifest == null || manifest.Absturzbericht == "" || !verzeichnisGueltig) return;
             var seit = DateTime.UtcNow.AddDays(-3);
-            diagnoseSvLog = Diagnose.SvLogLesen(Gta, seit);
+            diagnoseSvLog = Diagnose.SvLogLesen(seit);
             diagnoseCefLog = Diagnose.CefLogsLesen(Gta, seit);
             diagnoseModule = Diagnose.GemerkteModule(seit, DateTime.UtcNow);
             diagnoseBefund = Diagnose.SampVoiceOhneGrafik(diagnoseSvLog)

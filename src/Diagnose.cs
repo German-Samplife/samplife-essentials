@@ -20,7 +20,16 @@ namespace SamplifeEssentials
     {
         public const int MaxModule = 30000;
         public const int MaxLog = 20000;
-        public const string SvLog = "svlog.txt";
+        // SampVoice schreibt sein Log nicht ins GTA-Verzeichnis, sondern nach „Eigene Dokumente\GTA San Andreas User
+        // Files\sampvoice“ (Path.cpp und Plugin.cpp in CyberMor/sampvoice)
+        public static string SvLog
+        {
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "GTA San Andreas User Files", "sampvoice", "svlog.txt");
+            }
+        }
 
         public static string ModulDatei
         {
@@ -165,10 +174,10 @@ namespace SamplifeEssentials
             catch (Exception) { return ""; }
         }
 
-        /// <summary>svlog.txt aus dem GTA-Verzeichnis, wenn SampVoice sie seit seitUtc geschrieben hat, sonst leer.</summary>
-        public static string SvLogLesen(string gta, DateTime seitUtc)
+        /// <summary>svlog.txt von SampVoice, wenn sie seit seitUtc geschrieben wurde, sonst leer.</summary>
+        public static string SvLogLesen(DateTime seitUtc)
         {
-            return LogLesen(Path.Combine(gta, SvLog), seitUtc);
+            return LogLesen(SvLog, seitUtc);
         }
 
         /// <summary>
