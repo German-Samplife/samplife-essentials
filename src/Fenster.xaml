@@ -403,7 +403,7 @@
                 <CheckBox x:Name="ServerpasswortHaken" Style="{StaticResource HakenMitText}" Content="Serverpasswort"/>
                 <!-- 4GB-Patch (src/Laa.cs): freiwillig, der Launcher setzt das Bit in der gta_sa.exe nur, wenn es fehlt -->
                 <CheckBox x:Name="LaaHaken" Style="{StaticResource HakenMitText}" Content="4GB-Patch" Margin="18,0,0,0"
-                          ToolTip="Gegen Abstürze bei hoher Auflösung (1440p, 4K): GTA darf dann 4 statt 2 GB Speicher nutzen. Der Launcher setzt den Patch nur, wenn er in deiner gta_sa.exe fehlt, und sichert sie vorher. Haken raus nimmt ihn wieder zurück."/>
+                          ToolTip="Gegen Abstürze bei hoher Auflösung (1440p, 4K): GTA darf dann 4 statt 2 GB Speicher nutzen. Standardmäßig an. Der Launcher setzt den Patch nur, wenn er in deiner gta_sa.exe fehlt, und sichert sie vorher. Haken raus nimmt ihn wieder zurück."/>
               </StackPanel>
               <TextBlock x:Name="NameStatus" Grid.Column="1" Foreground="{StaticResource Leise}" FontSize="13" Margin="16,0,0,0"
                          VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Right"

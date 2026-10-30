@@ -211,6 +211,8 @@ namespace SamplifeEssentials
         DispatcherTimer spielTimer;
         DateTime spielStartUtc;
         bool spielGefunden, spielFensterDa;
+        // Das laufende gta_sa.exe, um nach dem Ende den Beendigungscode zu lesen (SpielBeendetCode)
+        Process spielProzess;
         string spielWarnung = "";
         // DLLs in gta_sa.exe (Diagnose.ModuleLesen), einmal je Spiel, sobald das Fenster eine Weile steht
         DateTime spielFensterUtc;
@@ -1243,6 +1245,7 @@ namespace SamplifeEssentials
             spielStartUtc = DateTime.UtcNow;
             spielGefunden = false;
             spielFensterDa = false;
+            SpielProzessLoslassen();
             spielModuleGelesen = false;
             spielModule = "";
             spielWarnung = warnung
@@ -1296,6 +1299,7 @@ namespace SamplifeEssentials
         void SpielBeendet(string text)
         {
             spielTimer.Stop();
+            var code = SpielBeendetCode();
             ZurueckZurListe();
             untertitel.Text = text;
             // Neuer Absturz seit dem Start? Dann gleich fragen, nicht erst beim naechsten Oeffnen
@@ -1307,7 +1311,59 @@ namespace SamplifeEssentials
                 AbsturzZeigen(zeit.Value);
                 return;
             }
+            // Ohne crashinfo.txt, aber mit einem Fehlercode (oberstes Bit gesetzt, z. B. 0xC0000005 oder 0xE0000008 von
+            // Chromium bei Speichermangel): GTA wurde unerwartet beendet. Normales Beenden liefert 0 oder einen kleinen Wert.
+            if (code.HasValue && code.Value < 0)
+            {
+                BeendetZeigen(code.Value);
+                return;
+            }
             DiagnosePruefen();
+        }
+
+        /// <summary>Beendigungscode des beobachteten gta_sa.exe, null, wenn er sich nicht lesen ließ.</summary>
+        int? SpielBeendetCode()
+        {
+            int? code = null;
+            try
+            {
+                if (spielProzess != null && spielProzess.HasExited) code = spielProzess.ExitCode;
+            }
+            catch (Exception) { }
+            SpielProzessLoslassen();
+            return code;
+        }
+
+        void SpielProzessLoslassen()
+        {
+            if (spielProzess == null) return;
+            try { spielProzess.Dispose(); }
+            catch (Exception) { }
+            spielProzess = null;
+        }
+
+        /// <summary>
+        /// GTA hat sich ohne Absturzbericht mit einem Fehlercode beendet: dasselbe Fenster wie die Diagnose, mit Code und, bei
+        /// 0xE0000008 (Speicher), dem Hinweis auf den 4GB-Patch.
+        /// </summary>
+        void BeendetZeigen(int code)
+        {
+            var seit = spielStartUtc;
+            diagnoseSvLog = Diagnose.SvLogLesen(seit);
+            diagnoseCefLog = Diagnose.CefLogsLesen(Gta, seit);
+            diagnoseModule = spielModule != "" ? spielModule : Diagnose.GemerkteModule(seit, DateTime.UtcNow);
+            var hex = "0x" + unchecked((uint)code).ToString("X8", CultureInfo.InvariantCulture);
+            var speicher = unchecked((uint)code) == 0xE0000008;
+            diagnoseBefund = "GTA unerwartet beendet, Code " + hex + (speicher ? " (kein Speicher mehr)" : "");
+            DiagnoseZeigen(false);
+            absturzTitel.Text = "GTA wurde unerwartet beendet";
+            absturzText.Text = speicher
+                ? "Dem Spiel ist der Speicher ausgegangen, meist bei hoher Auflösung oder vielen Mods. "
+                    + (laaHaken.IsChecked == true
+                        ? "Stell die Auflösung in GTA auf 1920 × 1080 und versuch es noch einmal."
+                        : "Setz oben den Haken „4GB-Patch“ und versuch es noch einmal.")
+                    + " Schick uns gern die Diagnose."
+                : "GTA hat sich ohne Absturzbericht beendet (Code " + hex + "). Schick uns die Diagnose, damit wir sehen, woran es lag.";
         }
 
         /// <summary>Liest die DLLs in gta_sa.exe im Hintergrund und merkt sie fuer einen Bericht (src/Diagnose.cs).</summary>
@@ -1380,9 +1436,15 @@ namespace SamplifeEssentials
                     if (!passt) continue;
                     gefunden = true;
                     if (prozess.MainWindowHandle != IntPtr.Zero) fenster = true;
+                    // Den ersten gefundenen behalten; der Griff (Handle) muss vor dem Ende offen sein, sonst gibt es keinen Code
+                    if (spielProzess == null)
+                    {
+                        GC.KeepAlive(prozess.Handle);
+                        spielProzess = prozess;
+                    }
                 }
                 catch (Exception) { }
-                finally { prozess.Dispose(); }
+                finally { if (prozess != spielProzess) prozess.Dispose(); }
             }
             return gefunden;
         }
@@ -1909,7 +1971,7 @@ namespace SamplifeEssentials
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
                 || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose"
-                || zustand == "problem")
+                || zustand == "problem" || zustand == "beendet")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -1929,6 +1991,7 @@ namespace SamplifeEssentials
                     DiagnoseZeigen(false);
                     absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
                 }
+                if (zustand == "beendet") BeendetZeigen(unchecked((int)0xE0000008));
                 if (zustand == "problem")
                 {
                     DiagnoseZeigen(true);
