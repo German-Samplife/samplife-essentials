@@ -45,6 +45,7 @@ jobs:
           if ($kopf -ne $env:SAMPVOICE_COMMIT) { throw "Falscher Stand: $kopf" }
           git -C quelle apply --verbose ../sampvoice/ohne-sprecheranzeige.patch
           git -C quelle apply --verbose ../sampvoice/neuer-compiler.patch
+          git -C quelle apply --verbose ../sampvoice/cef-reihenfolge.patch
           Copy-Item sampvoice/Directory.Build.targets quelle/client/
           git -C quelle diff --stat
 
@@ -122,7 +123,7 @@ jobs:
           $text = @"
           SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf, kein Mikrofon-Symbol).
 
-          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit der Änderung in ``sampvoice/ohne-sprecheranzeige.patch`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
+          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit den Änderungen in ``sampvoice/ohne-sprecheranzeige.patch`` und ``sampvoice/cef-reihenfolge.patch`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
 
           Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
           "@
