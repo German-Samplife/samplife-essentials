@@ -165,10 +165,24 @@ namespace SamplifeEssentials
             catch (Exception) { return ""; }
         }
 
-        /// <summary>svlog.txt aus dem GTA-Verzeichnis, wenn SampVoice sie seit seitUtc geschrieben hat, sonst leer.</summary>
-        public static string SvLogLesen(string gta, DateTime seitUtc)
+        /// <summary>
+        /// SampVoice schreibt sein Log nicht ins GTA-Verzeichnis, sondern nach „Dokumente\GTA San Andreas User Files\sampvoice“
+        /// (client/include/util/Path.cpp, SHGetFolderPath mit CSIDL_MYDOCUMENTS). Bis 2.7.2 suchte der Launcher im GTA-Verzeichnis
+        /// und fand die Datei deshalb nie.
+        /// </summary>
+        public static string SvLogDatei
         {
-            return LogLesen(Path.Combine(gta, SvLog), seitUtc);
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "GTA San Andreas User Files", "sampvoice", SvLog);
+            }
+        }
+
+        /// <summary>svlog.txt von SampVoice, wenn SampVoice sie seit seitUtc geschrieben hat, sonst leer.</summary>
+        public static string SvLogLesen(DateTime seitUtc)
+        {
+            return LogLesen(SvLogDatei, seitUtc);
         }
 
         /// <summary>
