@@ -1,17 +1,26 @@
 diff --git a/client/include/util/Render.cpp b/client/include/util/Render.cpp
-index 02fad8f..090c630 100644
+index 02fad8f..40dbdc2 100644
 --- a/client/include/util/Render.cpp
 +++ b/client/include/util/Render.cpp
-@@ -1244,7 +1244,11 @@ HRESULT __stdcall Render::IDirect3D9Hook::CreateDevice(const UINT Adapter, const
+@@ -1241,10 +1241,20 @@ HRESULT __stdcall Render::IDirect3D9Hook::CreateDevice(const UINT Adapter, const
+     const DWORD BehaviorFlags, D3DPRESENT_PARAMETERS* const pPresentationParameters,
+     IDirect3DDevice9** const ppReturnedDeviceInterface) noexcept
+ {
++    // German Samplife: Haengt SampVoice mehrfach in der Kette (Fenstermodus-ASIs rufen Direct3DCreate9 selbst ueber
++    // 0x807C2B auf), uebernimmt nur die aeusserste SampVoice-Huelle das Geraet, nie zwei auf einmal.
++    static thread_local int createDeviceDepth { 0 };
++
++    ++createDeviceDepth;
      const auto hResult = this->pOrigInterface->CreateDevice(Adapter, DeviceType,
          hFocusWindow, BehaviorFlags, pPresentationParameters, ppReturnedDeviceInterface);
++    --createDeviceDepth;
  
 -    if (FAILED(hResult) || this != pGameDirect || ppReturnedDeviceInterface != &pGameDevice)
 +    // German Samplife: Nicht mehr pruefen, ob this die von GTA gespeicherte IDirect3D9 ist. Haengt samp-cef seinen
 +    // Haken an 0x807C2B nach SampVoice ein (bei Windows 10 die Regel), merkt sich GTA die Huelle von samp-cef, und
 +    // SampVoice uebernahm das Geraet nie: kein OnRender, keine Uhr, kein Keep-Alive, kein Sprach-Chat. GTAs Geraet
 +    // erkennt der Zeiger auf 0xC97C28, den samp-cef unveraendert weiterreicht.
-+    if (FAILED(hResult) || ppReturnedDeviceInterface != &pGameDevice)
++    if (FAILED(hResult) || createDeviceDepth != 0 || ppReturnedDeviceInterface != &pGameDevice)
          return hResult;
  
      Logger::LogToFile("[dbg:render:direct] : device interface (ptr:%p) success created with "

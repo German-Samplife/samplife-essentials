@@ -22,6 +22,7 @@ Dazu kommt [`cef-reihenfolge.patch`](cef-reihenfolge.patch) (ab `sampvoice-3.1-s
 - Liegt samp-cef außen (bei Windows 10 die Regel), merkt sich GTA die Hülle von samp-cef unter `0xC97C20`. `IDirect3D9Hook::CreateDevice` in `client/include/util/Render.cpp` übernahm das Gerät nur, wenn `this` genau dieser Zeiger ist, und stieg sonst still aus.
 - Ohne Gerät läuft `Plugin::OnRender` nie: Die Uhr (`Timer::Tick`) bleibt auf 0, der Sprachfaden schickt nie ein Keep-Alive an Port 7780 (der Server meldet nie `identified`), B und F11 tun nichts.
 - Die Prüfung auf `this` entfällt. GTAs Gerät erkennt weiter der Zeiger `&pGameDevice` (`0xC97C28`), den samp-cef unverändert durchreicht. Kette dann GTA → samp-cef → SampVoice → Gerät, in beiden Reihenfolgen.
+- Ab `sampvoice-3.1-sl4`: Fenstermodus-ASIs (z. B. `iii.vc.sa.windowedmode.asi`) rufen `Direct3DCreate9` selbst über `0x807C2B` auf, dann hängt SampVoice zweimal in der Kette. Ohne die Prüfung auf `this` übernahmen in `sl3` beide Hüllen das Gerät; die zweite gab die Grafik der ersten frei, und das Spiel stürzte in `sampvoice.asi` ab (Sprung auf 0). Ein Zähler über verschachtelte `CreateDevice`-Aufrufe lässt nur die äußerste SampVoice-Hülle übernehmen.
 
 Und [`neuer-compiler.patch`](neuer-compiler.patch). Er ändert nichts am Verhalten. Er setzt nur an einer Stelle in `client/Network.cpp` eine ausdrückliche Typumwandlung, die der heutige Compiler verlangt (Fehler C2398).
 
