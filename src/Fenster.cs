@@ -583,7 +583,14 @@ namespace SamplifeEssentials
                             break;
                     }
                 }
-                if (brauchtAdmin) text += " · Schreiben ist hier nur als Administrator möglich";
+                // CEF schreibt in cef\user_data; darf es das nicht, startet die Browser-Oberflaeche nicht (src/CefOrdner.cs).
+                // Als Administrator gibt der Launcher dem Ordner Schreibrecht.
+                if (!brauchtAdmin && !CefOrdner.Beschreibbar(verzeichnis))
+                {
+                    brauchtAdmin = true;
+                    text += " · Die Browser-Oberfläche darf im Ordner cef nicht schreiben, einmal als Administrator starten";
+                }
+                else if (brauchtAdmin) text += " · Schreiben ist hier nur als Administrator möglich";
                 PfadMeldung(symbol, farbe, text);
             }
             if (!verzeichnisGueltig) bereichVersion.Visibility = Visibility.Collapsed;
