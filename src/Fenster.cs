@@ -180,7 +180,7 @@ namespace SamplifeEssentials
         readonly Border balken;
         readonly Image titelbild;
         readonly PasswordBox passwort, kontopasswort;
-        readonly CheckBox serverpasswortHaken;
+        readonly CheckBox serverpasswortHaken, laaHaken;
         readonly FrameworkElement bereichPasswort, protokollFenster;
         readonly Button knopfDateien;
         // Die letzten drei Zeilen von „Was gerade passiert“; alles steht im Fenster hinter „Mehr anzeigen“
@@ -299,6 +299,8 @@ namespace SamplifeEssentials
             passwort = Finde<PasswordBox>("Passwort");
             kontopasswort = Finde<PasswordBox>("Kontopasswort");
             serverpasswortHaken = Finde<CheckBox>("ServerpasswortHaken");
+            laaHaken = Finde<CheckBox>("LaaHaken");
+            laaHaken.IsChecked = einstellungen.Laa;
             bereichPasswort = Finde<FrameworkElement>("BereichPasswort");
             protokollFenster = Finde<FrameworkElement>("ProtokollFenster");
             knopfDateien = Finde<Button>("KnopfDateien");
@@ -1147,6 +1149,7 @@ namespace SamplifeEssentials
 
             einstellungen.Gta = Gta;
             einstellungen.Optional = GewaehlteOptionale();
+            einstellungen.Laa = laaHaken.IsChecked == true;
             if (!nurPruefen)
             {
                 einstellungen.Kontopasswort = kontopasswort.Password;
@@ -1177,7 +1180,7 @@ namespace SamplifeEssentials
                 Passwort = serverpasswortHaken.IsChecked == true ? passwort.Password : "",
                 Kontopasswort = kontopasswort.Password,
                 AusSicherung = ausSicherung, Optional = einstellungen.Optional, Gruendlich = nurPruefen, MitStart = !nurPruefen,
-                Testmodus = optionen.Testmodus, SampErsetzen = ersetzen
+                Testmodus = optionen.Testmodus, SampErsetzen = ersetzen, Laa = einstellungen.Laa
             };
             // Progress leitet die Meldungen aus dem Hintergrund-Thread in den Thread der Oberflaeche
             var meldungen = new Progress<Meldung>(MeldungZeigen);
@@ -1477,6 +1480,7 @@ namespace SamplifeEssentials
             passwort.IsEnabled = !gesperrt;
             kontopasswort.IsEnabled = !gesperrt;
             serverpasswortHaken.IsEnabled = !gesperrt;
+            laaHaken.IsEnabled = !gesperrt;
             knopfDurchsuchen.IsEnabled = !gesperrt;
             knopfSuchen.IsEnabled = !gesperrt;
             knopfGruendlich.IsEnabled = !gesperrt;

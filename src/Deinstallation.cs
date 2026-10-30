@@ -46,6 +46,9 @@ namespace SamplifeEssentials
                         return Fehlschlag(ergebnis, "GTA San Andreas läuft noch. Schließe das Spiel und versuche es dann noch einmal.");
                     if (!GtaVerzeichnis.IstBeschreibbar(Gta))
                         return Fehlschlag(ergebnis, "In das GTA-Verzeichnis darf nicht geschrieben werden. Starte den Launcher als Administrator.");
+                    // 4GB-Patch zuruecknehmen, wenn der Launcher ihn gesetzt hat (vor dem Aufraeumen, die Marke liegt in samplife-launcher)
+                    var laa = Laa.Anwenden(Gta, false);
+                    if (laa != "") Schritt(laa);
                     GtaAufraeumen(ergebnis);
                 }
                 else Schritt("Kein GTA-Verzeichnis gewählt: Der Launcher räumt nur seine eigenen Einstellungen auf.");

@@ -48,6 +48,8 @@ namespace SamplifeEssentials
         public ICollection<string> Optional = new List<string>();
         public bool Gruendlich;
         public bool MitStart;
+        // Haken „4GB-Patch“ (src/Laa.cs): true setzen, false zuruecknehmen, null nicht anfassen (Kommandozeile)
+        public bool? Laa;
         public bool Testmodus;
         /// <summary>
         /// Der Spieler hat zugestimmt (Fenster „Andere SA-MP-Version gefunden“, still: --samp-ersetzen): Liegt im
@@ -181,6 +183,12 @@ namespace SamplifeEssentials
                 {
                     neuerStand.Schreiben(Gta);
                     Datei("Stand " + Manifest.Stand + " gesichert in " + Path.Combine(Stand.Ordner, Stand.StandDatei));
+                }
+
+                if (Laa.HasValue)
+                {
+                    var laa = SamplifeEssentials.Laa.Anwenden(Gta, Laa.Value);
+                    if (laa != "") Schritt(laa);
                 }
 
                 if (MitStart)
