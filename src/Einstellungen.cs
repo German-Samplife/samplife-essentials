@@ -22,6 +22,8 @@ namespace SamplifeEssentials
         public string Serverpasswort = "";
         // Zeitpunkt (UTC, ISO) des zuletzt gemeldeten oder abgelehnten Absturzes (Absturzbericht)
         public string AbsturzGemeldet = "";
+        // Haken „4GB-Patch“ (src/Laa.cs)
+        public bool Laa;
 
         static readonly byte[] Zusatz = Encoding.UTF8.GetBytes("German Samplife Launcher");
 
@@ -50,6 +52,7 @@ namespace SamplifeEssentials
                 if (daten.TryGetValue("kontopasswort", out wert) && wert is string) einstellungen.Kontopasswort = Entschluesseln((string)wert);
                 if (daten.TryGetValue("serverpasswort", out wert) && wert is string) einstellungen.Serverpasswort = Entschluesseln((string)wert);
                 if (daten.TryGetValue("absturz_gemeldet", out wert) && wert is string) einstellungen.AbsturzGemeldet = (string)wert;
+                if (daten.TryGetValue("laa", out wert) && wert is bool) einstellungen.Laa = (bool)wert;
             }
             catch (Exception) { }
             return einstellungen;
@@ -64,7 +67,7 @@ namespace SamplifeEssentials
                 {
                     { "gta", Gta }, { "optional", Optional },
                     { "kontopasswort", Verschluesseln(Kontopasswort) }, { "serverpasswort", Verschluesseln(Serverpasswort) },
-                    { "absturz_gemeldet", AbsturzGemeldet }
+                    { "absturz_gemeldet", AbsturzGemeldet }, { "laa", Laa }
                 });
                 File.WriteAllText(Datei, json, new UTF8Encoding(false));
             }
