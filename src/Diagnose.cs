@@ -20,6 +20,8 @@ namespace SamplifeEssentials
     {
         public const int MaxModule = 30000;
         public const int MaxLog = 20000;
+        // Bis so viele Ordner unter dem GTA-Verzeichnis sucht CrashLogLesen (etwa modloader\<Mod>\<Ordner>)
+        const int CrashTiefe = 3;
         // SampVoice schreibt sein Log nicht ins GTA-Verzeichnis, sondern nach „Eigene Dokumente\GTA San Andreas User
         // Files\sampvoice“ (Path.cpp und Plugin.cpp in CyberMor/sampvoice)
         public static string SvLog
@@ -217,6 +219,46 @@ namespace SamplifeEssentials
             catch (Exception) { }
             var ergebnis = text.ToString();
             return ergebnis.Length > MaxLog ? ergebnis.Substring(ergebnis.Length - MaxLog) : ergebnis;
+        }
+
+        /// <summary>
+        /// Log von CrashInfo.SA.asi (cleolibrary/CrashInfo, kommt nicht vom Launcher, steckt aber in vielen Mod-Paketen):
+        /// Bei einem Absturz schreibt es gta_sa.exe_&lt;Datum&gt;_&lt;Zeit&gt;.log mit Registern, Stack und Backtrace, also
+        /// welches Modul abgestuerzt ist. Das kann SA-MPs crashinfo.txt nicht immer, und ohne crashinfo.txt (Code 0xC0000005)
+        /// ist es die einzige Spur. Die neueste Datei seit seitUtc im GTA-Verzeichnis, bis CrashTiefe Ordner tief; leer ohne.
+        /// </summary>
+        public static string CrashLogLesen(string gta, DateTime seitUtc)
+        {
+            string neueste = null;
+            var zeit = DateTime.MinValue;
+            try
+            {
+                var ordner = new Queue<KeyValuePair<string, int>>();
+                ordner.Enqueue(new KeyValuePair<string, int>(gta, 0));
+                while (ordner.Count > 0)
+                {
+                    var eintrag = ordner.Dequeue();
+                    try
+                    {
+                        foreach (var datei in Directory.GetFiles(eintrag.Key, "gta_sa.exe_*.log", SearchOption.TopDirectoryOnly))
+                        {
+                            var geschrieben = File.GetLastWriteTimeUtc(datei);
+                            if (geschrieben > zeit) { zeit = geschrieben; neueste = datei; }
+                        }
+                        if (eintrag.Value >= CrashTiefe) continue;
+                        foreach (var unter in Directory.GetDirectories(eintrag.Key))
+                            ordner.Enqueue(new KeyValuePair<string, int>(unter, eintrag.Value + 1));
+                    }
+                    catch (Exception) { }
+                }
+            }
+            catch (Exception) { }
+            if (neueste == null) return "";
+            var inhalt = LogLesen(neueste, seitUtc);
+            if (inhalt == "") return "";
+            var relativ = neueste.StartsWith(gta, StringComparison.OrdinalIgnoreCase)
+                ? neueste.Substring(gta.Length).TrimStart('\\', '/') : Path.GetFileName(neueste);
+            return "Datei: " + relativ + "\n" + inhalt;
         }
 
         // Ende der Datei (die letzten MaxLog Zeichen), UTF-8 oder Windows-1252

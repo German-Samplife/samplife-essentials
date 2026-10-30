@@ -199,7 +199,7 @@ namespace SamplifeEssentials
         // einmal je Start des Launchers
         // „Problem melden“ oeffnet es von Hand (diagnoseGemeldet)
         bool absturzIstDiagnose, diagnoseGefragt, diagnoseGemeldet;
-        string diagnoseSvLog = "", diagnoseCefLog = "", diagnoseModule = "", diagnoseBefund = "";
+        string diagnoseSvLog = "", diagnoseCefLog = "", diagnoseCrashLog = "", diagnoseModule = "", diagnoseBefund = "";
         // Andere SA-MP-Version im GTA-Verzeichnis: vor dem Start fragen, ob der Launcher die passende einrichten soll
         readonly FrameworkElement sampFenster;
         readonly TextBlock sampText;
@@ -1358,6 +1358,7 @@ namespace SamplifeEssentials
             var seit = spielStartUtc;
             diagnoseSvLog = Diagnose.SvLogLesen(seit);
             diagnoseCefLog = Diagnose.CefLogsLesen(Gta, seit);
+            diagnoseCrashLog = Diagnose.CrashLogLesen(Gta, seit);
             diagnoseModule = spielModule != "" ? spielModule : Diagnose.GemerkteModule(seit, DateTime.UtcNow);
             var hex = "0x" + unchecked((uint)code).ToString("X8", CultureInfo.InvariantCulture);
             var speicher = unchecked((uint)code) == 0xE0000008;
@@ -1393,6 +1394,7 @@ namespace SamplifeEssentials
             diagnoseGefragt = true;
             diagnoseSvLog = svlog;
             diagnoseCefLog = Diagnose.CefLogsLesen(Gta, spielStartUtc);
+            diagnoseCrashLog = "";
             diagnoseModule = spielModule != "" ? spielModule : Diagnose.GemerkteModule(spielStartUtc, DateTime.UtcNow);
             diagnoseBefund = "SampVoice hat das Grafikgerät von GTA nicht gefunden";
             DiagnoseZeigen(false);
@@ -1408,6 +1410,7 @@ namespace SamplifeEssentials
             var seit = DateTime.UtcNow.AddDays(-3);
             diagnoseSvLog = Diagnose.SvLogLesen(seit);
             diagnoseCefLog = Diagnose.CefLogsLesen(Gta, seit);
+            diagnoseCrashLog = Diagnose.CrashLogLesen(Gta, seit);
             diagnoseModule = Diagnose.GemerkteModule(seit, DateTime.UtcNow);
             diagnoseBefund = Diagnose.SampVoiceOhneGrafik(diagnoseSvLog)
                 ? "Vom Spieler gemeldet, SampVoice hat das Grafikgerät von GTA nicht gefunden"
@@ -1693,7 +1696,8 @@ namespace SamplifeEssentials
             absturzTitel.Text = "Dein Spiel ist abgestürzt";
             absturzText.Text = AbsturzZeitText() + " Schick uns den Bericht von SA-MP, damit wir den Fehler finden und beheben können.";
             absturzFrage.Text = "Was hast du gerade gemacht? (freiwillig)";
-            absturzHinweis.Text = "Mitgeschickt werden die Datei crashinfo.txt von SA-MP, welche Programme (DLL-Dateien) im Spiel geladen waren, "
+            absturzHinweis.Text = "Mitgeschickt werden die Datei crashinfo.txt von SA-MP, wenn vorhanden das Absturz-Log von CrashInfo, "
+                + "welche Programme (DLL-Dateien) im Spiel geladen waren, "
                 + "mit Hersteller und Version, dein Name im Spiel, die Version des Launchers und deine Windows-Version. Keine Passwörter "
                 + "und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
             FensterBerichtZeigen();
@@ -1712,7 +1716,8 @@ namespace SamplifeEssentials
                     + "laden dann auch die Browser-Oberflächen nicht richtig. Schick uns die Diagnose, damit wir sehen, welches Programm sich dazwischenhängt.";
             absturzFrage.Text = gemeldet ? "Was ging nicht?" : "Was ging nicht? (freiwillig)";
             absturzHinweis.Text = "Mitgeschickt werden: welche Programme (DLL-Dateien) im Spiel geladen waren, mit Hersteller und Version, "
-                + "ob für GTA ein Kompatibilitätsmodus an ist, die Logs von SampVoice (svlog.txt) und CEF (cef_client.log), dein Name im Spiel, "
+                + "ob für GTA ein Kompatibilitätsmodus an ist, die Logs von SampVoice (svlog.txt) und CEF (cef_client.log), "
+                + "wenn vorhanden das Absturz-Log von CrashInfo, dein Name im Spiel, "
                 + "die Version des Launchers und deine Windows-Version. Keine Passwörter und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
             FensterBerichtZeigen();
         }
@@ -1760,6 +1765,7 @@ namespace SamplifeEssentials
                 zusatz["befund"] = diagnoseBefund;
                 zusatz["svlog"] = diagnoseSvLog;
                 zusatz["ceflog"] = diagnoseCefLog;
+                if (diagnoseCrashLog != "") zusatz["crashlog"] = diagnoseCrashLog;
                 if (diagnoseModule != "") zusatz["module"] = diagnoseModule;
                 return true;
             }
@@ -1772,6 +1778,9 @@ namespace SamplifeEssentials
             // DLLs aus dem Spiel, das abgestuerzt ist: gelesen hoechstens drei Stunden davor
             var module = Diagnose.GemerkteModule(absturzZeit.AddHours(-3), absturzZeit.AddMinutes(1));
             if (module != "") zusatz["module"] = module;
+            // Log von CrashInfo.SA.asi zu diesem Absturz, wenn der Spieler es hat: geschrieben hoechstens zwei Minuten davor
+            var crashlog = Diagnose.CrashLogLesen(Gta, absturzZeit.AddMinutes(-2));
+            if (crashlog != "") zusatz["crashlog"] = crashlog;
             return true;
         }
 
@@ -1796,6 +1805,7 @@ namespace SamplifeEssentials
             if (zusatz.TryGetValue("module", out wert)) Abschnitt(text, "Programme (DLL-Dateien) im Spiel", (string)wert);
             if (zusatz.TryGetValue("svlog", out wert)) Abschnitt(text, "svlog.txt von SampVoice", (string)wert);
             if (zusatz.TryGetValue("ceflog", out wert)) Abschnitt(text, "Logs von CEF", (string)wert);
+            if (zusatz.TryGetValue("crashlog", out wert)) Abschnitt(text, "Absturz-Log von CrashInfo", (string)wert);
             try
             {
                 Directory.CreateDirectory(Pfade.Launcher);
