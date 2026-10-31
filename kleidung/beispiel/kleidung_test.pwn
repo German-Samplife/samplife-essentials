@@ -16,19 +16,20 @@
 //   /kleidung 1      Outfit 1 (schwarzes Unterhemd, Afro, Tarnhose, Cowboystiefel, Kette, Brille)
 //   /kleidung 2      Outfit 2 (roter Anzug, Glatze, Anzughose, schwarze Schuhe, Uhr, Cowboyhut)
 //   /kleidung 3      Outfit 3 (Hoodie, Jogginghose, Turnschuhe, Cap, Tattoo am Arm)
-//   /kleidung 4      Outfit 4 mit Farben (gelbes T-Shirt und gelbes Kopftuch), ab Plugin 0.9.0
-//   /kleidung 5      Outfit 5 mit Farben (lila Kapuzenjacke, schwarze Hose, lila Cap), ab Plugin 0.9.0
+//   /kleidung 4      Outfit 4 mit Farben (gelbes T-Shirt, gelbe Hose, rotes Kopftuch), ab Plugin 0.9.1
+//   /kleidung 5      Outfit 5 mit Farben (lila Kapuzenjacke, schwarze Hose, rote Cap), ab Plugin 0.9.1
 //   /kleidung aus    eigenes Outfit vergessen, alle sehen den Standard-CJ
 //   /kleidung info   wer das Plugin gemeldet hat und wer welches Outfit trägt
 //   /kleidung frage  alle Clients fragen, ob das Plugin läuft (Antwort kleidung:hallo)
 //   /farbe <id> <stelle> <textur/modell> <RRGGBB>
-//                    setzt beim Spieler <id> an Stelle <stelle> (0 bis 17 wie unten, ohne Tattoos 4 bis 12) dieses
-//                    Teil in dieser Farbe, z. B. /farbe 0 16 bandred/bandana FFDC00. Der Rest des Outfits bleibt.
+//                    setzt beim Spieler <id> an Stelle <stelle> dieses Teil in dieser Farbe, z. B.
+//                    /farbe 0 0 tshirtwhite/tshirt BE00FF. Farben nur an Stelle 0 (Oberteil) und 2 (Hose), das Plugin
+//                    färbt ab 0.9.1 nichts anderes. Der Rest des Outfits bleibt.
 //                    Hatte der Spieler noch kein Outfit, beginnt es beim Standard-CJ.
 //   /farbe <id> <stelle> <textur/modell> aus
-//                    dasselbe Teil ohne Farbe
+//                    dasselbe Teil ohne Farbe (an jeder Stelle außer den Tattoos 4 bis 12)
 //
-// Farben (@RRGGBB hinter einem Teil) versteht das Plugin ab 0.9.0. Clients mit älterem Plugin bekommen dasselbe
+// Farben (@RRGGBB hinter einem Teil) schickt dieses Script an Plugins ab 0.9.1, gefärbt werden nur Oberteil und Hose. Clients mit älterem Plugin bekommen dasselbe
 // Outfit ohne Farben, so wie es der Gamemode auch macht.
 
 #define FILTERSCRIPT
@@ -47,8 +48,8 @@ static const OUTFIT_TEILE[5][] =
 	"vestblack/vest afro/afro worktrcamogrn/worktr cowboyboot/biker - - - - - - - - - neckgold/neck2 - glasses04dark/glasses04 - -",
 	"suit1red/suit1 bald/head suit1trred/suit1tr shoedressblk/shoe - - - - - - - - - - watchgno/watch - cowboy/cowboy -",
 	"hoodyabase5/hoodya player_face/head tracktrgang/tracktr sneakerbincblk/sneaker 4weed - - - - - - - - - - - capblk/cap -",
-	"tshirtwhite/tshirt@FFDC00 player_face/head jeansdenim/jeans sneakerprowht/sneaker - - - - - - - - - - - - bandred/bandana@FFDC00 -",
-	"hoodjackbeige/hoodjack@8000C0 player_face/head worktrgrey/worktr@000000 sneakerbincblk/sneaker - - - - - - - - - - - - capred/cap@8000C0 -"
+	"tshirtwhite/tshirt@FFDC00 player_face/head chinosbiege/chinosb@FFDC00 sneakerprowht/sneaker - - - - - - - - - - - - bandred/bandana -",
+	"hoodjackbeige/hoodjack@8000C0 player_face/head worktrgrey/worktr@000000 sneakerbincblk/sneaker - - - - - - - - - - - - capred/cap -"
 };
 
 // Standard-CJ des Plugins, Ausgang für /farbe, wenn jemand noch kein Outfit hat
@@ -129,7 +130,7 @@ public KleidungHallo(player_id, const arguments[])
 	return 1;
 }
 
-// Farben versteht das Plugin ab 0.9.0 (gemeldet in kleidung:hallo)
+// Farben schickt der Server ab Plugin 0.9.1 (gemeldet in kleidung:hallo); 0.9.0 war nur ein Testbau
 static bool:PluginKannFarben(spieler)
 {
 	new punkt = strfind(gPluginVersion[spieler], ".");
@@ -137,7 +138,13 @@ static bool:PluginKannFarben(spieler)
 	{
 		return false;
 	}
-	return strval(gPluginVersion[spieler]) > 0 || strval(gPluginVersion[spieler][punkt + 1]) >= 9;
+	new major = strval(gPluginVersion[spieler]), minor = strval(gPluginVersion[spieler][punkt + 1]), patch = 0;
+	new punkt2 = strfind(gPluginVersion[spieler], ".", false, punkt + 1);
+	if (punkt2 != -1)
+	{
+		patch = strval(gPluginVersion[spieler][punkt2 + 1]);
+	}
+	return major > 0 || minor > 9 || (minor == 9 && patch >= 1);
 }
 
 // Outfit ohne "@RRGGBB" für ältere Plugins, die ein Teil mit @ sonst samt Outfit verwerfen
@@ -288,7 +295,7 @@ static BefehlFarbe(playerid, const params[])
 	}
 	if (4 <= stelle <= 12)
 	{
-		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Stellen 4 bis 12 sind Tattoos, die lassen sich nicht faerben.");
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Stellen 4 bis 12 sind Tattoos, die setzt dieser Befehl nicht.");
 	}
 
 	new schraeg = strfind(teil, "/");
@@ -308,6 +315,10 @@ static BefehlFarbe(playerid, const params[])
 	if (mit_farbe && !IstHex(farbe))
 	{
 		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Farbe als RRGGBB (z. B. FFDC00) oder aus.");
+	}
+	if (mit_farbe && stelle != 0 && stelle != 2)
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Farben nur an Stelle 0 (Oberteil) und 2 (Hose).");
 	}
 
 	new token[TEIL_LAENGE];

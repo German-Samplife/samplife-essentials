@@ -5,6 +5,16 @@
 //! auf das 95. Perzentil der gefärbten Pixel bezogen (das hellste Weiß eines T-Shirts ergibt genau die Zielfarbe,
 //! Falten und Schatten werden dunkler). Sehr dunkle Zielfarben (Schwarz) werden auf eine Mindesthelligkeit angehoben,
 //! sonst wäre alles einfach Schwarz ohne Schattierung. Alpha bleibt, wie es ist.
+//!
+//! Ab 0.9.1 nur noch Oberteil (Stelle 0) und Hose (Stelle 2), siehe `faerbbar` und faerben.rs.
+
+/// Stellen (eClothesTexturePart), die gefärbt werden: Oberteil und Hose. Nur bei ihnen lässt sich vor dem Färben
+/// beweisen, dass die gefundene Textur genau die gebaute Kleidung dieser Stelle ist (Prüfsumme der Maske). Kopf,
+/// Schuhe und Zubehör nicht: Im Spieltest mit 0.9.0 lag die Textur „hat“ aus dem Wörterbuch von Modell 0 an den Füßen,
+/// und das Kopftuch verschwand.
+pub fn faerbbar(part: usize) -> bool {
+    part == 0 || part == 2
+}
 
 /// Eine Farbe aus `@RRGGBB`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -76,6 +86,8 @@ pub struct Maske {
     pub breite: usize,
     pub hoehe: usize,
     bits: Vec<u64>,
+    /// Prüfsumme der Kleidungspixel unter der Maske (siehe `pruefsumme`)
+    pub pruefsumme: u64,
 }
 
 impl Maske {
@@ -84,6 +96,7 @@ impl Maske {
             breite,
             hoehe,
             bits: vec![0; (breite * hoehe).div_ceil(64)],
+            pruefsumme: 0,
         }
     }
 
@@ -117,6 +130,7 @@ impl Maske {
                 }
             }
         }
+        maske.pruefsumme = pruefsumme(pixel, breite, hoehe, stride, &maske)?;
         Some(maske)
     }
 
@@ -124,6 +138,29 @@ impl Maske {
     pub fn bytes(&self) -> usize {
         self.bits.len() * 8
     }
+}
+
+/// FNV-1a über alle vier Bytes jedes Pixels unter der Maske, Zeile für Zeile. PlaceTextureOnTopOfTexture kopiert diese
+/// Pixel unverändert (ganzes 32-Bit-Wort) über die Haut; danach schreibt ConstructTextures nichts mehr in Oberteil und
+/// Hose. Die gebaute Textur hat unter der Maske deshalb genau dieselbe Prüfsumme wie die Kleidung, eine andere Textur
+/// (anderes Teil, andere Stelle, schon gefärbt) praktisch nie.
+pub fn pruefsumme(pixel: &[u8], breite: usize, hoehe: usize, stride: usize, maske: &Maske) -> Option<u64> {
+    if !passt(pixel.len(), breite, hoehe, stride) || maske.breite != breite || maske.hoehe != hoehe {
+        return None;
+    }
+
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for y in 0..hoehe {
+        let zeile = &pixel[y * stride..y * stride + breite * 4];
+        for (x, p) in zeile.chunks_exact(4).enumerate() {
+            if maske.gesetzt(x, y) {
+                for &b in p {
+                    h = (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            }
+        }
+    }
+    Some(h)
 }
 
 /// Puffer groß genug für `hoehe` Zeilen mit `stride` Bytes, jede mit `breite` Pixeln zu 4 Bytes.
@@ -337,6 +374,31 @@ mod tests {
         assert_eq!(&p[0..4], &[0, 0, 255, 255]);
         assert_eq!(&p[4..8], &[110, 140, 180, 255], "Haut unverändert");
         assert_eq!(&p[16..20], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn nur_oberteil_und_hose() {
+        let stellen: Vec<usize> = (0..18).filter(|&p| faerbbar(p)).collect();
+        assert_eq!(stellen, vec![0, 2]);
+    }
+
+    #[test]
+    fn pruefsumme_erkennt_die_kleidung() {
+        // Kleidung 2x1: links Stoff (Alpha 255), rechts durchsichtig
+        let kleidung = bild(&[(200, 100, 50, 255), (9, 9, 9, 0)]);
+        let maske = Maske::aus_pixeln(&kleidung, 2, 1, 8).unwrap();
+
+        // gebaut: links die Kleidung, rechts Haut -> gleiche Prüfsumme
+        let gebaut = bild(&[(200, 100, 50, 255), (180, 140, 110, 255)]);
+        assert_eq!(pruefsumme(&gebaut, 2, 1, 8, &maske), Some(maske.pruefsumme));
+
+        // andere Textur, schon gefärbt oder falsche Größe -> nicht gleich
+        let andere = bild(&[(201, 100, 50, 255), (180, 140, 110, 255)]);
+        assert_ne!(pruefsumme(&andere, 2, 1, 8, &maske), Some(maske.pruefsumme));
+        let mut gefaerbt = gebaut.clone();
+        faerben(&mut gefaerbt, 2, 1, 8, true, Farbe { r: 0xBE, g: 0, b: 0xFF }, Some(&maske)).unwrap();
+        assert_ne!(pruefsumme(&gefaerbt, 2, 1, 8, &maske), Some(maske.pruefsumme));
+        assert_eq!(pruefsumme(&gebaut, 1, 2, 4, &maske), None);
     }
 
     #[test]

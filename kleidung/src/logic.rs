@@ -373,6 +373,12 @@ impl State {
             Nachricht::Spieler(id, outfit) => {
                 let (teile, farben) = &*outfit;
                 let keys = OutfitKeys::from_teile(teile, farben).mit_koerper(self.koerper.get(&id).copied());
+                let ignoriert = crate::outfit::ignorierte_farben(farben);
+                if !ignoriert.is_empty() {
+                    crate::log!(
+                        "Outfit Spieler-ID {id}: Farben an Stelle {ignoriert:?} nicht angewendet, gefärbt werden nur Oberteil (0) und Hose (2)"
+                    );
+                }
 
                 if !self.aktiv {
                     self.aktiv = true;

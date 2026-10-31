@@ -3,8 +3,10 @@
 //! are the pairs from models/player.img (MTA:SA, CClientPlayerClothes.cpp,
 //! m_DefaultClothes: index = eClothesTexturePart).
 //! Ab 0.9.0 darf jedes Teil außer den Tattoos eine Farbe haben (`textur/modell@RRGGBB`, siehe farbe.rs und faerben.rs).
+//! Ab 0.9.1 färbt das Plugin davon nur Oberteil und Hose (farbe::faerbbar); Farben an anderen Stellen werden weiter
+//! angenommen, damit das Outfit nicht verworfen wird, aber nicht angewendet.
 
-use crate::farbe::Farbe;
+use crate::farbe::{self, Farbe};
 use crate::game::{
     self, ClothesDesc, CLOTHES_TEXTURE_TOTAL, TEX_HEAD, TEX_LEGS, TEX_SHOES, TEX_TORSO,
 };
@@ -23,6 +25,13 @@ pub type Farben = [Option<Farbe>; CLOTHES_TEXTURE_TOTAL];
 /// Tattoo-Stellen 4 bis 12 (eClothesTexturePart): keine Farbe, sie liegen auf der Haut
 pub fn ist_tattoo(part: usize) -> bool {
     game::texture_dependency(part).is_none()
+}
+
+/// Stellen mit Farbe, die das Plugin nicht färbt (alles außer Oberteil und Hose), für das Log.
+pub fn ignorierte_farben(farben: &Farben) -> Vec<usize> {
+    (0..CLOTHES_TEXTURE_TOTAL)
+        .filter(|&part| farben[part].is_some() && !farbe::faerbbar(part))
+        .collect()
 }
 
 /// CJ at the start of the single player game: white vest, jeans, sneakers, short hair
@@ -145,11 +154,12 @@ impl OutfitKeys {
             }
         }
 
-        // eine Farbe nur an einem Teil, das getragen wird (parse_teile prüft das schon)
+        // eine Farbe nur an einem Teil, das getragen wird und gefärbt werden kann; die anderen gehören nicht zum Outfit,
+        // damit sie keinen Umbau auslösen
         let mut farben = *farben;
-        for (part, farbe) in farben.iter_mut().enumerate() {
-            if parts[part].0 == 0 || ist_tattoo(part) {
-                *farbe = None;
+        for (part, f) in farben.iter_mut().enumerate() {
+            if parts[part].0 == 0 || ist_tattoo(part) || !farbe::faerbbar(part) {
+                *f = None;
             }
         }
 
@@ -247,6 +257,8 @@ mod tests {
         assert_eq!(teile[16], Some(("bandred".into(), "bandana".into())));
         assert_eq!(farben[16], Some(Farbe { r: 0xFF, g: 0xDC, b: 0 }));
         assert_eq!(farben.iter().filter(|f| f.is_some()).count(), 4);
+        // ab 0.9.1 färbt das Plugin nur Oberteil und Hose
+        assert_eq!(ignorierte_farben(&farben), vec![13, 16]);
     }
 
     #[test]

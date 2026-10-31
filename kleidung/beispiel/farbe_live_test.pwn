@@ -1,10 +1,11 @@
-// Farben-Test für einen laufenden Server mit Gamemode (samplife-kleidung ab 0.9.0). Anders als kleidung_test.pwn
+// Farben-Test für einen laufenden Server mit Gamemode (samplife-kleidung ab 0.9.1, gefärbt werden nur Oberteil und Hose). Anders als kleidung_test.pwn
 // abonniert dieses Filterscript keine samp-cef-Ereignisse: Der Server-Teil von samp-cef merkt sich je Ereignis nur ein
 // Script (cef_subscribe überschreibt), ein zweites Abo von kleidung:hallo nähme dem Gamemode die Anmeldung der Plugins
 // weg, bis zum nächsten Neustart. Nur für eingeloggte RCON-Admins.
 //
 // /farbe [ID] [Stelle] [textur/modell] [RRGGBB | aus]
-//   Setzt beim Spieler das Teil an der Stelle (0 bis 17, ohne Tattoos 4 bis 12), mit Farbe oder ohne. Die übrigen Stellen
+//   Setzt beim Spieler das Teil an der Stelle (0 bis 17, ohne Tattoos 4 bis 12), ohne Farbe oder, nur an Stelle 0
+//   (Oberteil) und 2 (Hose), mit Farbe. Die übrigen Stellen
 //   sind der Standard-CJ bzw. was dieses Script dem Spieler schon gesetzt hat. Geht an alle Clients; Plugins vor 0.9.0
 //   verwerfen gefärbte Outfits mit einer Logzeile, das ist für den Test harmlos. Der Gamemode setzt das eigene Outfit
 //   wieder, sobald er es neu schickt (z. B. nach dem nächsten Login).
@@ -82,6 +83,8 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	if (!NameOk(teil)) return SendClientMessage(playerid, 0xFF4040FF, "[Farbe] Teil als textur/modell, z. B. bandred/bandana.");
 	new bool:aus = !strcmp(farbe, "aus", true);
 	if (!aus && !FarbeOk(farbe)) return SendClientMessage(playerid, 0xFF4040FF, "[Farbe] Farbe als RRGGBB (z. B. FFDC00) oder aus.");
+	if (!aus && stelle != 0 && stelle != 2)
+		return SendClientMessage(playerid, 0xFF4040FF, "[Farbe] Farben nur an Stelle 0 (Oberteil) und 2 (Hose).");
 
 	if (!gHat[id])
 	{
