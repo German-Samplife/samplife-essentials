@@ -9,7 +9,7 @@
 //! |---|---|---|
 //! | `kleidung:hallo` | client -> server | ASI version; after connecting and on `kleidung:frage` |
 //! | `kleidung:frage` | server -> client | none; the client answers with `kleidung:hallo` |
-//! | `kleidung:spieler` | server -> client | player id, 18 parts (see outfit::parse_teile) |
+//! | `kleidung:spieler` | server -> client | player id, 18 parts (see outfit::parse_teile), ab 0.9.0 mit `@RRGGBB` je Teil |
 //! | `kleidung:weg` | server -> client | player id; outfit forgotten, the player wears the standard CJ |
 //! | `kleidung:koerper` | server -> client | player id, Fett and Muskeln (0 to 1000, like STAT_FAT/STAT_MUSCLE) |
 //! | `anim:start` | server -> client | player id, pose name (anim.rs); partial animation until `anim:stopp` |
@@ -26,7 +26,7 @@ use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
-use crate::outfit::{self, Teile};
+use crate::outfit::{self, Farben, Teile};
 
 pub type Emitter = unsafe extern "C" fn(event: *const c_char, arguments: *const c_char);
 
@@ -39,7 +39,7 @@ const PREFIX_ANIM: &str = "anim:";
 const PREFIX_LIPPEN: &str = "lippen:";
 
 pub enum Nachricht {
-    Spieler(u16, Box<Teile>),
+    Spieler(u16, Box<(Teile, Farben)>),
     Koerper(u16, u16, u16),
     Weg(u16),
     AnimStart(u16, String),
@@ -163,7 +163,7 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
 
         (PREFIX, "spieler") => match parse_id(tokens.next()) {
             None => Err("Spieler-ID fehlt oder ungültig".to_owned()),
-            Some(id) => outfit::parse_teile(tokens).map(|teile| push(Nachricht::Spieler(id, Box::new(teile)))),
+            Some(id) => outfit::parse_teile(tokens).map(|outfit| push(Nachricht::Spieler(id, Box::new(outfit)))),
         },
 
         (PREFIX, "koerper") => match parse_id(tokens.next()) {

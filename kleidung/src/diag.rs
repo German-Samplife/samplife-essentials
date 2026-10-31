@@ -267,7 +267,7 @@ fn hex(bytes: &[u8]) -> String {
     format!("{}{more}", shown.join(" "))
 }
 
-fn write_code(addr: usize, bytes: &[u8]) -> bool {
+pub fn write_code(addr: usize, bytes: &[u8]) -> bool {
     unsafe {
         let mut old = 0;
         if VirtualProtect(addr as *mut c_void as _, bytes.len(), PAGE_EXECUTE_READWRITE, &mut old) == 0 {

@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::anim::Anims;
+use crate::faerben::Faerber;
 use crate::game::{self, ClothesDesc, Ped, Skip, MODEL_PLAYER};
 use crate::hooks;
 use crate::lippen::Lippen;
@@ -167,6 +168,8 @@ struct State {
     /// talking faces in the voice chat, and the own microphone level for the server
     lippen: Lippen,
     mikro: Mikro,
+    /// Teile mit Farbe nach dem Umbau umfärben (`@RRGGBB`)
+    faerber: Faerber,
 }
 
 impl State {
@@ -197,6 +200,7 @@ impl State {
             anims: Anims::new(),
             lippen: Lippen::new(),
             mikro: Mikro::new(),
+            faerber: Faerber::new(),
         }
     }
 
@@ -366,8 +370,15 @@ impl State {
 
     fn handle(&mut self, ver: SampVersion, nachricht: Nachricht) {
         match nachricht {
-            Nachricht::Spieler(id, teile) => {
-                let keys = OutfitKeys::from_teile(&teile).mit_koerper(self.koerper.get(&id).copied());
+            Nachricht::Spieler(id, outfit) => {
+                let (teile, farben) = &*outfit;
+                let keys = OutfitKeys::from_teile(teile, farben).mit_koerper(self.koerper.get(&id).copied());
+                let ignoriert = crate::outfit::ignorierte_farben(farben);
+                if !ignoriert.is_empty() {
+                    crate::log!(
+                        "Outfit Spieler-ID {id}: Farben an Stelle {ignoriert:?} nicht angewendet, gefärbt werden nur Oberteil (0) und Hose (2)"
+                    );
+                }
 
                 if !self.aktiv {
                     self.aktiv = true;
@@ -672,7 +683,20 @@ impl State {
                 if ped.seated_in_vehicle() { " (im Fahrzeug)" } else { "" },
                 target.kurz()
             );
+            // bei Farben die Kleidung im Baukasten abgreifen (Maske), nur für diesen Umbau
+            let abgriff = if target.gefaerbt() > 0 {
+                match crate::faerben::Abgriff::starten() {
+                    Ok(a) => Some(a),
+                    Err(grund) => {
+                        self.faerber.ohne_abgriff(&wer, &target, &grund);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
             let ergebnis = rebuild::umbauen(ped_addr, desc_ptr, &wer, target.koerper.map(|(_, muskeln)| muskeln));
+            let platzierungen = abgriff.map(|a| a.beenden());
             let ms = ergebnis.ms;
 
             self.stats.rebuilds += 1;
@@ -693,6 +717,11 @@ impl State {
             }
 
             if ergebnis.wirksam.is_some() {
+                // Farben in die frisch gebauten Texturen dieser Figur (und von Modell 0, das sie mit ihr teilt)
+                if let Some(platzierungen) = &platzierungen {
+                    self.faerber.anwenden(&wer, ergebnis.rw_nachher, &target, platzierungen);
+                }
+
                 // the model-0 clump now shows `target`; every other existing CJ clump is older
                 self.model_shows = Some(target);
                 self.stale_rws = self
@@ -793,6 +822,7 @@ impl State {
             ),
         );
 
+        samp::chat_line(ver, WHITE, &format!("Farben: {}", self.faerber.zustand()));
         samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.lippen.zustand()));
         samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.mikro.zustand()));
 

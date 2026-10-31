@@ -6,6 +6,8 @@ Ab 0.6.0 spielt es außerdem **Posen**: Teilanimationen nur für den Oberkörper
 
 Ab 0.8.0 bewegen sich die **Lippen**, wenn jemand im Sprach-Chat spricht (siehe [Lippen](#lippen-beim-sprechen)): Taste gedrückt und Stimme am Mikrofon.
 
+Ab 0.9.0 kann der Server einzelne Teile **färben**, z. B. ein gelbes T-Shirt für die Vagos oder ein lila T-Shirt für die Ballas, auch wo GTA keine solche Textur hat. Ab 0.9.1 nur noch Oberteil und Hose (siehe [Farben](#farben)).
+
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
 
 ## Voraussetzungen
@@ -30,11 +32,11 @@ Alle Ereignisse laufen über samp-cef (`cef_emit_event` auf dem Server, `cef_sub
 |---|---|---|
 | `kleidung:hallo` | Client → Server | Version des Plugins, z. B. `0.5.0`. Kommt nach dem Verbinden mit dem CEF-Server und als Antwort auf `kleidung:frage`. Erst danach nimmt der Client Outfits an. |
 | `kleidung:frage` | Server → Client | keine. Der Client antwortet mit `kleidung:hallo`, wenn das Plugin läuft. |
-| `kleidung:spieler` | Server → Client | Spieler-ID und genau 18 Teile, durch Leerzeichen getrennt |
+| `kleidung:spieler` | Server → Client | Spieler-ID und genau 18 Teile, durch Leerzeichen getrennt. Ab 0.9.0 darf jedes Teil außer den Tattoos eine Farbe haben: `textur/modell@RRGGBB`; gefärbt werden ab 0.9.1 nur Oberteil und Hose (siehe [Farben](#farben)). |
 | `kleidung:koerper` | Server → Client | Spieler-ID, Fett und Muskeln, je eine ganze Zahl von 0 bis 1000 wie die Statistiken `STAT_FAT` und `STAT_MUSCLE` von GTA (ab 0.7.0). Darf vor oder nach `kleidung:spieler` kommen. Fett wirkt ab 200 und ist bei 1000 voll; Muskeln wirken ab 0. Ohne dieses Ereignis bleibt der Körper, wie er ist. Ältere Plugins verwerfen es mit einer Zeile im Log. |
 | `kleidung:weg` | Server → Client | Spieler-ID. Das Outfit wird vergessen, der Spieler trägt wieder den Standard-CJ. Beim Verlassen des Servers schicken, damit die ID nichts vererbt. |
 
-Die 18 Teile stehen in der Reihenfolge von `eClothesTexturePart`: Oberkörper, Kopf (Haare), Beine, Schuhe, neun Tattoo-Stellen (4 bis 12), Kette, Uhr, Brille, Hut, Spezial. Jedes Teil ist `textur/modell` (z. B. `suit1red/suit1`), bei Tattoos nur `textur` (z. B. `4weed` an Stelle 4) oder `-` für nichts. Namen wie in der Kleidungsliste von MTA ([`CClientPlayerClothes.cpp`](https://github.com/multitheftauto/mtasa-blue/blob/master/Client/mods/deathmatch/logic/CClientPlayerClothes.cpp)), nur Buchstaben, Ziffern und `_`. Ein Outfit mit falscher Anzahl oder ungültigem Namen wird ganz verworfen und steht im Log.
+Die 18 Teile stehen in der Reihenfolge von `eClothesTexturePart`: Oberkörper, Kopf (Haare), Beine, Schuhe, neun Tattoo-Stellen (4 bis 12), Kette, Uhr, Brille, Hut, Spezial. Jedes Teil ist `textur/modell` (z. B. `suit1red/suit1`), bei Tattoos nur `textur` (z. B. `4weed` an Stelle 4) oder `-` für nichts. Namen wie in der Kleidungsliste von MTA ([`CClientPlayerClothes.cpp`](https://github.com/multitheftauto/mtasa-blue/blob/master/Client/mods/deathmatch/logic/CClientPlayerClothes.cpp)), nur Buchstaben, Ziffern und `_`. Ab 0.9.0 kann hinter einem Teil `@` und eine Farbe aus genau sechs Hex-Ziffern stehen (`bandred/bandana@FFDC00`, groß oder klein); nicht an den Tattoo-Stellen 4 bis 12 und nicht hinter `-`. Ein Outfit mit falscher Anzahl, ungültigem Namen oder ungültiger Farbe wird ganz verworfen und steht im Log.
 
 ```pawn
 cef_emit_event(empfaenger, "kleidung:spieler", CEFINT(spieler),
@@ -48,6 +50,45 @@ Verhalten:
 - Das Plugin merkt sich alle Outfits, auch von Spielern, die gerade nicht in der Nähe sind. Kommt einer herein oder respawnt er, zieht es ihn innerhalb einer Sekunde an. Der Server schickt ein Outfit also nur bei einer Änderung und nach jedem `kleidung:hallo` einmal alle bekannten.
 - Figuren mit einem anderen Skin (Fraktions-Uniformen) rührt das Plugin nicht an. Bekommen sie wieder Skin 0, zieht es sie wieder an.
 - Beim Trennen vom CEF-Server (auch beim Verlassen des SA-MP-Servers) vergisst das Plugin alle Outfits.
+
+## Farben
+
+Ab **0.9.2**, **nur Oberteil (Stelle 0) und Hose (Stelle 2)**. Der Server hängt an ein Teil `@RRGGBB` an, das Plugin färbt nach dem Umbau genau dieses Teil an genau dieser Figur:
+
+```pawn
+cef_emit_event(empfaenger, "kleidung:spieler", CEFINT(spieler),
+    CEFSTR("tshirtwhite/tshirt@BE00FF player_face/head worktrgrey/worktr@000000 sneakerbincblk/sneaker - - - - - - - - - - - - bandred/bandana -"));
+```
+
+**Versionen.** Der Server schickt Farben an Clients, die sich mit `kleidung:hallo` ab `0.9.2` melden, und nur an Stelle 0 und 2. Allen anderen schickt er dasselbe Outfit ohne die Farben: Plugins vor 0.9.0 verwerfen ein Outfit mit `@` ganz (mit Logzeile). 0.9.0 und 0.9.1 gab es nur als Testbauten. 0.9.0 hat auch Kopf, Schuhe und Zubehör gefärbt und dabei im Spieltest das Kopftuch verschwinden lassen und die Schuhe gefärbt. 0.9.1 hat die Kleidung für die Maske selbst aus `player.img` geladen und wieder entladen; danach stürzte im Spieltest (modloader mit std.stream) der Baukasten ab (siehe unten). Ab 0.9.1 wird `@RRGGBB` an allen Stellen außer den Tattoos weiter angenommen (das Outfit wird nicht verworfen), aber nur an Stelle 0 und 2 angewendet; die übrigen stehen im Log.
+
+Verhalten:
+
+- Gefärbt wird mit der Helligkeit jedes Pixels mal der Zielfarbe. Die Helligkeit wird auf das 95. Perzentil der gefärbten Pixel bezogen: Die hellen Stellen ergeben genau die Zielfarbe, Falten, Nähte und Schatten werden entsprechend dunkler, Aufdrucke bleiben als hellere oder dunklere Stellen sichtbar. Schwarz (`000000`) und andere sehr dunkle Farben werden auf eine Mindesthelligkeit angehoben (Schwarz ergibt an den hellsten Stellen `303030`), damit man die Schattierung noch sieht. Alpha bleibt, wie es ist.
+- **Helle Grundteile** (weiß, grau, beige) ergeben die sattesten Farben. Ein dunkles Grundteil wird höchstens vierfach aufgehellt, das Ergebnis ist dann dunkler als die Zielfarbe.
+- **Nur die Kleidung**: Oberteil und Hose liegen in GTA auf der Haut. Der Baukasten setzt die Kleidung nur dort über die Haut, wo ihre Textur nicht durchsichtig ist, und genau diese Pixel färbt das Plugin. Arme, Hände, Beine und Tattoos auf der Haut bleiben.
+- Andere Figuren mit demselben Teil ohne oder mit anderer Farbe ändern sich nicht. Eine Figur, deren Farben sich ändern, wird neu gebaut.
+- Jeder Fehler beim Färben lässt das Teil ungefärbt und steht im Log; die Kleidung selbst bleibt. Das Plugin färbt nie eine Textur, bei der es nicht beweisen kann, dass sie genau dieses Teil ist (siehe unten).
+
+**Wo gefärbt wird** (gta-reversed `ClothesBuilder.cpp`; `ConstructTextures` ist dort nicht nachgebaut, der Ablauf stammt aus der Rekonstruktion in [pedrokilo/ReSA](https://github.com/pedrokilo/ReSA)). Vor jedem Bau zerstört `CClothesBuilder::CreateSkinnedClump` (`0x5A69D0`) alle Texturen im Wörterbuch von Modell 0 und legt sie mit `ConstructTextures` (`0x5A6040`) neu an. Oberteil und Hose sind dabei eigene Raster: eine Kopie der Haut (`CopyTexture` `0x5A5730`, gemischt mit Fett, Muskeln und Tattoos), auf die `PlaceTextureOnTopOfTexture` (`0x5A57B0`) die Kleidung legt, an jedem Pixel, dessen Alpha in der Kleidung nicht 0 ist. Diese Raster teilen sich nur Modell 0 und die gerade gebaute Figur; beim nächsten Bau behält die Figur sie allein. Das Plugin färbt deshalb direkt im gebauten Raster (`RwRasterLock` `0x7FB2D0`, `RwRasterUnlock` `0x7FAEC0`) und legt keine eigenen RenderWare-Objekte an; freigegeben wird alles mit der Figur, wie bisher.
+
+**Maske ohne eigenes Laden (ab 0.9.2).** Welche Pixel Kleidung sind, sieht das Plugin im Baukasten selbst: Nur während eines eigenen Umbaus mit Farben leitet es den Aufruf von `PlaceTextureOnTopOfTexture` in `GetTextureFromTxdAndLoadNextTxd` (`0x5A5F70`) auf eine eigene Funktion um. Sie liest die Kleidung (die Quelle) nur, merkt sich Maske (Alpha ungleich 0) und Prüfsumme der Kleidungspixel samt Ziel und ruft danach die Funktion des Spiels mit denselben Werten auf. Direkt nach dem Umbau steht der ursprüngliche Aufruf wieder da. Findet das Plugin den Aufruf nicht (weil ein anderer Mod ihn schon umgeleitet hat), wird nicht gefärbt. Das Plugin lädt und entlädt keine TXD und ruft nichts von `CStreaming` auf.
+
+**Welche Textur.** Gefärbt wird nur ein Ziel, das die Figur trägt, das im Wörterbuch von Modell 0 liegt (`m_nTxdIndex`, `CTxdStore::GetTxd` `0x408340`) und unter der Maske noch genau die Pixel der Kleidung zeigt. Welche Stelle es ist, sagt die Zahl der Materialien: `CreateSkinnedClump` (in gta-reversed nachgebaut) gibt die Textur `torso` dem Oberkörper und den Händen, `legs` nur den Beinen. Zwei Materialien sind also das Oberteil, eins die Hose. Passt keine oder mehr als eine Textur, bleibt das Teil ungefärbt.
+
+**Warum nicht Kopf, Schuhe und Zubehör.** Kopf (Haare samt Gesicht), Schuhe, Kette, Uhr, Brille, Hut und Spezial sind nach der Rekonstruktion reine Kopien aus ihrer TXD, ohne Haut darunter, also ohne Maske, an der sich die richtige Textur beweisen ließe. 0.9.0 hat sie über die Namen gesucht, die `CreateSkinnedClump` für die Materialien benutzt (`torso`, `head`, `legs`, `feet`, `necklace`, `watch`, `glasses`, `hat`, `extra1`). Im Spieltest (GTA mit modloader, SilentPatch und std.stream) war die Textur `hat` 128x128 X8R8G8B8 ohne Alpha und lag an den Füßen: Gefärbt wurden die Schuhe, das Kopftuch war nicht mehr zu sehen. Name und Stelle passen also bei den reinen Kopien nicht sicher zusammen. Ob das an der Rekonstruktion liegt oder an einem Mod, und warum das Kopftuch dabei verschwand, lässt sich ohne die Liste der Materialien nicht klären. Deshalb schreibt das Plugin bei jedem Umbau mit Farben alle Materialien der Figur ins Log (Textur, Name, Größe, Format, ob aus Modell 0) und welche Kleidung der Baukasten auf welche Textur gelegt hat.
+
+**Absturz mit 0.9.1.** 0.9.1 hat die Kleidung für die Maske selbst geladen (`CClothesBuilder::RequestTexture` `0x5A4220`, `CStreaming::LoadAllRequestedModels` `0x40EA10`, `CStreaming::RemoveModel` `0x4089A0`). Im Spieltest mit modloader (std.stream) stürzte danach ein Umbau in `GetTextureFromTxdAndLoadNextTxd` ab: `GetFirstTexture` bekam für eine Kleidungs-TXD ein leeres Wörterbuch. Am wahrscheinlichsten hat das eigene Laden und Entladen eines der vier Plätze des Baukastens (`CTxdStore::defaultTxds`) in einem Zustand hinterlassen, den std.stream anders behandelt. Ab 0.9.2 fasst das Plugin TXDs und Streaming deshalb gar nicht mehr an.
+
+**Formate.** Gefärbt werden Raster mit 32 Bit je Pixel: `D3DFMT_A8R8G8B8` (RenderWare `8888`) und `D3DFMT_X8R8G8B8` (`888`, ohne Alpha), ohne Palette, nicht komprimiert und ohne eigene Mipmap-Stufen (Format aus `RwRaster::cFormat` und der D3D9-Erweiterung des Rasters, `_RwD3D9RasterExtOffset` `0xB4E9E0`, gta-reversed `WindowedMode.cpp`). Das sind die Formate, mit denen der Baukasten selbst rechnet (`BlendTextures` und `PlaceTextureOnTopOfTexture` lesen 32 Bit je Pixel). Im Spieltest waren Oberteil und Hose `X8R8G8B8`. Paletten (`PAL4`/`PAL8`), DXT1 bis DXT5 und 16-Bit-Formate bleiben ungefärbt mit Logzeile.
+
+**Gut zum Färben** sind nach den Namen helle oder einfarbige Grundteile (die Texturen selbst sind im Spiel zu prüfen):
+
+| Stelle | Teile |
+|---|---|
+| T-Shirt, Unterhemd (0) | `tshirtwhite/tshirt` (im Spiel getestet), `vest/vest` |
+| Kapuzenpulli, -jacke (0) | `hoodjackbeige/hoodjack` (hell); `hoodyablue/hoodya`, `hoodyagreen/hoodya` ohne Aufdruck |
+| Hose (2) | `worktrgrey/worktr`, `chinosbiege/chinosb`, `biegetr/chinosb`, `shortsgrey/shorts`, `bbshortwht/boxingshort`, `suit1trgrey/suit1tr` |
 
 ## Posen (Teilanimationen)
 
@@ -100,7 +141,7 @@ Ereignisse, die mit `lippen:` beginnen, nimmt das Plugin an; sie gehen nicht an 
 
 ## Test mit dem Server
 
-[`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn) ist ein Filterscript, das das Protokoll mit drei festen Outfits spricht. Es braucht die samp-cef-Server-Komponente und deren `cef.inc`.
+[`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn) ist ein Filterscript, das das Protokoll mit fünf festen Outfits spricht (4 und 5 mit Farben) und mit `/farbe` einzelne Teile färbt. Es braucht die samp-cef-Server-Komponente und deren `cef.inc`.
 
 1. Zwei Tester installieren mit dem Essentials-Installer (samp-cef-Client ab `0x000300` und `samplife-kleidung.dll` in `GTA/cef/plugins/`) und verbinden.
 2. Filterscript laden: `/rcon loadfs kleidung_test`. Es fragt alle verbundenen Clients; bei jedem mit Plugin erscheint „[Kleidung] Plugin <Version> gemeldet“. Fehlt die Zeile: `/kleidung frage`, dann `/kleidung info`. Steht dort „Plugin fehlt“, siehe Fehlersuche unten.
@@ -116,6 +157,21 @@ Ereignisse, die mit `lippen:` beginnen, nimmt das Plugin an; sie gehen nicht an 
 5. `/kleidunginfo` bei beiden ausführen und `samplife-kleidung.log` aus dem GTA-Ordner einsammeln.
 6. Zum Schluss `/rcon unloadfs kleidung_test`.
 
+### Farben testen (ab 0.9.2)
+
+Mit demselben Filterscript, ohne den Gamemode (auf einem Server mit Gamemode stattdessen [`beispiel/farbe_live_test.pwn`](beispiel/farbe_live_test.pwn), das kein Ereignis abonniert). `/farbe [ID] [Stelle] [textur/modell] [RRGGBB]` setzt beim Spieler mit dieser ID an dieser Stelle das Teil mit Farbe, nur an Stelle 0 (Oberteil) und 2 (Hose). `/farbe [ID] [Stelle] [textur/modell] aus` setzt ein Teil ohne Farbe, an jeder Stelle außer den Tattoos. Der Rest des Outfits bleibt; hat der Spieler noch keins, beginnt es beim Standard-CJ. `/kleidung 4` (gelb) und `/kleidung 5` (lila, schwarze Hose) sind fertige Outfits mit Farben. Clients mit Plugin vor 0.9.2 bekommen alles ohne Farben.
+
+1. Zwei Tester A (ID a) und B (ID b) mit Plugin ab 0.9.2, beide Skin 0 (siehe oben). Bei beiden steht „Plugin 0.9.2 gemeldet“.
+2. `/farbe a 0 tshirtwhite/tshirt BE00FF`: A trägt ein lila T-Shirt mit Falten und Schatten. **Arme, Hände und Hals bleiben in Hautfarbe**, ein Tattoo am Arm bleibt sichtbar.
+3. `/farbe b 0 tshirtwhite/tshirt FFDC00`: B trägt dasselbe T-Shirt in Gelb. **A bleibt lila**, bei A und bei B auf dem Bildschirm.
+4. `/farbe a 2 worktrgrey/worktr 000000`: schwarze Hose, dunkel, aber Falten noch zu sehen. `/farbe b 2 shortsgrey/shorts FFDC00`: gelbe Shorts, die Beine bleiben Haut. Keiner färbt den anderen mit, Schuhe und Kopf bleiben, wie sie sind.
+5. `/farbe a 16 bandred/bandana aus`: A trägt ein rotes Kopftuch; Oberteil und Hose behalten ihre Farbe, nichts verschwindet.
+6. `/farbe a 0 tshirtwhite/tshirt aus`: A trägt wieder das weiße T-Shirt, B bleibt gelb.
+7. Weit weg und zurück, Respawn, ins Fahrzeug und wieder raus: Beide behalten ihre Farben. Ein dritter Spieler, der später verbindet, sieht beide richtig.
+8. `/kleidunginfo` bei beiden: Zeile „Farben“ ohne „nicht“-Fehler. Im Log steht je Teil „gefärbt“ mit Textur, Pixelzahl, Format und „nur die Kleidung“, und je Umbau die Zeilen „Materialien“ und „Kleidung über der Haut“.
+9. Gegenprobe: Ein Outfit mit Farbe an Stelle 16 (z. B. mit dem Gamemode) wird angenommen; das Kopftuch ist ungefärbt zu sehen, im Log steht „Farben an Stelle [16] nicht angewendet“.
+10. Gegenprobe mit einem Plugin vor 0.9.2: Der Tester sieht dieselben Teile ohne Farben, nichts wird verworfen.
+
 ## `/kleidunginfo`
 
 Ein Befehl nur im eigenen Client, für den Support. Er zeigt:
@@ -124,7 +180,8 @@ Ein Befehl nur im eigenen Client, für den Support. Er zeigt:
 2. Die gefundenen CJ-Figuren mit Spieler-ID, die Zahl der Outfits vom Server und die eigene ID.
 3. Umbauten mit Dauer und wartende Figuren.
 4. Ob der Kleidungs-Code gepatcht ist, welche Umbau-Variante wirkt und wie viele Ereignisse ankamen oder verworfen wurden.
-5. Nur bei einem Fehler: dass sich Figuren mit verschiedenem Outfit Geometrie oder Texturen teilen.
+5. Farben (ab 0.9.0): wie viele Teile gefärbt wurden und wie viele nicht, mit dem letzten Grund, (ab 0.9.1 nur Oberteil und Hose).
+6. Nur bei einem Fehler: dass sich Figuren mit verschiedenem Outfit Geometrie oder Texturen teilen.
 
 ## Wie es funktioniert
 
@@ -210,7 +267,7 @@ Inhalt:
 
 ## Bauen
 
-Nur über GitHub: [`.github/workflows/kleidung.yml`](../.github/workflows/kleidung.yml) baut bei jedem Push auf einen Branch außer `main`, der `kleidung/` oder den Workflow ändert, und von Hand über „Run workflow“. Vorher laufen die Tests für das Format von `kleidung:spieler` (`cargo test`), danach prüft der Workflow, dass die DLL 32 Bit ist, ohne VC++-Laufzeit auskommt und die vier Exporte für samp-cef hat. Ergebnis ist das Artefakt `samplife-kleidung` mit `samplife-kleidung.dll`, `SHA256SUMS.txt` und der `Cargo.lock` des Laufs. Ein Release gibt es erst, wenn das Plugin in den Installer kommt.
+Nur über GitHub: [`.github/workflows/kleidung.yml`](../.github/workflows/kleidung.yml) baut bei jedem Push auf einen Branch außer `main`, der `kleidung/` oder den Workflow ändert, und von Hand über „Run workflow“. Vorher laufen die Tests für das Format von `kleidung:spieler` und für das Färben der Pixel (`cargo test`), danach prüft der Workflow, dass die DLL 32 Bit ist, ohne VC++-Laufzeit auskommt und die vier Exporte für samp-cef hat. Ergebnis ist das Artefakt `samplife-kleidung` mit `samplife-kleidung.dll`, `SHA256SUMS.txt` und der `Cargo.lock` des Laufs. Ein Release gibt es erst, wenn das Plugin in den Installer kommt.
 
 Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/`: `cargo build --release --target i686-pc-windows-msvc`, Tests mit `cargo test --release --target i686-pc-windows-msvc`); die C-Laufzeit wird statisch gelinkt (`.cargo/config.toml`), damit das Plugin ohne VC++-Redistributable läuft.
 
@@ -222,7 +279,9 @@ Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/
 | `src/watchdog.rs` | Lebenszeichen und Protokoll im Sekundentakt, richtet Einstieg B ein |
 | `src/game.rs` | GTA-Adressen der Kleidung, Offsets, Speicherprüfung, Zugriff auf Figuren |
 | `src/samp.rs` | SA-MP-Version, Chat, Befehl, eigene ID, eigene und fremde Figuren |
-| `src/outfit.rs` | Format der 18 Teile, Schlüssel, Standard-CJ |
+| `src/outfit.rs` | Format der 18 Teile samt Farben, Schlüssel, Standard-CJ |
+| `src/farbe.rs` | Farben: `@RRGGBB` lesen, färbbare Stellen, Färben der Pixel, Maske und Prüfsumme (ohne Spiel, mit Tests) |
+| `src/faerben.rs` | Farben im Spiel: Kleidung im Baukasten abgreifen (Maske, Prüfsumme), die passende gebaute Textur finden, Format prüfen, färben |
 | `src/diag.rs` | Vergleich des Kleidungs-Codes mit gta_sa.exe, Originalbytes für einen Aufruf |
 | `src/rebuild.rs` | die drei Umbau-Varianten und die Auswahl der wirksamen |
 | `src/logic.rs` | Outfits je Spieler, Prüfung jede Sekunde, Umbauten, `/kleidunginfo` |

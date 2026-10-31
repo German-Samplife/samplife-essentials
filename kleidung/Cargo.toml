@@ -2,7 +2,7 @@
 # Gebaut wird nur von GitHub (.github/workflows/kleidung.yml) für i686-pc-windows-msvc.
 [package]
 name = "samplife-kleidung"
-version = "0.8.0"
+version = "0.9.2"
 edition = "2021"
 publish = false
 
