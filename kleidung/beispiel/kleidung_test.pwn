@@ -16,9 +16,20 @@
 //   /kleidung 1      Outfit 1 (schwarzes Unterhemd, Afro, Tarnhose, Cowboystiefel, Kette, Brille)
 //   /kleidung 2      Outfit 2 (roter Anzug, Glatze, Anzughose, schwarze Schuhe, Uhr, Cowboyhut)
 //   /kleidung 3      Outfit 3 (Hoodie, Jogginghose, Turnschuhe, Cap, Tattoo am Arm)
+//   /kleidung 4      Outfit 4 mit Farben (gelbes T-Shirt und gelbes Kopftuch), ab Plugin 0.9.0
+//   /kleidung 5      Outfit 5 mit Farben (lila Kapuzenjacke, schwarze Hose, lila Cap), ab Plugin 0.9.0
 //   /kleidung aus    eigenes Outfit vergessen, alle sehen den Standard-CJ
 //   /kleidung info   wer das Plugin gemeldet hat und wer welches Outfit trägt
 //   /kleidung frage  alle Clients fragen, ob das Plugin läuft (Antwort kleidung:hallo)
+//   /farbe <id> <stelle> <textur/modell> <RRGGBB>
+//                    setzt beim Spieler <id> an Stelle <stelle> (0 bis 17 wie unten, ohne Tattoos 4 bis 12) dieses
+//                    Teil in dieser Farbe, z. B. /farbe 0 16 bandred/bandana FFDC00. Der Rest des Outfits bleibt.
+//                    Hatte der Spieler noch kein Outfit, beginnt es beim Standard-CJ.
+//   /farbe <id> <stelle> <textur/modell> aus
+//                    dasselbe Teil ohne Farbe
+//
+// Farben (@RRGGBB hinter einem Teil) versteht das Plugin ab 0.9.0. Clients mit älterem Plugin bekommen dasselbe
+// Outfit ohne Farben, so wie es der Gamemode auch macht.
 
 #define FILTERSCRIPT
 
@@ -30,14 +41,27 @@
 // Kleidungsliste von MTA (CClientPlayerClothes.cpp); Tattoos beginnen mit ihrer Stelle
 // (4weed an Stelle 4). textur/modell, bei Tattoos nur textur, "-" für nichts.
 // Chatzeilen ohne Umlaute: Diese Datei ist UTF-8, SA-MP erwartet Windows-1252.
-static const OUTFIT_TEILE[3][] =
+// Ab Plugin 0.9.0 darf hinter jedem Teil außer den Tattoos eine Farbe stehen: textur/modell@RRGGBB.
+static const OUTFIT_TEILE[5][] =
 {
 	"vestblack/vest afro/afro worktrcamogrn/worktr cowboyboot/biker - - - - - - - - - neckgold/neck2 - glasses04dark/glasses04 - -",
 	"suit1red/suit1 bald/head suit1trred/suit1tr shoedressblk/shoe - - - - - - - - - - watchgno/watch - cowboy/cowboy -",
-	"hoodyabase5/hoodya player_face/head tracktrgang/tracktr sneakerbincblk/sneaker 4weed - - - - - - - - - - - capblk/cap -"
+	"hoodyabase5/hoodya player_face/head tracktrgang/tracktr sneakerbincblk/sneaker 4weed - - - - - - - - - - - capblk/cap -",
+	"tshirtwhite/tshirt@FFDC00 player_face/head jeansdenim/jeans sneakerprowht/sneaker - - - - - - - - - - - - bandred/bandana@FFDC00 -",
+	"hoodjackbeige/hoodjack@8000C0 player_face/head worktrgrey/worktr@000000 sneakerbincblk/sneaker - - - - - - - - - - - - capred/cap@8000C0 -"
 };
 
+// Standard-CJ des Plugins, Ausgang für /farbe, wenn jemand noch kein Outfit hat
+static const OUTFIT_STANDARD[] = "vest/vest player_face/head jeansdenim/jeans sneakerbincblk/sneaker - - - - - - - - - - - - - -";
+
+#define TEILE_ANZAHL 18
+#define TEIL_LAENGE 40
+// reicht für 18 Teile mit Farbe (ein langes Teil wie capblueover/capovereye@FFDC00 hat 29 Zeichen)
+#define OUTFIT_LAENGE 400
+
+// gOutfit: Nummer aus /kleidung (1 bis 5), 0 = mit /farbe geändert, -1 = keins
 static gOutfit[MAX_PLAYERS] = {-1, ...};
+static gOutfitText[MAX_PLAYERS][OUTFIT_LAENGE];
 static gPluginVersion[MAX_PLAYERS][16];
 
 public OnFilterScriptInit()
@@ -105,9 +129,216 @@ public KleidungHallo(player_id, const arguments[])
 	return 1;
 }
 
+// Farben versteht das Plugin ab 0.9.0 (gemeldet in kleidung:hallo)
+static bool:PluginKannFarben(spieler)
+{
+	new punkt = strfind(gPluginVersion[spieler], ".");
+	if (punkt == -1)
+	{
+		return false;
+	}
+	return strval(gPluginVersion[spieler]) > 0 || strval(gPluginVersion[spieler][punkt + 1]) >= 9;
+}
+
+// Outfit ohne "@RRGGBB" für ältere Plugins, die ein Teil mit @ sonst samt Outfit verwerfen
+static OhneFarben(const teile[], ziel[], groesse)
+{
+	new j = 0;
+	for (new i = 0; teile[i] != '\0' && j < groesse - 1; i++)
+	{
+		if (teile[i] == '@')
+		{
+			while (teile[i + 1] != '\0' && teile[i + 1] != ' ')
+			{
+				i++;
+			}
+			continue;
+		}
+		ziel[j++] = teile[i];
+	}
+	ziel[j] = '\0';
+}
+
 static KleidungSenden(empfaenger, spieler)
 {
-	cef_emit_event(empfaenger, "kleidung:spieler", CEFINT(spieler), CEFSTR(OUTFIT_TEILE[gOutfit[spieler]]));
+	if (PluginKannFarben(empfaenger))
+	{
+		cef_emit_event(empfaenger, "kleidung:spieler", CEFINT(spieler), CEFSTR(gOutfitText[spieler]));
+	}
+	else
+	{
+		new ohne[OUTFIT_LAENGE];
+		OhneFarben(gOutfitText[spieler], ohne, sizeof(ohne));
+		cef_emit_event(empfaenger, "kleidung:spieler", CEFINT(spieler), CEFSTR(ohne));
+	}
+}
+
+// Nächstes Wort ab `index` (durch Leerzeichen getrennt) nach `ziel`; false, wenn keins mehr kommt
+static bool:NaechstesWort(const text[], &index, ziel[], groesse)
+{
+	while (text[index] == ' ')
+	{
+		index++;
+	}
+	if (text[index] == '\0')
+	{
+		ziel[0] = '\0';
+		return false;
+	}
+	new j = 0;
+	while (text[index] != '\0' && text[index] != ' ')
+	{
+		if (j < groesse - 1)
+		{
+			ziel[j++] = text[index];
+		}
+		index++;
+	}
+	ziel[j] = '\0';
+	return true;
+}
+
+// Ersetzt im Outfit von `spieler` das Teil an Stelle `stelle`, alle anderen bleiben
+static bool:TeilSetzen(spieler, stelle, const teil[])
+{
+	new neu[OUTFIT_LAENGE], wort[TEIL_LAENGE], index = 0;
+	for (new i = 0; i < TEILE_ANZAHL; i++)
+	{
+		if (!NaechstesWort(gOutfitText[spieler], index, wort, sizeof(wort)))
+		{
+			return false;
+		}
+		if (i > 0)
+		{
+			strcat(neu, " ");
+		}
+		if (i == stelle)
+		{
+			strcat(neu, teil);
+		}
+		else
+		{
+			strcat(neu, wort);
+		}
+	}
+	strmid(gOutfitText[spieler], neu, 0, strlen(neu), OUTFIT_LAENGE);
+	return true;
+}
+
+static bool:IstHex(const text[])
+{
+	if (strlen(text) != 6)
+	{
+		return false;
+	}
+	for (new i = 0; i < 6; i++)
+	{
+		new c = text[i];
+		if (!(('0' <= c <= '9') || ('a' <= c <= 'f') || ('A' <= c <= 'F')))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool:IstName(const text[])
+{
+	new laenge = strlen(text);
+	if (laenge == 0 || laenge > 24)
+	{
+		return false;
+	}
+	for (new i = 0; i < laenge; i++)
+	{
+		new c = text[i];
+		if (!(('0' <= c <= '9') || ('a' <= c <= 'z') || ('A' <= c <= 'Z') || c == '_'))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+// /farbe <id> <stelle> <textur/modell> <RRGGBB | aus>
+static BefehlFarbe(playerid, const params[])
+{
+	new index = 0, wort[16], spieler, stelle, teil[TEIL_LAENGE], farbe[16], text[144];
+
+	if (!NaechstesWort(params, index, wort, sizeof(wort)))
+	{
+		return SendClientMessage(playerid, 0xFFFFFFFF, "Benutze: /farbe [ID] [Stelle 0-17] [textur/modell] [RRGGBB | aus]");
+	}
+	spieler = strval(wort);
+	if (!NaechstesWort(params, index, wort, sizeof(wort))
+		|| !NaechstesWort(params, index, teil, sizeof(teil))
+		|| !NaechstesWort(params, index, farbe, sizeof(farbe)))
+	{
+		return SendClientMessage(playerid, 0xFFFFFFFF, "Benutze: /farbe [ID] [Stelle 0-17] [textur/modell] [RRGGBB | aus]");
+	}
+	stelle = strval(wort);
+
+	if (spieler < 0 || spieler >= MAX_PLAYERS || !IsPlayerConnected(spieler))
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Kein Spieler mit dieser ID.");
+	}
+	if (stelle < 0 || stelle >= TEILE_ANZAHL)
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Stelle 0 bis 17.");
+	}
+	if (4 <= stelle <= 12)
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Stellen 4 bis 12 sind Tattoos, die lassen sich nicht faerben.");
+	}
+
+	new schraeg = strfind(teil, "/");
+	new textur[TEIL_LAENGE], modell[TEIL_LAENGE];
+	if (schraeg == -1)
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Teil als textur/modell, z. B. bandred/bandana.");
+	}
+	strmid(textur, teil, 0, schraeg, sizeof(textur));
+	strmid(modell, teil, schraeg + 1, strlen(teil), sizeof(modell));
+	if (!IstName(textur) || !IstName(modell))
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Teil ungueltig, nur Buchstaben, Ziffern und _.");
+	}
+
+	new bool:mit_farbe = strcmp(farbe, "aus", true) != 0;
+	if (mit_farbe && !IstHex(farbe))
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Farbe als RRGGBB (z. B. FFDC00) oder aus.");
+	}
+
+	new token[TEIL_LAENGE];
+	if (mit_farbe)
+	{
+		format(token, sizeof(token), "%s@%s", teil, farbe);
+	}
+	else
+	{
+		format(token, sizeof(token), "%s", teil);
+	}
+
+	if (gOutfit[spieler] == -1)
+	{
+		strmid(gOutfitText[spieler], OUTFIT_STANDARD, 0, strlen(OUTFIT_STANDARD), OUTFIT_LAENGE);
+	}
+	if (!TeilSetzen(spieler, stelle, token))
+	{
+		return SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Outfit kaputt, erst /kleidung 1 bis 5.");
+	}
+	gOutfit[spieler] = 0;
+	KleidungAnAlle(spieler);
+
+	format(text, sizeof(text), "[Kleidung] Spieler %d, Stelle %d: %s an alle mit Plugin gesendet.", spieler, stelle, token);
+	SendClientMessage(playerid, 0x007DFFFF, text);
+	printf("[Kleidung] /farbe von %d: Spieler %d -> %s", playerid, spieler, gOutfitText[spieler]);
+	if (GetPlayerSkin(spieler) != 0)
+	{
+		SendClientMessage(playerid, 0xFF4040FF, "[Kleidung] Der Spieler hat nicht Skin 0, man sieht es erst mit Skin 0.");
+	}
+	return 1;
 }
 
 static KleidungAnAlle(spieler)
@@ -134,6 +365,12 @@ static KleidungAnAlleWeg(spieler)
 
 public OnPlayerCommandText(playerid, cmdtext[])
 {
+	if (!strcmp(cmdtext, "/farbe", true, 6) && (cmdtext[6] == ' ' || cmdtext[6] == '\0'))
+	{
+		BefehlFarbe(playerid, cmdtext[6]);
+		return 1;
+	}
+
 	// /kleidunginfo ist ein Befehl des Plugins im Client und kommt nur ohne Plugin hier an
 	if (strcmp(cmdtext, "/kleidung", true, 9) != 0 || (cmdtext[9] != ' ' && cmdtext[9] != '\0'))
 	{
@@ -185,8 +422,28 @@ public OnPlayerCommandText(playerid, cmdtext[])
 			{
 				plugin = "fehlt";
 			}
-			format(text, sizeof(text), "[Kleidung] %d %s: Skin %d, Plugin %s, Outfit %d", i, name, GetPlayerSkin(i), plugin, gOutfit[i] + 1);
+			if (gOutfit[i] == -1)
+			{
+				format(text, sizeof(text), "[Kleidung] %d %s: Skin %d, Plugin %s, kein Outfit", i, name, GetPlayerSkin(i), plugin);
+			}
+			else if (gOutfit[i] == 0)
+			{
+				format(text, sizeof(text), "[Kleidung] %d %s: Skin %d, Plugin %s, Outfit mit /farbe geaendert", i, name, GetPlayerSkin(i), plugin);
+			}
+			else
+			{
+				format(text, sizeof(text), "[Kleidung] %d %s: Skin %d, Plugin %s, Outfit %d", i, name, GetPlayerSkin(i), plugin, gOutfit[i]);
+			}
 			SendClientMessage(playerid, 0xFFFFFFFF, text);
+			if (gOutfit[i] != -1)
+			{
+				// das Outfit in Stuecken, damit keine Zeile ueber 144 Zeichen kommt
+				for (new start = 0, laenge = strlen(gOutfitText[i]); start < laenge; start += 120)
+				{
+					strmid(text, gOutfitText[i], start, start + 120, sizeof(text));
+					SendClientMessage(playerid, 0xC0C0C0FF, text);
+				}
+			}
 		}
 		return 1;
 	}
@@ -194,11 +451,12 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	new nummer = cmdtext[9] == ' ' ? strval(cmdtext[10]) : 0;
 	if (nummer < 1 || nummer > sizeof(OUTFIT_TEILE))
 	{
-		SendClientMessage(playerid, 0xFFFFFFFF, "Benutze: /kleidung [skin | 1 | 2 | 3 | aus | info | frage]");
+		SendClientMessage(playerid, 0xFFFFFFFF, "Benutze: /kleidung [skin | 1 bis 5 | aus | info | frage], Farben: /farbe");
 		return 1;
 	}
 
-	gOutfit[playerid] = nummer - 1;
+	gOutfit[playerid] = nummer;
+	strmid(gOutfitText[playerid], OUTFIT_TEILE[nummer - 1], 0, strlen(OUTFIT_TEILE[nummer - 1]), OUTFIT_LAENGE);
 	KleidungAnAlle(playerid);
 	format(text, sizeof(text), "[Kleidung] Outfit %d an alle mit Plugin gesendet.", nummer);
 	SendClientMessage(playerid, 0x007DFFFF, text);

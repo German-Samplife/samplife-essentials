@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::anim::Anims;
+use crate::faerben::Faerber;
 use crate::game::{self, ClothesDesc, Ped, Skip, MODEL_PLAYER};
 use crate::hooks;
 use crate::lippen::Lippen;
@@ -167,6 +168,8 @@ struct State {
     /// talking faces in the voice chat, and the own microphone level for the server
     lippen: Lippen,
     mikro: Mikro,
+    /// Teile mit Farbe nach dem Umbau umfärben (`@RRGGBB`)
+    faerber: Faerber,
 }
 
 impl State {
@@ -197,6 +200,7 @@ impl State {
             anims: Anims::new(),
             lippen: Lippen::new(),
             mikro: Mikro::new(),
+            faerber: Faerber::new(),
         }
     }
 
@@ -366,8 +370,9 @@ impl State {
 
     fn handle(&mut self, ver: SampVersion, nachricht: Nachricht) {
         match nachricht {
-            Nachricht::Spieler(id, teile) => {
-                let keys = OutfitKeys::from_teile(&teile).mit_koerper(self.koerper.get(&id).copied());
+            Nachricht::Spieler(id, outfit) => {
+                let (teile, farben) = &*outfit;
+                let keys = OutfitKeys::from_teile(teile, farben).mit_koerper(self.koerper.get(&id).copied());
 
                 if !self.aktiv {
                     self.aktiv = true;
@@ -415,6 +420,7 @@ impl State {
                 self.anims.getrennt(ver);
                 self.lippen.getrennt(ver);
                 self.mikro.getrennt();
+                self.faerber.vergessen();
                 self.aktiv = false;
                 self.outfits.clear();
                 self.koerper.clear();
@@ -693,6 +699,9 @@ impl State {
             }
 
             if ergebnis.wirksam.is_some() {
+                // Farben in die frisch gebauten Texturen dieser Figur (und von Modell 0, das sie mit ihr teilt)
+                self.faerber.anwenden(&wer, ergebnis.rw_nachher, &target);
+
                 // the model-0 clump now shows `target`; every other existing CJ clump is older
                 self.model_shows = Some(target);
                 self.stale_rws = self
@@ -793,6 +802,7 @@ impl State {
             ),
         );
 
+        samp::chat_line(ver, WHITE, &format!("Farben: {}", self.faerber.zustand()));
         samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.lippen.zustand()));
         samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.mikro.zustand()));
 

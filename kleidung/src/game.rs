@@ -355,6 +355,50 @@ pub fn model0_clump() -> usize {
     read_ptr(array).and_then(|info| read_ptr(info + 0x1C)).unwrap_or(0)
 }
 
+// gta-reversed Models/BaseModelInfo.h: m_nKey, m_nRefCount, dann int16 m_nTxdIndex (+0xA; VALIDATE_SIZE 0x20)
+const MODEL_INFO_TXD_INDEX: usize = 0xA;
+// gta-reversed TxdStore.cpp: RH_ScopedInstall(GetTxd, 0x408340), RwTexDictionary* CTxdStore::GetTxd(int32)
+const CTXDSTORE_GET_TXD: usize = 0x408340;
+
+pub fn get_txd(slot: i32) -> usize {
+    let get_txd: extern "C" fn(i32) -> usize = unsafe { std::mem::transmute(CTXDSTORE_GET_TXD) };
+    get_txd(slot)
+}
+
+/// Texturen-Wörterbuch von Modell 0. CClothes::ConstructPedModel (gta-reversed Clothes.cpp, 0x5A81E0) gibt genau dieses
+/// an CClothesBuilder::CreateSkinnedClump; der Baukasten legt dort bei jedem Bau die Texturen der Figur neu an.
+pub fn model0_txd() -> Option<usize> {
+    let array = read_ptr(MODEL_INFO_PTRS_REF).unwrap_or(MODEL_INFO_PTRS);
+    let info = read_ptr(array)?;
+    if !readable(info + MODEL_INFO_TXD_INDEX, 2) {
+        return None;
+    }
+    let slot = unsafe { ((info + MODEL_INFO_TXD_INDEX) as *const i16).read_unaligned() };
+    if slot < 0 {
+        return None;
+    }
+    Some(get_txd(slot as i32)).filter(|&dict| dict != 0 && readable(dict, 0x10))
+}
+
+/// Alle Texturen der Materialien des ersten Atomics eines Clumps (die Figur aus dem Baukasten hat genau eins).
+pub fn clump_textures(clump: usize) -> Vec<usize> {
+    use client_api::gta::rw::rpworld::{RpGeometry, RpMaterialList};
+
+    let (geometry, _) = clump_parts(clump);
+    if geometry == 0 || !readable(geometry, std::mem::size_of::<RpGeometry>()) {
+        return Vec::new();
+    }
+
+    let list = geometry + std::mem::offset_of!(RpGeometry, matList);
+    let materials = read_ptr(list + std::mem::offset_of!(RpMaterialList, materials)).unwrap_or(0);
+    let count = read_u32(list + std::mem::offset_of!(RpMaterialList, numMaterials)).unwrap_or(0).min(64) as usize;
+
+    (0..count)
+        .filter_map(|i| read_ptr(materials + i * 4))
+        .filter_map(read_ptr) // RpMaterial::texture
+        .collect()
+}
+
 /// CClothes::ms_clothesImageId (gta-reversed Clothes.h, 0xBC12F8) and the entry count of
 /// the player.img directory (ClothesBuilder.cpp: playerImg = StaticRef<CDirectory>(0xBC12C0);
 /// Directory.h: m_pEntries, m_nCapacity, m_nNumEntries).
