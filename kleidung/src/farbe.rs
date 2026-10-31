@@ -6,7 +6,7 @@
 //! Falten und Schatten werden dunkler). Sehr dunkle Zielfarben (Schwarz) werden auf eine Mindesthelligkeit angehoben,
 //! sonst wäre alles einfach Schwarz ohne Schattierung. Alpha bleibt, wie es ist.
 //!
-//! Ab 0.9.1 nur noch Oberteil (Stelle 0) und Hose (Stelle 2), siehe `faerbbar` und faerben.rs.
+//! Ab 0.9.1 (und 0.9.2) nur noch Oberteil (Stelle 0) und Hose (Stelle 2), siehe `faerbbar` und faerben.rs.
 
 /// Stellen (eClothesTexturePart), die gefärbt werden: Oberteil und Hose. Nur bei ihnen lässt sich vor dem Färben
 /// beweisen, dass die gefundene Textur genau die gebaute Kleidung dieser Stelle ist (Prüfsumme der Maske). Kopf,
@@ -132,11 +132,6 @@ impl Maske {
         }
         maske.pruefsumme = pruefsumme(pixel, breite, hoehe, stride, &maske)?;
         Some(maske)
-    }
-
-    /// Ungefährer Speicher in Bytes (für /kleidunginfo).
-    pub fn bytes(&self) -> usize {
-        self.bits.len() * 8
     }
 }
 

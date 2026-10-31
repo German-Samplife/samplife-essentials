@@ -1,4 +1,4 @@
-// Farben-Test für einen laufenden Server mit Gamemode (samplife-kleidung ab 0.9.1, gefärbt werden nur Oberteil und Hose). Anders als kleidung_test.pwn
+// Farben-Test für einen laufenden Server mit Gamemode (samplife-kleidung ab 0.9.2, gefärbt werden nur Oberteil und Hose). Anders als kleidung_test.pwn
 // abonniert dieses Filterscript keine samp-cef-Ereignisse: Der Server-Teil von samp-cef merkt sich je Ereignis nur ein
 // Script (cef_subscribe überschreibt), ein zweites Abo von kleidung:hallo nähme dem Gamemode die Anmeldung der Plugins
 // weg, bis zum nächsten Neustart. Nur für eingeloggte RCON-Admins.

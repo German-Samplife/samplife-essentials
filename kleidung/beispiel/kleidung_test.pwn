@@ -16,20 +16,20 @@
 //   /kleidung 1      Outfit 1 (schwarzes Unterhemd, Afro, Tarnhose, Cowboystiefel, Kette, Brille)
 //   /kleidung 2      Outfit 2 (roter Anzug, Glatze, Anzughose, schwarze Schuhe, Uhr, Cowboyhut)
 //   /kleidung 3      Outfit 3 (Hoodie, Jogginghose, Turnschuhe, Cap, Tattoo am Arm)
-//   /kleidung 4      Outfit 4 mit Farben (gelbes T-Shirt, gelbe Hose, rotes Kopftuch), ab Plugin 0.9.1
-//   /kleidung 5      Outfit 5 mit Farben (lila Kapuzenjacke, schwarze Hose, rote Cap), ab Plugin 0.9.1
+//   /kleidung 4      Outfit 4 mit Farben (gelbes T-Shirt, gelbe Hose, rotes Kopftuch), ab Plugin 0.9.2
+//   /kleidung 5      Outfit 5 mit Farben (lila Kapuzenjacke, schwarze Hose, rote Cap), ab Plugin 0.9.2
 //   /kleidung aus    eigenes Outfit vergessen, alle sehen den Standard-CJ
 //   /kleidung info   wer das Plugin gemeldet hat und wer welches Outfit trägt
 //   /kleidung frage  alle Clients fragen, ob das Plugin läuft (Antwort kleidung:hallo)
 //   /farbe <id> <stelle> <textur/modell> <RRGGBB>
 //                    setzt beim Spieler <id> an Stelle <stelle> dieses Teil in dieser Farbe, z. B.
 //                    /farbe 0 0 tshirtwhite/tshirt BE00FF. Farben nur an Stelle 0 (Oberteil) und 2 (Hose), das Plugin
-//                    färbt ab 0.9.1 nichts anderes. Der Rest des Outfits bleibt.
+//                    färbt nichts anderes. Der Rest des Outfits bleibt.
 //                    Hatte der Spieler noch kein Outfit, beginnt es beim Standard-CJ.
 //   /farbe <id> <stelle> <textur/modell> aus
 //                    dasselbe Teil ohne Farbe (an jeder Stelle außer den Tattoos 4 bis 12)
 //
-// Farben (@RRGGBB hinter einem Teil) schickt dieses Script an Plugins ab 0.9.1, gefärbt werden nur Oberteil und Hose. Clients mit älterem Plugin bekommen dasselbe
+// Farben (@RRGGBB hinter einem Teil) schickt dieses Script an Plugins ab 0.9.2, gefärbt werden nur Oberteil und Hose. Clients mit älterem Plugin bekommen dasselbe
 // Outfit ohne Farben, so wie es der Gamemode auch macht.
 
 #define FILTERSCRIPT
@@ -130,7 +130,7 @@ public KleidungHallo(player_id, const arguments[])
 	return 1;
 }
 
-// Farben schickt der Server ab Plugin 0.9.1 (gemeldet in kleidung:hallo); 0.9.0 war nur ein Testbau
+// Farben schickt der Server ab Plugin 0.9.2 (gemeldet in kleidung:hallo); 0.9.0 und 0.9.1 waren nur Testbauten
 static bool:PluginKannFarben(spieler)
 {
 	new punkt = strfind(gPluginVersion[spieler], ".");
@@ -144,7 +144,7 @@ static bool:PluginKannFarben(spieler)
 	{
 		patch = strval(gPluginVersion[spieler][punkt2 + 1]);
 	}
-	return major > 0 || minor > 9 || (minor == 9 && patch >= 1);
+	return major > 0 || minor > 9 || (minor == 9 && patch >= 2);
 }
 
 // Outfit ohne "@RRGGBB" für ältere Plugins, die ein Teil mit @ sonst samt Outfit verwerfen

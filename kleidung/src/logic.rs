@@ -426,7 +426,6 @@ impl State {
                 self.anims.getrennt(ver);
                 self.lippen.getrennt(ver);
                 self.mikro.getrennt();
-                self.faerber.vergessen();
                 self.aktiv = false;
                 self.outfits.clear();
                 self.koerper.clear();
@@ -684,7 +683,20 @@ impl State {
                 if ped.seated_in_vehicle() { " (im Fahrzeug)" } else { "" },
                 target.kurz()
             );
+            // bei Farben die Kleidung im Baukasten abgreifen (Maske), nur für diesen Umbau
+            let abgriff = if target.gefaerbt() > 0 {
+                match crate::faerben::Abgriff::starten() {
+                    Ok(a) => Some(a),
+                    Err(grund) => {
+                        self.faerber.ohne_abgriff(&wer, &target, &grund);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
             let ergebnis = rebuild::umbauen(ped_addr, desc_ptr, &wer, target.koerper.map(|(_, muskeln)| muskeln));
+            let platzierungen = abgriff.map(|a| a.beenden());
             let ms = ergebnis.ms;
 
             self.stats.rebuilds += 1;
@@ -706,7 +718,9 @@ impl State {
 
             if ergebnis.wirksam.is_some() {
                 // Farben in die frisch gebauten Texturen dieser Figur (und von Modell 0, das sie mit ihr teilt)
-                self.faerber.anwenden(&wer, ergebnis.rw_nachher, &target);
+                if let Some(platzierungen) = &platzierungen {
+                    self.faerber.anwenden(&wer, ergebnis.rw_nachher, &target, platzierungen);
+                }
 
                 // the model-0 clump now shows `target`; every other existing CJ clump is older
                 self.model_shows = Some(target);

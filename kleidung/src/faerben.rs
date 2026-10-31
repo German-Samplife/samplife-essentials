@@ -1,35 +1,41 @@
-//! Kleidung färben (ab 0.9.0, ab 0.9.1 nur Oberteil und Hose): nach einem Umbau die Textur des Teils mit `@RRGGBB`
-//! umfärben, nur für diese Figur.
+//! Kleidung färben (ab 0.9.0; ab 0.9.2 nur Oberteil und Hose und ohne eigenes Laden): nach einem Umbau die Textur des
+//! Teils mit `@RRGGBB` umfärben, nur für diese Figur.
 //!
 //! Welche Texturen das sind (gta-reversed ClothesBuilder.cpp, CreateSkinnedClump 0x5A69D0; ConstructTextures 0x5A6040
 //! ist dort nicht nachgebaut, der Ablauf stammt aus der Rekonstruktion in pedrokilo/ReSA): Vor jedem Bau zerstört
 //! CreateSkinnedClump alle Texturen im Wörterbuch von Modell 0, ConstructTextures legt sie neu an. Oberteil und Hose
 //! sind dabei eigene Raster (CopyTexture 0x5A5730 der Haut mit Fett, Muskeln und Tattoos), auf die
-//! PlaceTextureOnTopOfTexture (0x5A57B0) die Kleidung legt, an jedem Pixel, dessen Alpha in der Kleidung nicht 0 ist.
-//! Die Kopien teilen sich nur Modell 0 und die gerade gebaute Figur (CPed::Dress klont das Modell, der Klon teilt die
-//! Geometrie samt Materialien). Beim nächsten Bau verlieren Modell und Wörterbuch ihre Referenz, die Figur behält ihre
-//! Texturen, bis das Spiel sie mit ihr freigibt. Deshalb färbt das Plugin direkt im gebauten Raster: Es legt keine
-//! RenderWare-Objekte an, und freigegeben wird, was das Spiel freigibt.
+//! GetTextureFromTxdAndLoadNextTxd (0x5A5F70) mit PlaceTextureOnTopOfTexture (0x5A57B0) die Kleidung legt, an jedem
+//! Pixel, dessen Alpha in der Kleidung nicht 0 ist. Die Kopien teilen sich nur Modell 0 und die gerade gebaute Figur
+//! (CPed::Dress klont das Modell, der Klon teilt die Geometrie samt Materialien). Beim nächsten Bau verlieren Modell und
+//! Wörterbuch ihre Referenz, die Figur behält ihre Texturen, bis das Spiel sie mit ihr freigibt. Deshalb färbt das
+//! Plugin direkt im gebauten Raster: Es legt keine RenderWare-Objekte an, und freigegeben wird, was das Spiel freigibt.
 //!
-//! Welche der Texturen der Figur das Oberteil ist, entscheidet nicht der Name, sondern der Inhalt: Das Plugin lädt die
-//! Kleidungstextur einmal selbst (wie der Baukasten: RequestTexture 0x5A4220, CStreaming::LoadAllRequestedModels,
-//! danach RemoveModel), merkt sich die Maske (Alpha nicht 0) und die Prüfsumme der Kleidungspixel darunter. Gefärbt
-//! wird nur die eine Textur der Figur, die im Wörterbuch von Modell 0 liegt, so groß ist wie die Kleidung und unter der
-//! Maske genau diese Pixel hat. Passt keine oder mehr als eine, bleibt das Teil ungefärbt. Gefärbt werden nur die Pixel
-//! unter der Maske; Arme, Hände, Beine und Tattoos bleiben.
+//! Die Maske (welche Pixel Kleidung sind) greift das Plugin ab 0.9.2 im Baukasten selbst ab, statt die Kleidung noch
+//! einmal zu laden: Nur während eines eigenen Umbaus mit Farben leitet es den Aufruf von PlaceTextureOnTopOfTexture in
+//! GetTextureFromTxdAndLoadNextTxd auf `platzieren` um. Das liest die Kleidung (die Quelle) nur, merkt sich Maske und
+//! Prüfsumme samt Ziel und ruft dann die Funktion des Spiels mit denselben Werten auf. Direkt nach dem Umbau kommt der
+//! ursprüngliche Aufruf zurück. Das Plugin lädt und entlädt dabei keine TXD und ruft nichts von CStreaming auf
+//! (0.9.1 hat die Kleidung mit RequestTexture, LoadAllRequestedModels und RemoveModel selbst geladen; im Spieltest mit
+//! modloader/std.stream stürzte danach der Baukasten mit einem leeren Wörterbuch ab).
 //!
-//! Warum nicht mehr Kopf, Schuhe und Zubehör (0.9.0 hat sie über die Namen gesucht): Im Spieltest mit 0.9.0 (modloader,
-//! SilentPatch, std.stream) war die Textur „hat“ im Wörterbuch von Modell 0 128x128 X8R8G8B8 und lag an den Füßen, das
-//! Kopftuch verschwand. Die Namen passen also nicht sicher zu den Stellen, und für reine Kopien gibt es keine Maske, mit
-//! der sich die richtige Textur beweisen ließe. Damit nichts verschwindet und kein anderes Teil die Farbe bekommt,
-//! färbt das Plugin dort nichts. Bei jedem Umbau mit Farben schreibt es die Materialien der Figur ins Log (Name, Größe,
-//! Format), damit sich das später klären lässt.
+//! Gefärbt wird nur ein Ziel, das die Figur trägt, das im Wörterbuch von Modell 0 liegt und unter der Maske noch genau
+//! die Pixel der Kleidung zeigt (Prüfsumme). Welche Stelle es ist, sagt die Zahl der Materialien, die es benutzen:
+//! CreateSkinnedClump (in gta-reversed nachgebaut) gibt die Textur „torso“ dem Oberkörper und den Händen, „legs“ nur
+//! den Beinen. Zwei Materialien sind also das Oberteil, eins die Hose. Ist das nicht eindeutig, bleibt das Teil
+//! ungefärbt. Gefärbt werden nur die Pixel unter der Maske; Arme, Hände, Beine und Tattoos bleiben.
+//!
+//! Kopf, Schuhe und Zubehör färbt das Plugin nicht: Im Spieltest mit 0.9.0 lag die Textur „hat“ aus dem Wörterbuch von
+//! Modell 0 an den Füßen, und das Kopftuch verschwand. Für diese reinen Kopien gibt es keine Maske, an der sich die
+//! richtige Textur beweisen ließe.
 //!
 //! Gefärbt wird nur, was der Baukasten selbst lesen kann: 32 Bit je Pixel, D3DFMT_A8R8G8B8 (RenderWare 8888) oder
 //! D3DFMT_X8R8G8B8 (888), ohne Palette, ohne Kompression, ohne eigene Mipmap-Stufen. Alles andere bleibt ungefärbt und
 //! steht im Log.
 
-use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
 
 use client_api::gta::rw::rwcore::RwRaster;
@@ -41,7 +47,6 @@ use crate::outfit::OutfitKeys;
 // gta-reversed RenderWare/rw/rwcore.cpp
 const RW_RASTER_LOCK: usize = 0x7FB2D0; // RwUInt8* RwRasterLock(RwRaster*, RwUInt8 level, RwInt32 lockMode)
 const RW_RASTER_UNLOCK: usize = 0x7FAEC0; // RwRaster* RwRasterUnlock(RwRaster*)
-const RW_TEX_DICTIONARY_FOR_ALL_TEXTURES: usize = 0x7F3730;
 // rwcore.h: rwRASTERLOCKWRITE 1, rwRASTERLOCKREAD 2
 const LOCK_READ: i32 = 0x02;
 const LOCK_READWRITE: i32 = 0x03;
@@ -67,24 +72,139 @@ const EXT_D3D_FORMAT: usize = 0x18;
 const D3DFMT_A8R8G8B8: u32 = 21;
 const D3DFMT_X8R8G8B8: u32 = 22;
 
-// gta-reversed ClothesBuilder.cpp: RH_ScopedInstall(RequestTexture, 0x5A4220), int32 RequestTexture(uint32 txdNameKey)
-const CCLOTHESBUILDER_REQUEST_TEXTURE: usize = 0x5A4220;
-// gta-reversed Streaming.cpp: LoadAllRequestedModels 0x40EA10, RemoveModel 0x4089A0
-const CSTREAMING_LOAD_ALL_REQUESTED_MODELS: usize = 0x40EA10;
-const CSTREAMING_REMOVE_MODEL: usize = 0x4089A0;
-// gta-reversed Streaming.h: RESOURCE_ID_TXD (TXDToModelId)
-const RESOURCE_ID_TXD: i32 = 20000;
+// gta-reversed ClothesBuilder.cpp: RH_ScopedInstall(PlaceTextureOnTopOfTexture, 0x5A57B0),
+// void PlaceTextureOnTopOfTexture(RwTexture* dst, RwTexture* src); aufgerufen aus GetTextureFromTxdAndLoadNextTxd
+// (0x5A5F70), das ConstructTextures (0x5A6040 bis 0x5A6530) benutzt
+const CCLOTHESBUILDER_PLACE_TEXTURE_ON_TOP: usize = 0x5A57B0;
+const AUFRUFE_VON: usize = 0x5A5F70;
+const AUFRUFE_BIS: usize = 0x5A6530;
 
-/// Gefärbte Stellen und der Name, den CreateSkinnedClump dafür erwartet (BODY_PART_TEX_NAMES). Der Name steht nur im Log;
-/// gesucht wird über den Inhalt (siehe oben).
-const STELLEN: &[(usize, &str)] = &[(game::TEX_TORSO, "torso"), (game::TEX_LEGS, "legs")];
+/// Gefärbte Stellen (eClothesTexturePart), Name für das Log und wie viele Materialien der Figur ihre Textur benutzen
+/// (CreateSkinnedClump, BODY_PART_TEX_NAMES: „torso“ für Oberkörper und Hände, „legs“ für die Beine).
+const STELLEN: &[(usize, &str, usize)] = &[(game::TEX_TORSO, "Oberteil", 2), (game::TEX_LEGS, "Hose", 1)];
 
-/// So viele Masken (je Kleidungstextur ein Bit pro Pixel, 8 KB bei 256x256) bleiben im Speicher.
-const MASKEN_MAX: usize = 32;
+/// Was `platzieren` bei einem Aufruf von PlaceTextureOnTopOfTexture gesehen hat
+pub struct Platzierung {
+    /// Ziel (RwTexture*), auf das die Kleidung kam
+    ziel: usize,
+    /// Name der Quelltextur (Kleidung) für das Log
+    quelle: String,
+    /// Maske und Prüfsumme der Quelle, oder warum nicht
+    maske: Result<Maske, String>,
+}
+
+static ABGREIFEN: AtomicBool = AtomicBool::new(false);
+static PLATZIERUNGEN: Mutex<Vec<Platzierung>> = Mutex::new(Vec::new());
+
+/// Ersatz für den Aufruf von PlaceTextureOnTopOfTexture, nur während eines eigenen Umbaus mit Farben. Liest die Quelle,
+/// ändert nichts und ruft danach immer die Funktion des Spiels mit denselben Werten auf.
+extern "C" fn platzieren(ziel: usize, quelle: usize) {
+    if ABGREIFEN.load(Ordering::SeqCst) {
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let platzierung = Platzierung {
+                ziel,
+                quelle: textur_name(quelle),
+                maske: maske_aus_quelle(quelle),
+            };
+            if let Ok(mut liste) = PLATZIERUNGEN.lock() {
+                if liste.len() < 32 {
+                    liste.push(platzierung);
+                }
+            }
+        }));
+    }
+
+    let original: extern "C" fn(usize, usize) = unsafe { std::mem::transmute(CCLOTHESBUILDER_PLACE_TEXTURE_ON_TOP) };
+    original(ziel, quelle);
+}
+
+fn maske_aus_quelle(quelle: usize) -> Result<Maske, String> {
+    let raster = read_ptr(quelle).ok_or("Kleidung ohne Raster")?;
+    let info = RasterInfo::lesen(raster)?;
+    info.faerbbar()?;
+    let mut gesperrt = Gesperrt::neu(raster, LOCK_READ, false)?;
+    let stride = gesperrt.stride;
+    Maske::aus_pixeln(gesperrt.pixel(), info.breite, info.hoehe, stride).ok_or_else(|| "Raster zu klein".to_owned())
+}
+
+/// Umgeleitete Aufrufe während eines Umbaus. Beim Beenden (auch durch Drop) kommen die ursprünglichen Ziele zurück.
+pub struct Abgriff {
+    stellen: Vec<(usize, [u8; 4])>,
+}
+
+impl Abgriff {
+    /// Game thread, direkt vor rebuild::umbauen. Ohne Fund (z. B. ein anderer Mod hat den Aufruf schon umgeleitet)
+    /// bleibt der Code, wie er ist; dann wird nicht gefärbt.
+    pub fn starten() -> Result<Abgriff, String> {
+        if let Ok(mut liste) = PLATZIERUNGEN.lock() {
+            liste.clear();
+        }
+
+        let laenge = AUFRUFE_BIS - AUFRUFE_VON;
+        if !readable(AUFRUFE_VON, laenge + 4) {
+            return Err("Code des Baukastens nicht lesbar".to_owned());
+        }
+        let code = unsafe { std::slice::from_raw_parts(AUFRUFE_VON as *const u8, laenge + 4) };
+
+        // erst alle Aufrufe suchen (call rel32 mit Ziel PlaceTextureOnTopOfTexture), dann umleiten
+        let mut funde: Vec<(usize, [u8; 4])> = Vec::new();
+        for i in 0..laenge {
+            if code[i] != 0xE8 {
+                continue;
+            }
+            let rel = [code[i + 1], code[i + 2], code[i + 3], code[i + 4]];
+            let stelle = AUFRUFE_VON + i;
+            let ziel = (stelle + 5).wrapping_add(i32::from_le_bytes(rel) as isize as usize);
+            if ziel == CCLOTHESBUILDER_PLACE_TEXTURE_ON_TOP {
+                funde.push((stelle, rel));
+            }
+        }
+
+        let mut abgriff = Abgriff { stellen: Vec::new() };
+        let neu = (platzieren as extern "C" fn(usize, usize)) as usize;
+
+        for (stelle, rel) in funde {
+            let neu_rel = (neu.wrapping_sub(stelle + 5) as u32).to_le_bytes();
+            if !crate::diag::write_code(stelle + 1, &neu_rel) {
+                return Err(format!("Aufruf bei {stelle:#x} nicht umzuleiten"));
+            }
+            abgriff.stellen.push((stelle + 1, rel));
+        }
+
+        if abgriff.stellen.is_empty() {
+            return Err("kein Aufruf von PlaceTextureOnTopOfTexture gefunden (von einem anderen Mod umgeleitet?)".to_owned());
+        }
+
+        ABGREIFEN.store(true, Ordering::SeqCst);
+        Ok(abgriff)
+    }
+
+    /// Game thread, direkt nach rebuild::umbauen: Aufrufe zurück, was gesehen wurde.
+    pub fn beenden(mut self) -> Vec<Platzierung> {
+        self.zurueck();
+        match PLATZIERUNGEN.lock() {
+            Ok(mut liste) => liste.drain(..).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    fn zurueck(&mut self) {
+        ABGREIFEN.store(false, Ordering::SeqCst);
+        for (adresse, rel) in self.stellen.drain(..) {
+            if !crate::diag::write_code(adresse, &rel) {
+                crate::log!("Aufruf bei {:#x} nicht zurückgesetzt", adresse - 1);
+            }
+        }
+    }
+}
+
+impl Drop for Abgriff {
+    fn drop(&mut self) {
+        self.zurueck();
+    }
+}
 
 pub struct Faerber {
-    /// Maske je Texturschlüssel der Kleidung (Oberteil, Hose)
-    masken: HashMap<u32, Maske>,
     pub gefaerbt: u32,
     pub fehler: u32,
     letzter_fehler: String,
@@ -94,7 +214,6 @@ pub struct Faerber {
 impl Faerber {
     pub fn new() -> Faerber {
         Faerber {
-            masken: HashMap::new(),
             gefaerbt: 0,
             fehler: 0,
             letzter_fehler: String::new(),
@@ -102,30 +221,36 @@ impl Faerber {
         }
     }
 
-    /// Beim Trennen: Masken freigeben (die Zähler bleiben für /kleidunginfo).
-    pub fn vergessen(&mut self) {
-        self.masken.clear();
-    }
-
     pub fn zustand(&self) -> String {
-        let kb: usize = self.masken.values().map(Maske::bytes).sum::<usize>().div_ceil(1024);
         let mut text = format!(
-            "{} Teile gefärbt (zuletzt {:.1} ms), {} nicht, Masken {} ({kb} KB)",
-            self.gefaerbt,
-            self.letzte_ms,
-            self.fehler,
-            self.masken.len()
+            "{} Teile gefärbt (zuletzt {:.1} ms), {} nicht",
+            self.gefaerbt, self.letzte_ms, self.fehler
         );
         if !self.letzter_fehler.is_empty() {
-            let grund: String = self.letzter_fehler.chars().take(50).collect();
+            let grund: String = self.letzter_fehler.chars().take(60).collect();
             text += &format!(", zuletzt: {grund}");
         }
         text
     }
 
-    /// Game thread, direkt nach einem Umbau, der gewirkt hat: `clump` ist der Clump der gebauten Figur.
-    /// Jeder Fehler lässt das Teil ungefärbt und steht im Log.
-    pub fn anwenden(&mut self, wer: &str, clump: usize, keys: &OutfitKeys) {
+    fn fehler(&mut self, wer: &str, part: usize, name: &str, farbe: Farbe, grund: &str) {
+        self.fehler += 1;
+        crate::log!("  {wer}: Teil {part} ({name}) #{} nicht gefärbt: {grund}", farbe.hex());
+        self.letzter_fehler = format!("Teil {part}: {grund}");
+    }
+
+    /// Ohne Abgriff (Umleitung nicht möglich): jedes Teil mit Farbe bleibt ungefärbt.
+    pub fn ohne_abgriff(&mut self, wer: &str, keys: &OutfitKeys, grund: &str) {
+        for &(part, name, _) in STELLEN {
+            if let Some(farbe) = keys.farben[part] {
+                self.fehler(wer, part, name, farbe, grund);
+            }
+        }
+    }
+
+    /// Game thread, direkt nach einem Umbau, der gewirkt hat: `clump` ist der Clump der gebauten Figur, `platzierungen`
+    /// was der Abgriff dabei gesehen hat. Jeder Fehler lässt das Teil ungefärbt und steht im Log.
+    pub fn anwenden(&mut self, wer: &str, clump: usize, keys: &OutfitKeys, platzierungen: &[Platzierung]) {
         if keys.gefaerbt() == 0 {
             return;
         }
@@ -135,14 +260,43 @@ impl Faerber {
         let figur = game::clump_textures(clump);
         materialien_loggen(wer, dict, &figur);
 
-        for &(part, name) in STELLEN {
+        // Ziele, die die Figur trägt, die in Modell 0 liegen und unter der Maske noch genau die Kleidung zeigen
+        let mut kandidaten: Vec<(&Platzierung, &Maske, usize)> = Vec::new();
+        for p in platzierungen {
+            let Ok(maske) = &p.maske else {
+                continue;
+            };
+            let materialien = figur.iter().filter(|&&t| t == p.ziel).count();
+            if materialien == 0 || dict.is_none() || read_ptr(p.ziel + TEXTURE_DICT) != dict {
+                continue;
+            }
+            if kandidaten.iter().any(|(k, _, _)| k.ziel == p.ziel) {
+                continue;
+            }
+            if pruefsumme_passt(p.ziel, maske) {
+                kandidaten.push((p, maske, materialien));
+            }
+        }
+
+        let gesehen: Vec<String> = platzierungen
+            .iter()
+            .map(|p| match &p.maske {
+                Ok(m) => format!("{:#x} „{}“ {}x{} {} Pixel", p.ziel, p.quelle, m.breite, m.hoehe, m.anzahl()),
+                Err(grund) => format!("{:#x} „{}“: {grund}", p.ziel, p.quelle),
+            })
+            .collect();
+        crate::log!("  {wer}: Kleidung über der Haut: {}", gesehen.join(" | "));
+
+        for &(part, name, materialien) in STELLEN {
             let Some(farbe) = keys.farben[part] else {
                 continue;
             };
 
-            let ergebnis = match dict {
-                None => Err("Texturen von Modell 0 nicht gefunden".to_owned()),
-                Some(dict) => self.teil(dict, &figur, farbe, keys.parts[part].0),
+            let passend: Vec<&(&Platzierung, &Maske, usize)> = kandidaten.iter().filter(|k| k.2 == materialien).collect();
+            let ergebnis = match passend.as_slice() {
+                [(p, maske, _)] => faerben_im_raster(p.ziel, maske, farbe).map(|text| format!("„{}“ auf {:#x}, {text}", p.quelle, p.ziel)),
+                [] => Err(format!("keine gebaute Textur mit dieser Kleidung und {materialien} Material(ien) gefunden")),
+                viele => Err(format!("{} Texturen passen, nicht eindeutig", viele.len())),
             };
 
             match ergebnis {
@@ -150,128 +304,53 @@ impl Faerber {
                     self.gefaerbt += 1;
                     crate::log!("  {wer}: Teil {part} ({name}) #{} gefärbt, {text}", farbe.hex());
                 }
-                Err(grund) => {
-                    self.fehler += 1;
-                    crate::log!("  {wer}: Teil {part} ({name}) #{} nicht gefärbt: {grund}", farbe.hex());
-                    self.letzter_fehler = format!("Teil {part}: {grund}");
-                }
+                Err(grund) => self.fehler(wer, part, name, farbe, &grund),
             }
         }
 
         self.letzte_ms = start.elapsed().as_secs_f32() * 1000.0;
     }
-
-    fn teil(&mut self, dict: usize, figur: &[usize], farbe: Farbe, key: u32) -> Result<String, String> {
-        if key == 0 {
-            return Err("ohne Kleidung".to_owned());
-        }
-        let maske = self.maske(key)?;
-        if maske.anzahl() == 0 {
-            return Err("die Kleidung hat keine sichtbaren Pixel".to_owned());
-        }
-
-        // die eine Textur der Figur aus dem Wörterbuch von Modell 0, die unter der Maske genau die Kleidung zeigt
-        let mut kandidaten: Vec<usize> = figur.to_vec();
-        kandidaten.sort_unstable();
-        kandidaten.dedup();
-        let mut treffer: Vec<(usize, usize, RasterInfo, bool)> = Vec::new();
-        let mut anders = 0;
-
-        for textur in kandidaten {
-            if read_ptr(textur + TEXTURE_DICT) != Some(dict) {
-                continue;
-            }
-            let Some(raster) = read_ptr(textur) else {
-                continue;
-            };
-            let Ok(info) = RasterInfo::lesen(raster) else {
-                continue;
-            };
-            if info.breite != maske.breite || info.hoehe != maske.hoehe {
-                continue;
-            }
-            let Ok(mit_alpha) = info.faerbbar() else {
-                continue;
-            };
-            let mut gesperrt = Gesperrt::neu(raster, LOCK_READ, false)?;
-            let stride = gesperrt.stride;
-            let summe = crate::farbe::pruefsumme(gesperrt.pixel(), info.breite, info.hoehe, stride, maske);
-            drop(gesperrt);
-            if summe == Some(maske.pruefsumme) {
-                treffer.push((textur, raster, info, mit_alpha));
-            } else {
-                anders += 1;
-            }
-        }
-
-        let (textur, raster, info, mit_alpha) = match treffer.len() {
-            1 => treffer.remove(0),
-            0 => {
-                return Err(format!(
-                    "keine Textur der Figur zeigt diese Kleidung ({anders} gleich große mit anderem Inhalt), ungefärbt"
-                ))
-            }
-            n => return Err(format!("{n} Texturen der Figur passen, nicht eindeutig, ungefärbt")),
-        };
-        let materialien = figur.iter().filter(|&&t| t == textur).count();
-
-        let ms_start = Instant::now();
-        let mut gesperrt = Gesperrt::neu(raster, LOCK_READWRITE, true)?;
-        let stride = gesperrt.stride;
-        let ergebnis =
-            crate::farbe::faerben(gesperrt.pixel(), info.breite, info.hoehe, stride, mit_alpha, farbe, Some(maske))?;
-        drop(gesperrt);
-
-        Ok(format!(
-            "Textur {textur:#x} „{}“ ({materialien} Materialien), {} von {} Pixeln, Bezug {}, {}x{} {}, nur die Kleidung, {:.1} ms",
-            textur_name(textur),
-            ergebnis.pixel,
-            info.breite * info.hoehe,
-            ergebnis.bezug,
-            info.breite,
-            info.hoehe,
-            info.d3d_name(),
-            ms_start.elapsed().as_secs_f32() * 1000.0
-        ))
-    }
-
-    fn maske(&mut self, key: u32) -> Result<&Maske, String> {
-        if !self.masken.contains_key(&key) {
-            if self.masken.len() >= MASKEN_MAX {
-                self.masken.clear();
-            }
-            let start = Instant::now();
-            let maske = maske_laden(key)?;
-            crate::log!(
-                "  Maske der Kleidung {key:08x}: {}x{}, {} Pixel Kleidung, Prüfsumme {:016x}, geladen in {:.1} ms",
-                maske.breite,
-                maske.hoehe,
-                maske.anzahl(),
-                maske.pruefsumme,
-                start.elapsed().as_secs_f32() * 1000.0
-            );
-            self.masken.insert(key, maske);
-        }
-        self.masken.get(&key).ok_or_else(|| "Maske fehlt".to_owned())
-    }
 }
 
-/// Lädt die Kleidungstextur `key` aus player.img in einen der Plätze des Baukastens, liest daraus die Maske und entlädt
-/// sie wieder; dieselben Schritte wie GetTextureFromTxdAndLoadNextTxd (0x5A5F70).
-fn maske_laden(key: u32) -> Result<Maske, String> {
-    let request: extern "C" fn(u32) -> i32 = unsafe { std::mem::transmute(CCLOTHESBUILDER_REQUEST_TEXTURE) };
-    let load_all: extern "C" fn(bool) = unsafe { std::mem::transmute(CSTREAMING_LOAD_ALL_REQUESTED_MODELS) };
-    let remove: extern "C" fn(i32) = unsafe { std::mem::transmute(CSTREAMING_REMOVE_MODEL) };
-
-    let slot = request(key);
-    if slot < 0 {
-        return Err(format!("Kleidungstextur {key:08x} nicht angefordert"));
+/// Zeigt die Textur unter der Maske noch genau die Pixel der Kleidung?
+fn pruefsumme_passt(textur: usize, maske: &Maske) -> bool {
+    let Some(raster) = read_ptr(textur) else {
+        return false;
+    };
+    let Ok(info) = RasterInfo::lesen(raster) else {
+        return false;
+    };
+    if info.breite != maske.breite || info.hoehe != maske.hoehe || info.faerbbar().is_err() {
+        return false;
     }
+    let Ok(mut gesperrt) = Gesperrt::neu(raster, LOCK_READ, false) else {
+        return false;
+    };
+    let stride = gesperrt.stride;
+    crate::farbe::pruefsumme(gesperrt.pixel(), info.breite, info.hoehe, stride, maske) == Some(maske.pruefsumme)
+}
 
-    load_all(true);
-    let ergebnis = maske_aus_txd(slot);
-    remove(slot + RESOURCE_ID_TXD);
-    ergebnis.map_err(|grund| format!("Maske der Kleidung {key:08x}: {grund}"))
+fn faerben_im_raster(textur: usize, maske: &Maske, farbe: Farbe) -> Result<String, String> {
+    let raster = read_ptr(textur).ok_or("Textur ohne Raster")?;
+    let info = RasterInfo::lesen(raster)?;
+    let mit_alpha = info.faerbbar()?;
+
+    let start = Instant::now();
+    let mut gesperrt = Gesperrt::neu(raster, LOCK_READWRITE, true)?;
+    let stride = gesperrt.stride;
+    let ergebnis = crate::farbe::faerben(gesperrt.pixel(), info.breite, info.hoehe, stride, mit_alpha, farbe, Some(maske))?;
+    drop(gesperrt);
+
+    Ok(format!(
+        "{} von {} Pixeln, Bezug {}, {}x{} {}, nur die Kleidung, {:.1} ms",
+        ergebnis.pixel,
+        info.breite * info.hoehe,
+        ergebnis.bezug,
+        info.breite,
+        info.hoehe,
+        info.d3d_name(),
+        start.elapsed().as_secs_f32() * 1000.0
+    ))
 }
 
 /// Name einer Textur (RwTexture::name, höchstens 32 Bytes)
@@ -301,32 +380,6 @@ fn materialien_loggen(wer: &str, dict: Option<usize>, figur: &[usize]) {
         })
         .collect();
     crate::log!("  {wer}: Materialien {}", teile.join(" | "));
-}
-
-extern "C" fn erste_textur_cb(textur: usize, data: *mut usize) -> usize {
-    unsafe { *data = textur };
-    0
-}
-
-fn maske_aus_txd(slot: i32) -> Result<Maske, String> {
-    let dict = game::get_txd(slot);
-    if dict == 0 || !readable(dict, 0x10) {
-        return Err(format!("TXD {slot} nicht geladen"));
-    }
-
-    // GetFirstTexture (gta-reversed RenderWare/rw/rwtexdict.cpp): RwTexDictionaryForAllTextures bis zur ersten
-    let for_all: extern "C" fn(usize, extern "C" fn(usize, *mut usize) -> usize, *mut usize) -> usize =
-        unsafe { std::mem::transmute(RW_TEX_DICTIONARY_FOR_ALL_TEXTURES) };
-    let mut textur = 0usize;
-    for_all(dict, erste_textur_cb, &mut textur);
-
-    let raster = read_ptr(textur).ok_or("TXD ohne Textur")?;
-    let info = RasterInfo::lesen(raster)?;
-    info.faerbbar()?;
-
-    let mut gesperrt = Gesperrt::neu(raster, LOCK_READ, false)?;
-    let stride = gesperrt.stride;
-    Maske::aus_pixeln(gesperrt.pixel(), info.breite, info.hoehe, stride).ok_or_else(|| "Raster zu klein".to_owned())
 }
 
 struct RasterInfo {
