@@ -4,7 +4,7 @@
     Visual Studio 2017 mit v141_xp, das Windows SDK 7.1A und das DirectX SDK (Juni 2010). Diese Datei
     stellt den Bau auf Visual Studio 2022 um, ohne das Projekt selbst zu ändern:
     - Pfade: aktuelles Windows SDK, D3DX 9 aus dem NuGet-Paket Microsoft.DXSDK.D3DX (Ordner in D3DX_DIR)
-    - SAMP_R1 und SAMP_EN: Fassung für SA-MP 0.3.7 R1 mit englischem Menü, wie sv_client_037_r1_english.zip
+    - SAMP_R1 und SAMP_DE: Fassung für SA-MP 0.3.7 R1 mit deutschem Menü (Texte in deutsch.patch)
     - Laufzeitbibliothek statisch (/MT), damit die .asi keine bestimmte VC++-Laufzeit beim Spieler voraussetzt
     Toolset und SDK-Version kommen als Parameter von msbuild (siehe .github/workflows/sampvoice.yml).
   -->
@@ -16,7 +16,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <PreprocessorDefinitions>SAMP_R1;SAMP_EN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>SAMP_R1;SAMP_DE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>

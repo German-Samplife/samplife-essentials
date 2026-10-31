@@ -1,0 +1,95 @@
+diff --git a/client/PluginMenu.cpp b/client/PluginMenu.cpp
+index f74dfec..680b60d 100644
+--- a/client/PluginMenu.cpp
++++ b/client/PluginMenu.cpp
+@@ -451,6 +451,7 @@ void PluginMenu::Render() noexcept
+                     Playback::SetSoundFilter(PluginMenu::soundFilter);
+                 }
+ 
++#if !defined(SAMP_DE)
+                 ImGui::NewLine();
+                 ImGui::PushFont(PluginMenu::pDescFont);
+                 ImGui::Text(kTab1Desc3TitleText);
+@@ -474,6 +475,10 @@ void PluginMenu::Render() noexcept
+                 }
+ 
+                 const auto rstBtnSize = ImGui::GetItemRectSize();
++#else
++                // Ohne Symbol ueber den Spielern (ohne-sprecheranzeige.patch) gibt es hier nichts einzustellen
++                const ImVec2 rstBtnSize { ImGui::CalcItemWidth(), 0.f };
++#endif
+ 
+                 ImGui::NewLine();
+                 ImGui::PushFont(PluginMenu::pDescFont);
+@@ -550,6 +555,7 @@ void PluginMenu::Render() noexcept
+                     ImGui::TextDisabled(kTab2Desc3MicroNotFoundText);
+                 }
+ 
++#if !defined(SAMP_DE)
+                 ImGui::NewLine();
+                 ImGui::PushFont(PluginMenu::pDescFont);
+                 ImGui::Text(kTab2Desc2TitleText);
+@@ -577,6 +583,10 @@ void PluginMenu::Render() noexcept
+                     PluginMenu::bMicroMovement = true;
+ 
+                 const auto rstBtnSize = ImGui::GetItemRectSize();
++#else
++                // Ohne Mikrofon-Symbol (ohne-sprecheranzeige.patch) gibt es hier nichts einzustellen
++                const ImVec2 rstBtnSize { ImGui::CalcItemWidth(), 0.f };
++#endif
+ 
+                 ImGui::NewLine();
+                 ImGui::PushFont(PluginMenu::pDescFont);
+diff --git a/client/PluginMenu.h b/client/PluginMenu.h
+index a8ef24b..106a530 100644
+--- a/client/PluginMenu.h
++++ b/client/PluginMenu.h
+@@ -22,7 +22,7 @@
+ #include <util/Texture.h>
+ #include <util/Render.h>
+ 
+-#if !defined(SAMP_RU) && !defined(SAMP_EN)
++#if !defined(SAMP_RU) && !defined(SAMP_EN) && !defined(SAMP_DE)
+ #define SAMP_RU
+ #endif
+ 
+@@ -101,6 +101,39 @@ private:
+     static constexpr auto kTab3Desc1InputPlaceholderText   = "Enter Player ID or Nickname...";
+     static constexpr auto kTab3Desc2PlayerListText         = "Players online";
+     static constexpr auto kTab3Desc3BlackListText          = "Blocked players";
++#elif defined(SAMP_DE)
++    // Deutsch fuer German Samplife; Umlaute als UTF-8-Bytes, unabhaengig von der Codepage beim Bauen
++    static constexpr auto kTitleText                       = "Einstellungen";
++    static constexpr auto kTab1TitleText                   = "Allgemein";
++    static constexpr auto kTab1Desc1TitleText              = "Ton";
++    static constexpr auto kTab1Desc1EnableSoundText        = "Ton an";
++    static constexpr auto kTab1Desc1VolumeSoundText        = "Lautst\xC3\xA4rke";
++    static constexpr auto kTab1Desc2TitleText              = "Effekte";
++    static constexpr auto kTab1Desc2BalancerText           = "Lautst\xC3\xA4rke angleichen";
++    static constexpr auto kTab1Desc2FilterText             = "Hochpassfilter";
++    static constexpr auto kTab1Desc3TitleText              = "Symbol \xC3\xBC" "ber Spielern";
++    static constexpr auto kTab1Desc3SpeakerIconScaleText   = "Gr\xC3\xB6\xC3\x9F" "e";
++    static constexpr auto kTab1Desc3SpeakerIconOffsetXText = "Versatz X";
++    static constexpr auto kTab1Desc3SpeakerIconOffsetYText = "Versatz Y";
++    static constexpr auto kTab1Desc4TitleText              = "Zur\xC3\xBC" "cksetzen";
++    static constexpr auto kTab1Desc4ConfigResetText        = "Alles zur\xC3\xBC" "cksetzen";
++    static constexpr auto kTab2TitleText                   = "Mikrofon";
++    static constexpr auto kTab2Desc1TitleText              = "Ger\xC3\xA4t";
++    static constexpr auto kTab2Desc1EnableMicroText        = "Mikrofon an";
++    static constexpr auto kTab2Desc1MicroVolumeText        = "Mikrofon-Lautst\xC3\xA4rke";
++    static constexpr auto kTab2Desc1DeviceNameText         = "Eingabeger\xC3\xA4t";
++    static constexpr auto kTab2Desc1CheckDeviceText        = "Mikrofon testen";
++    static constexpr auto kTab2Desc2TitleText              = "Mikrofon-Symbol";
++    static constexpr auto kTab2Desc2MicroIconScaleText     = "Gr\xC3\xB6\xC3\x9F" "e";
++    static constexpr auto kTab2Desc2MicroIconPositionXText = "Position X";
++    static constexpr auto kTab2Desc2MicroIconPositionYText = "Position Y";
++    static constexpr auto kTab2Desc2MicroIconMoveText      = "Verschieben";
++    static constexpr auto kTab2Desc3MicroNotFoundText      = "Kein Mikrofon gefunden";
++    static constexpr auto kTab3TitleText                   = "Stummschalten";
++    static constexpr auto kTab3Desc1TitleText              = "Suche";
++    static constexpr auto kTab3Desc1InputPlaceholderText   = "ID oder Name eines Spielers ...";
++    static constexpr auto kTab3Desc2PlayerListText         = "Spieler auf dem Server";
++    static constexpr auto kTab3Desc3BlackListText          = "Stummgeschaltete Spieler";
+ #endif
+ 
+     static constexpr float kBaseMenuWidth                  = 0.6f * Render::kBaseWidth;

@@ -26,8 +26,14 @@ Dazu kommt [`cef-reihenfolge.patch`](cef-reihenfolge.patch) (ab `sampvoice-3.1-s
 
 Und [`neuer-compiler.patch`](neuer-compiler.patch). Er ändert nichts am Verhalten. Er setzt nur an einer Stelle in `client/Network.cpp` eine ausdrückliche Typumwandlung, die der heutige Compiler verlangt (Fehler C2398).
 
+Ab `sampvoice-3.1-sl5` dazu [`deutsch.patch`](deutsch.patch) und [`logo.png`](logo.png):
+
+- Das Menü (F11) ist deutsch. `client/PluginMenu.h` bekommt eine dritte Sprache `SAMP_DE` neben `SAMP_RU` und `SAMP_EN`; [`Directory.Build.targets`](Directory.Build.targets) baut mit `SAMP_DE`. Die Umlaute stehen als UTF-8-Bytes (`\xC3\xA4`) im Quelltext, so hängt das Ergebnis nicht von der Codepage beim Bauen ab. Die Schrift des Menüs (`resources/font.ttf`, Zeichensatz Kyrillisch samt Latin-1) hat alle Umlaute.
+- Mit `SAMP_DE` fehlen im Menü die Einstellungen für das Symbol über den Spielern und das Mikrofon-Symbol (Größe, Position, Verschieben). Beides zeigt dieser Client nicht (siehe oben), die Regler täten nichts.
+- Oben rechts im Menü steht unser Logo statt „SAMP VOICE Version 3.0“: [`logo.png`](logo.png) ersetzt beim Bauen `client/resources/logo.png`, 512 x 128 Pixel wie das Original (Sechseck aus `docs/logo` in samplife2026, daneben „German Samplife“ und „Sprach-Chat“ in Inter).
+
 Alles andere bleibt wie im Original:
-- Menü mit den Einstellungen
+- Einstellungen im Menü (Ton, Lautstärke, Mikrofon, Gerät, Mikrofontest, Stummschalten einzelner Spieler)
 - Sprechtasten
 - Lautstärke
 
@@ -36,7 +42,7 @@ Alles andere bleibt wie im Original:
 Das übernimmt GitHub mit [`.github/workflows/sampvoice.yml`](../.github/workflows/sampvoice.yml):
 
 1. Den Quelltext von SampVoice holen, Commit `60a511af30903c4f8a456f5b0ff1e45bf7f498f5` (Tag `v3.1`), und den Patch anwenden.
-2. Mit Visual Studio 2022 für SA-MP 0.3.7 R1 und englisches Menü bauen (`SAMP_R1`, `SAMP_EN`). Dazu kommen:
+2. Die Patches anwenden, `logo.png` übernehmen und mit Visual Studio 2022 für SA-MP 0.3.7 R1 mit deutschem Menü bauen (`SAMP_R1`, `SAMP_DE`). Dazu kommen:
    - [`Directory.Build.targets`](Directory.Build.targets) stellt das alte Projekt (v141_xp, Windows SDK 7.1A, DirectX SDK) auf aktuelle Werkzeuge um.
    - D3DX 9 kommt aus dem NuGet-Paket `Microsoft.DXSDK.D3DX`.
    - Die C++-Laufzeit ist fest eingebaut (`/MT`). Die `.asi` braucht deshalb keine VC++-Laufzeit beim Spieler.

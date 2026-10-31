@@ -1,4 +1,5 @@
-# Baut den SampVoice-3.1-Client für SA-MP 0.3.7 R1 ohne Sprecheranzeige (siehe sampvoice/README.md).
+# Baut den SampVoice-3.1-Client für SA-MP 0.3.7 R1 ohne Sprecheranzeige, mit deutschem Menü und unserem Logo
+# (siehe sampvoice/README.md).
 # Bei Änderungen an sampvoice/ wird nur gebaut und geprüft; ein Tag wie sampvoice-3.1-sl1 legt das Release an.
 name: SampVoice
 
@@ -46,7 +47,10 @@ jobs:
           git -C quelle apply --verbose ../sampvoice/ohne-sprecheranzeige.patch
           git -C quelle apply --verbose ../sampvoice/neuer-compiler.patch
           git -C quelle apply --verbose ../sampvoice/cef-reihenfolge.patch
+          git -C quelle apply --verbose ../sampvoice/deutsch.patch
           Copy-Item sampvoice/Directory.Build.targets quelle/client/
+          # Logo oben rechts im Menü (F11): unseres statt „SAMP VOICE“, 512 x 128 wie das Original
+          Copy-Item sampvoice/logo.png quelle/client/resources/logo.png -Force
           git -C quelle diff --stat
 
       - name: D3DX 9 aus NuGet holen
@@ -86,7 +90,8 @@ jobs:
           # Stand 3.1 erkennen: Meldungen, die es nur in 3.1 gibt, und keine aus 4.x
           if (-not (Select-String -Path $asi -Pattern "[sv:dbg:blacklist:init]" -SimpleMatch -Quiet)) { throw "sampvoice.asi ist nicht aus SampVoice 3.1 gebaut" }
           if (Select-String -Path $asi -Pattern "[sv:dbg:ClientInitialize]" -SimpleMatch -Quiet) { throw "sampvoice.asi stammt aus SampVoice 4.x" }
-          if (-not (Select-String -Path $asi -Pattern "Turn on microphone" -SimpleMatch -Quiet)) { throw "sampvoice.asi hat nicht das englische Menü" }
+          if (-not (Select-String -Path $asi -Pattern "Mikrofon testen" -SimpleMatch -Quiet)) { throw "sampvoice.asi hat nicht das deutsche Menü" }
+          if (Select-String -Path $asi -Pattern "Turn on microphone" -SimpleMatch -Quiet) { throw "sampvoice.asi enthält noch das englische Menü" }
 
       - name: Paket zusammenstellen
         shell: pwsh
@@ -121,9 +126,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf, kein Mikrofon-Symbol).
+          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf, kein Mikrofon-Symbol), mit deutschem Menü (F11) und dem Logo von German Samplife.
 
-          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit den Änderungen in ``sampvoice/ohne-sprecheranzeige.patch`` und ``sampvoice/cef-reihenfolge.patch`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
+          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit den Änderungen in ``sampvoice/ohne-sprecheranzeige.patch``, ``sampvoice/cef-reihenfolge.patch``, ``sampvoice/deutsch.patch`` und ``sampvoice/logo.png`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
 
           Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
           "@
