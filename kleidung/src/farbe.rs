@@ -295,7 +295,7 @@ mod tests {
         let r = faerben(&mut p, 10, 1, 40, true, Farbe { r: 0xFF, g: 0, b: 0 }, None).unwrap();
         assert_eq!(r.bezug, BEZUG_MIN);
         let (rot, _, _) = rgb(&p, 0);
-        assert_eq!(rot, (255 * 20 + 32) / 64);
+        assert_eq!(rot as u32, (255 * 20 + 32) / 64);
     }
 
     #[test]
