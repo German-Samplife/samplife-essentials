@@ -1351,7 +1351,8 @@ namespace SamplifeEssentials
 
         /// <summary>
         /// GTA hat sich ohne Absturzbericht mit einem Fehlercode beendet: dasselbe Fenster wie die Diagnose, mit Code und, bei
-        /// 0xE0000008 (Speicher), dem Hinweis auf den 4GB-Patch.
+        /// 0xE0000008 (Speicher), dem Hinweis auf den 4GB-Patch. 0xCFFFFFFF setzt Windows, wenn es ein Spiel beendet, das
+        /// nicht mehr reagiert hat: Das ist kein Absturz, sondern ein Hänger.
         /// </summary>
         void BeendetZeigen(int code)
         {
@@ -1362,9 +1363,17 @@ namespace SamplifeEssentials
             diagnoseModule = spielModule != "" ? spielModule : Diagnose.GemerkteModule(seit, DateTime.UtcNow);
             var hex = "0x" + unchecked((uint)code).ToString("X8", CultureInfo.InvariantCulture);
             var speicher = unchecked((uint)code) == 0xE0000008;
-            diagnoseBefund = "GTA unerwartet beendet, Code " + hex + (speicher ? " (kein Speicher mehr)" : "");
+            var haenger = unchecked((uint)code) == 0xCFFFFFFF;
+            diagnoseBefund = "GTA unerwartet beendet, Code " + hex
+                + (speicher ? " (kein Speicher mehr)" : haenger ? " (reagierte nicht mehr, von Windows beendet)" : "");
             DiagnoseZeigen(false);
-            absturzTitel.Text = "GTA wurde unerwartet beendet";
+            absturzTitel.Text = haenger ? "GTA hat nicht mehr reagiert" : "GTA wurde unerwartet beendet";
+            if (haenger)
+            {
+                absturzText.Text = "Das Spiel ist hängen geblieben, und Windows hat es beendet. "
+                    + "Schreib kurz, was du gerade gemacht hast, und schick uns die Diagnose.";
+                return;
+            }
             absturzText.Text = speicher
                 ? "Dem Spiel ist der Speicher ausgegangen, meist bei hoher Auflösung oder vielen Mods. "
                     + (laaHaken.IsChecked == true
@@ -1988,7 +1997,7 @@ namespace SamplifeEssentials
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
                 || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose"
-                || zustand == "problem" || zustand == "beendet")
+                || zustand == "problem" || zustand == "beendet" || zustand == "haenger")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -2009,6 +2018,7 @@ namespace SamplifeEssentials
                     absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
                 }
                 if (zustand == "beendet") BeendetZeigen(unchecked((int)0xE0000008));
+                if (zustand == "haenger") BeendetZeigen(unchecked((int)0xCFFFFFFF));
                 if (zustand == "problem")
                 {
                     DiagnoseZeigen(true);
