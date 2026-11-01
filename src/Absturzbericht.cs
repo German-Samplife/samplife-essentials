@@ -87,7 +87,7 @@ namespace SamplifeEssentials
 
         /// <summary>
         /// Schickt den Bericht. Rueckgabe leer bei Erfolg (nummer = Nummer des Berichts), sonst der Grund. zusatz: weitere Felder
-        /// (Diagnose: art, befund, module, svlog, ceflog).
+        /// (Diagnose: art, befund, module, svlog, ceflog, crashlog, speicherabzug).
         /// </summary>
         public static string Senden(string url, string name, string kommentar, DateTime zeitUtc, string inhalt, bool testmodus, out int nummer,
             Dictionary<string, object> zusatz = null)
@@ -101,7 +101,8 @@ namespace SamplifeEssentials
             if (name.Length > 24) name = name.Substring(0, 24);
             kommentar = (kommentar ?? "").Trim();
             if (kommentar.Length > MaxKommentar) kommentar = kommentar.Substring(0, MaxKommentar);
-            var serialisierer = new JavaScriptSerializer { MaxJsonLength = 1024 * 1024 };
+            // Mit Speicherabzug (src/Haenger.cs, bis 8 MB gepackt, als Base64 ein Drittel mehr) deutlich groesser
+            var serialisierer = new JavaScriptSerializer { MaxJsonLength = 16 * 1024 * 1024 };
             var felder = new Dictionary<string, object>
             {
                 { "name", name }, { "launcher", Programm.Version }, { "windows", Windows() }, { "zeit", Iso(zeitUtc) },
@@ -114,7 +115,8 @@ namespace SamplifeEssentials
             anfrage.Method = "POST";
             anfrage.ContentType = "application/json; charset=utf-8";
             anfrage.UserAgent = "SamplifeLauncher/" + Programm.Version;
-            anfrage.Timeout = 20000;
+            anfrage.Timeout = daten.Length > 1024 * 1024 ? 180000 : 20000;
+            anfrage.ReadWriteTimeout = anfrage.Timeout;
             anfrage.AllowAutoRedirect = false;
             try
             {
