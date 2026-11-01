@@ -202,6 +202,10 @@ namespace SamplifeEssentials
         string diagnoseSvLog = "", diagnoseCefLog = "", diagnoseCrashLog = "", diagnoseModule = "", diagnoseBefund = "";
         // Gepackter Speicherabzug eines eingefrorenen Spiels (src/Haenger.cs), geht mit der Diagnose mit
         string diagnoseSpeicherabzug = "";
+        // Wo GTA laut Windows abgestuerzt ist (Diagnose.FehlerModul), haengt am Befund. diagnoseProzessId: die abgestuerzte
+        // gta_sa.exe, damit BerichtSammeln noch einmal nachsehen kann, falls Windows das Ereignis erst spaeter geschrieben hat
+        string diagnoseFehlerModul = "";
+        int diagnoseProzessId;
         // Andere SA-MP-Version im GTA-Verzeichnis: vor dem Start fragen, ob der Launcher die passende einrichten soll
         readonly FrameworkElement sampFenster;
         readonly TextBlock sampText;
@@ -215,6 +219,8 @@ namespace SamplifeEssentials
         bool spielGefunden, spielFensterDa;
         // Das laufende gta_sa.exe, um nach dem Ende den Beendigungscode zu lesen (SpielBeendetCode)
         Process spielProzess;
+        // Seine Prozess-ID; bleibt nach SpielProzessLoslassen stehen, fuer Diagnose.FehlerModul
+        int spielProzessId;
         string spielWarnung = "";
         // DLLs in gta_sa.exe (Diagnose.ModuleLesen), einmal je Spiel, sobald das Fenster eine Weile steht
         DateTime spielFensterUtc;
@@ -1267,6 +1273,7 @@ namespace SamplifeEssentials
             spielGefunden = false;
             spielFensterDa = false;
             SpielProzessLoslassen();
+            spielProzessId = 0;
             spielModuleGelesen = false;
             spielModule = "";
             haengerSekunden = 0;
@@ -1427,6 +1434,10 @@ namespace SamplifeEssentials
             }
             diagnoseBefund = "GTA unerwartet beendet, Code " + hex + (speicher ? " (kein Speicher mehr)" : "");
             DiagnoseZeigen(false);
+            // In welcher DLL es abgestuerzt ist, steht in Ereignis 1000 von Windows; BerichtSammeln sieht notfalls noch einmal nach
+            diagnoseProzessId = spielProzessId;
+            diagnoseFehlerModul = Diagnose.FehlerModul(diagnoseProzessId, seit);
+            if (diagnoseProzessId > 0) absturzHinweis.Text += " Dazu, in welcher DLL GTA laut Windows abgestürzt ist.";
             absturzTitel.Text = "GTA wurde unerwartet beendet";
             absturzText.Text = speicher
                 ? "Dem Spiel ist der Speicher ausgegangen, meist bei hoher Auflösung oder vielen Mods. "
@@ -1517,6 +1528,7 @@ namespace SamplifeEssentials
                     {
                         GC.KeepAlive(prozess.Handle);
                         spielProzess = prozess;
+                        spielProzessId = prozess.Id;
                     }
                 }
                 catch (Exception) { }
@@ -1775,6 +1787,8 @@ namespace SamplifeEssentials
             absturzIstDiagnose = true;
             diagnoseGemeldet = gemeldet;
             diagnoseSpeicherabzug = speicherabzug;
+            diagnoseFehlerModul = "";
+            diagnoseProzessId = 0;
             absturzTitel.Text = gemeldet ? "Problem melden" : "Sprach-Chat hat nicht geladen";
             absturzText.Text = gemeldet
                 ? "Geht der Sprach-Chat nicht oder laden die Browser-Oberflächen nicht, schick dem Team die Diagnose vom letzten Spiel "
@@ -1832,7 +1846,9 @@ namespace SamplifeEssentials
                     return false;
                 }
                 zusatz["art"] = "diagnose";
-                zusatz["befund"] = diagnoseBefund;
+                if (diagnoseFehlerModul == "" && diagnoseProzessId > 0)
+                    diagnoseFehlerModul = Diagnose.FehlerModul(diagnoseProzessId, spielStartUtc);
+                zusatz["befund"] = diagnoseBefund + (diagnoseFehlerModul != "" ? ", Fehler in " + diagnoseFehlerModul : "");
                 zusatz["svlog"] = diagnoseSvLog;
                 zusatz["ceflog"] = diagnoseCefLog;
                 if (diagnoseCrashLog != "") zusatz["crashlog"] = diagnoseCrashLog;
