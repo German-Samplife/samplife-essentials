@@ -53,6 +53,34 @@ namespace SamplifeEssentials
         }
 
         /// <summary>
+        /// Stand fuer Diagnose und Absturzbericht: Ist das Bit in der gta_sa.exe gesetzt, und hat der Launcher es gesetzt?
+        /// Liest nur, aendert nichts.
+        /// </summary>
+        public static string Status(string gta)
+        {
+            var exe = Path.Combine(gta, GtaVerzeichnis.SpielDatei);
+            try
+            {
+                if (!File.Exists(exe)) return "4GB-Patch: unbekannt (keine gta_sa.exe)";
+                bool gesetzt;
+                using (var strom = new FileStream(exe, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    var stelle = KopfStelle(strom);
+                    if (stelle < 0) return "4GB-Patch: unbekannt (kein gültiger Dateikopf)";
+                    gesetzt = (Lesen(strom, stelle) & Bit) != 0;
+                }
+                if (!gesetzt) return "4GB-Patch: aus (GTA nutzt höchstens 2 GB Speicher)";
+                var text = "4GB-Patch: an (" + (File.Exists(MarkenPfad(gta)) ? "vom Launcher gesetzt" : "war schon gesetzt") + ")";
+                if (!Environment.Is64BitOperatingSystem) text += ", wirkt aber nicht auf 32-Bit-Windows";
+                return text;
+            }
+            catch (Exception fehler)
+            {
+                return "4GB-Patch: unbekannt (" + fehler.Message + ")";
+            }
+        }
+
+        /// <summary>
         /// Haken an (gewuenscht): Bit setzen, wenn es fehlt. Haken aus: nur zuruecknehmen, was der Launcher selbst gesetzt
         /// hat. Rueckgabe: Satz fuers Protokoll, leer, wenn nichts zu tun war. Fehler kommen als Text zurueck und halten den
         /// Start nicht auf.

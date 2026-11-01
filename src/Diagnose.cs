@@ -20,7 +20,7 @@ namespace SamplifeEssentials
     {
         public const int MaxModule = 30000;
         public const int MaxLog = 20000;
-        // Bis so viele Ordner unter dem GTA-Verzeichnis sucht CrashLogLesen (etwa modloader\<Mod>\<Ordner>)
+        // Bis so viele Ordner unter dem GTA-Verzeichnis suchen CrashInfoDateien und CrashLogLesen (etwa modloader\<Mod>\<Ordner>)
         const int CrashTiefe = 3;
         // SampVoice schreibt sein Log nicht ins GTA-Verzeichnis, sondern nach „Eigene Dokumente\GTA San Andreas User
         // Files\sampvoice“ (Path.cpp und Plugin.cpp in CyberMor/sampvoice)
@@ -95,6 +95,8 @@ namespace SamplifeEssentials
             var text = new StringBuilder();
             text.Append("Module in gta_sa.exe, Launcher ").Append(Programm.Version).Append(", ").Append(Absturzbericht.Windows()).Append('\n');
             text.Append(Kompatibilitaet(ziel)).Append('\n');
+            text.Append(Laa.Status(gta)).Append('\n');
+            text.Append("GTA unter „Programme“: ").Append(FremdeDateien.UnterProgramme(gta) ? "ja" : "nein").Append('\n');
             text.Append("Ordner cef beschreibbar: ").Append(CefOrdner.Beschreibbar(gta) ? "ja" : "nein")
                 .Append(", Launcher als Administrator: ").Append(CefOrdner.IstAdmin() ? "ja" : "nein").Append('\n');
             text.Append("\nFremde Programme (nicht Windows, nicht GTA): ").Append(fremde.Count).Append('\n');
@@ -222,43 +224,118 @@ namespace SamplifeEssentials
         }
 
         /// <summary>
-        /// Log von CrashInfo.SA.asi (cleolibrary/CrashInfo, kommt nicht vom Launcher, steckt aber in vielen Mod-Paketen):
-        /// Bei einem Absturz schreibt es gta_sa.exe_&lt;Datum&gt;_&lt;Zeit&gt;.log mit Registern, Stack und Backtrace, also
-        /// welches Modul abgestuerzt ist. Das kann SA-MPs crashinfo.txt nicht immer, und ohne crashinfo.txt (Code 0xC0000005)
-        /// ist es die einzige Spur. Die neueste Datei seit seitUtc im GTA-Verzeichnis, bis CrashTiefe Ordner tief; leer ohne.
+        /// CrashInfo.SA.asi (cleolibrary/CrashInfo, kommt nicht vom Launcher, steckt aber in vielen Mod-Paketen) im
+        /// GTA-Verzeichnis, bis CrashTiefe Ordner tief (auch unter modloader). Volle Pfade, leer ohne.
+        /// </summary>
+        public static List<string> CrashInfoDateien(string gta)
+        {
+            return Suchen(gta, CrashTiefe, new[] { "CrashInfo*.asi" });
+        }
+
+        /// <summary>
+        /// Log von CrashInfo.SA.asi: Bei einem Absturz schreibt es ein Log mit Registern, Stack und Backtrace, also welches
+        /// Modul abgestuerzt ist. Das kann SA-MPs crashinfo.txt nicht immer, und ohne crashinfo.txt (z. B. Code 0xC0000005
+        /// oder 0xCFFFFFFF) ist es die einzige Spur. Gesucht wird nur, wenn CrashInfo installiert ist: die neueste Datei seit
+        /// seitUtc, die wie ein Absturz-Log heisst (gta_sa*.log, *crash*.log, *crash*.txt), im GTA-Verzeichnis, im Ordner
+        /// von CrashInfo und unter „Eigene Dokumente\GTA San Andreas User Files“. Die crashinfo.txt von SA-MP und die
+        /// Adressliste von CrashInfo (*CrashList*) zaehlen nicht. Leer ohne CrashInfo oder ohne Log.
         /// </summary>
         public static string CrashLogLesen(string gta, DateTime seitUtc)
         {
+            var asi = CrashInfoDateien(gta);
+            if (asi.Count == 0) return "";
+            var muster = new[] { "gta_sa*.log", "*crash*.log", "*crash*.txt" };
+            var kandidaten = Suchen(gta, CrashTiefe, muster);
+            foreach (var datei in asi)
+            {
+                var ordner = Path.GetDirectoryName(datei);
+                if (ordner != null) kandidaten.AddRange(Suchen(ordner, 0, muster));
+            }
+            kandidaten.AddRange(Suchen(UserFiles, 2, muster));
+            var samp = "";
+            try { samp = Path.GetFullPath(Absturzbericht.Datei); }
+            catch (Exception) { }
             string neueste = null;
             var zeit = DateTime.MinValue;
+            foreach (var datei in kandidaten)
+            {
+                try
+                {
+                    if (Path.GetFileName(datei).IndexOf("crashlist", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    if (string.Equals(Path.GetFullPath(datei), samp, StringComparison.OrdinalIgnoreCase)) continue;
+                    var geschrieben = File.GetLastWriteTimeUtc(datei);
+                    if (geschrieben > zeit) { zeit = geschrieben; neueste = datei; }
+                }
+                catch (Exception) { }
+            }
+            if (neueste == null) return "";
+            var inhalt = LogLesen(neueste, seitUtc);
+            if (inhalt == "") return "";
+            return "Datei: " + Relativ(gta, neueste) + "\n" + inhalt;
+        }
+
+        /// <summary>
+        /// Kurzer Stand fuer jeden Bericht (Feld „umgebung“): 4GB-Patch in der gta_sa.exe und ob CrashInfo installiert ist,
+        /// mit oder ohne Log. crashlog: was CrashLogLesen fuer diesen Bericht gefunden hat.
+        /// </summary>
+        public static string Umgebung(string gta, string crashlog)
+        {
+            var text = new StringBuilder();
+            text.Append(Laa.Status(gta)).Append('\n');
+            var asi = CrashInfoDateien(gta);
+            if (asi.Count == 0) text.Append("CrashInfo: nicht installiert");
+            else
+            {
+                var namen = new List<string>();
+                foreach (var datei in asi) namen.Add(Relativ(gta, datei));
+                text.Append("CrashInfo: installiert (").Append(string.Join(", ", namen)).Append("), ")
+                    .Append(string.IsNullOrEmpty(crashlog) ? "kein Log zu diesem Spiel gefunden" : "Log mitgeschickt");
+            }
+            return text.ToString();
+        }
+
+        static string UserFiles
+        {
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GTA San Andreas User Files");
+            }
+        }
+
+        // Pfad unterhalb des GTA-Verzeichnisses relativ, sonst ohne Benutzername
+        static string Relativ(string gta, string datei)
+        {
+            var ordner = gta.TrimEnd('\\', '/') + "\\";
+            return datei.StartsWith(ordner, StringComparison.OrdinalIgnoreCase) ? datei.Substring(ordner.Length) : Anonym(datei);
+        }
+
+        // Dateien nach Mustern in ordner und bis tiefe Ordner darunter; Ordner ohne Zugriff werden uebersprungen
+        static List<string> Suchen(string ordner, int tiefe, string[] muster)
+        {
+            var gefunden = new List<string>();
+            var gesehen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                var ordner = new Queue<KeyValuePair<string, int>>();
-                ordner.Enqueue(new KeyValuePair<string, int>(gta, 0));
-                while (ordner.Count > 0)
+                if (string.IsNullOrEmpty(ordner) || !Directory.Exists(ordner)) return gefunden;
+                var warteschlange = new Queue<KeyValuePair<string, int>>();
+                warteschlange.Enqueue(new KeyValuePair<string, int>(ordner, 0));
+                while (warteschlange.Count > 0)
                 {
-                    var eintrag = ordner.Dequeue();
+                    var eintrag = warteschlange.Dequeue();
                     try
                     {
-                        foreach (var datei in Directory.GetFiles(eintrag.Key, "gta_sa.exe_*.log", SearchOption.TopDirectoryOnly))
-                        {
-                            var geschrieben = File.GetLastWriteTimeUtc(datei);
-                            if (geschrieben > zeit) { zeit = geschrieben; neueste = datei; }
-                        }
-                        if (eintrag.Value >= CrashTiefe) continue;
+                        foreach (var m in muster)
+                            foreach (var datei in Directory.GetFiles(eintrag.Key, m, SearchOption.TopDirectoryOnly))
+                                if (gesehen.Add(datei)) gefunden.Add(datei);
+                        if (eintrag.Value >= tiefe) continue;
                         foreach (var unter in Directory.GetDirectories(eintrag.Key))
-                            ordner.Enqueue(new KeyValuePair<string, int>(unter, eintrag.Value + 1));
+                            warteschlange.Enqueue(new KeyValuePair<string, int>(unter, eintrag.Value + 1));
                     }
                     catch (Exception) { }
                 }
             }
             catch (Exception) { }
-            if (neueste == null) return "";
-            var inhalt = LogLesen(neueste, seitUtc);
-            if (inhalt == "") return "";
-            var relativ = neueste.StartsWith(gta, StringComparison.OrdinalIgnoreCase)
-                ? neueste.Substring(gta.Length).TrimStart('\\', '/') : Path.GetFileName(neueste);
-            return "Datei: " + relativ + "\n" + inhalt;
+            return gefunden;
         }
 
         // Ende der Datei (die letzten MaxLog Zeichen), UTF-8 oder Windows-1252
