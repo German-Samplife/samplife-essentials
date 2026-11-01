@@ -1767,6 +1767,7 @@ namespace SamplifeEssentials
                 zusatz["ceflog"] = diagnoseCefLog;
                 if (diagnoseCrashLog != "") zusatz["crashlog"] = diagnoseCrashLog;
                 if (diagnoseModule != "") zusatz["module"] = diagnoseModule;
+                zusatz["umgebung"] = Diagnose.Umgebung(Gta, diagnoseCrashLog);
                 return true;
             }
             try { inhalt = Absturzbericht.Lesen(); }
@@ -1781,6 +1782,8 @@ namespace SamplifeEssentials
             // Log von CrashInfo.SA.asi zu diesem Absturz, wenn der Spieler es hat: geschrieben hoechstens zwei Minuten davor
             var crashlog = Diagnose.CrashLogLesen(Gta, absturzZeit.AddMinutes(-2));
             if (crashlog != "") zusatz["crashlog"] = crashlog;
+            // 4GB-Patch und ob CrashInfo installiert ist (auch ohne Log)
+            zusatz["umgebung"] = Diagnose.Umgebung(Gta, crashlog);
             return true;
         }
 
@@ -1800,6 +1803,7 @@ namespace SamplifeEssentials
             text.Append("Zeitpunkt: ").Append(Absturzbericht.Iso(absturzZeit)).Append("\r\n");
             object wert;
             if (zusatz.TryGetValue("befund", out wert)) text.Append("Befund: ").Append(wert).Append("\r\n");
+            if (zusatz.TryGetValue("umgebung", out wert)) text.Append(((string)wert).Replace("\n", "\r\n")).Append("\r\n");
             text.Append("Dein Kommentar: ").Append(absturzKommentar.Text.Trim()).Append("\r\n");
             Abschnitt(text, "crashinfo.txt von SA-MP", inhalt);
             if (zusatz.TryGetValue("module", out wert)) Abschnitt(text, "Programme (DLL-Dateien) im Spiel", (string)wert);
