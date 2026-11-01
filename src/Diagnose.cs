@@ -96,6 +96,7 @@ namespace SamplifeEssentials
             text.Append("Module in gta_sa.exe, Launcher ").Append(Programm.Version).Append(", ").Append(Absturzbericht.Windows()).Append('\n');
             text.Append(Kompatibilitaet(ziel)).Append('\n');
             text.Append(Laa.Status(gta)).Append('\n');
+            text.Append("GTA unter „Programme“: ").Append(FremdeDateien.UnterProgramme(gta) ? "ja" : "nein").Append('\n');
             text.Append("Ordner cef beschreibbar: ").Append(CefOrdner.Beschreibbar(gta) ? "ja" : "nein")
                 .Append(", Launcher als Administrator: ").Append(CefOrdner.IstAdmin() ? "ja" : "nein").Append('\n');
             text.Append("\nFremde Programme (nicht Windows, nicht GTA): ").Append(fremde.Count).Append('\n');

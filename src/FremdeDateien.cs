@@ -8,7 +8,8 @@ namespace SamplifeEssentials
     {
         Loader,          // ein zweiter ASI Loader unter einem anderen Namen (z. B. dinput8.dll): laesst sich ausschalten
         LoaderErsetzt,   // ein fremder ASI Loader als vorbisFile.dll: SampVoice ersetzt ihn beim Einrichten und sichert ihn vorher
-        Konflikt         // eine Datei aus "konflikte" der Liste: laesst sich ausschalten
+        Konflikt,        // eine Datei aus "konflikte" der Liste: laesst sich ausschalten
+        Programme        // kein Fund im Ordner, sondern GTA selbst liegt unter „Programme“: nur Hinweis, Pfad ist das GTA-Verzeichnis
     }
 
     /// <summary>Eine Datei des Spielers, die mit den Komponenten nicht zusammenpasst.</summary>
@@ -18,7 +19,7 @@ namespace SamplifeEssentials
         public FremdArt Art;
         public string Grund = "";
 
-        public bool Abschaltbar { get { return Art != FremdArt.LoaderErsetzt; } }
+        public bool Abschaltbar { get { return Art != FremdArt.LoaderErsetzt && Art != FremdArt.Programme; } }
 
         public string Text
         {
@@ -29,6 +30,10 @@ namespace SamplifeEssentials
                     case FremdArt.Loader:
                         return Pfad + ": ein zweiter ASI Loader. Der Launcher bringt mit SampVoice schon einen mit (vorbisFile.dll); "
                             + "zwei Loader sind eine häufige Ursache für Abstürze beim Start.";
+                    case FremdArt.Programme:
+                        return "GTA liegt unter „Programme“ (" + Pfad + "). Dort lässt Windows Programme oft nicht schreiben, "
+                            + "und die Oberflächen im Spiel (CEF) werden dann womöglich nicht richtig angezeigt. Wir empfehlen, "
+                            + "GTA in einen anderen Ordner zu verschieben, zum Beispiel nach C:\\Spiele, und den neuen Ordner danach hier im Launcher auszuwählen.";
                     case FremdArt.LoaderErsetzt:
                         return Pfad + ": ein anderer ASI Loader. SampVoice ersetzt ihn durch seinen eigenen und sichert ihn vorher; "
                             + "deine .asi-Dateien lädt der neue genauso.";
@@ -61,6 +66,7 @@ namespace SamplifeEssentials
         {
             var funde = new List<FremdeDatei>();
             if (!GtaVerzeichnis.IstGtaVerzeichnis(gta)) return funde;
+            if (UnterProgramme(gta)) funde.Add(new FremdeDatei { Pfad = Path.GetFullPath(gta).TrimEnd('\\'), Art = FremdArt.Programme });
             var eigene = Installiert.Laden(gta);
             foreach (var name in LoaderNamen)
             {
@@ -83,6 +89,37 @@ namespace SamplifeEssentials
                 }
             }
             return funde;
+        }
+
+        /// <summary>
+        /// Liegt das GTA-Verzeichnis unter „Programme“ bzw. „Programme (x86)“? Dort duerfen normale Benutzer nicht schreiben,
+        /// und samp-cef kann seinen Ordner cef (Zwischenspeicher, Log) oft nicht anlegen oder fuellen (siehe CefOrdner).
+        /// Windows leitet Schreibzugriffe dort zum Teil in den VirtualStore um, was es nicht besser macht.
+        /// </summary>
+        public static bool UnterProgramme(string gta)
+        {
+            string ordner;
+            try { ordner = Path.GetFullPath(gta).TrimEnd('\\') + "\\"; }
+            catch (Exception) { return false; }
+            var basen = new List<string>
+            {
+                Environment.GetEnvironmentVariable("ProgramFiles"), Environment.GetEnvironmentVariable("ProgramFiles(x86)"),
+                Environment.GetEnvironmentVariable("ProgramW6432")
+            };
+            try { basen.Add(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)); }
+            catch (Exception) { }
+            try { basen.Add(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)); }
+            catch (Exception) { }
+            foreach (var basis in basen)
+            {
+                if (string.IsNullOrEmpty(basis)) continue;
+                try
+                {
+                    if (ordner.StartsWith(Path.GetFullPath(basis).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+                }
+                catch (Exception) { }
+            }
+            return false;
         }
 
         /// <summary>

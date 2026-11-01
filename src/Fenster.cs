@@ -627,14 +627,18 @@ namespace SamplifeEssentials
             fremde.Clear();
             var abschaltbar = false;
             var loader = 0;
+            var programme = false;
             foreach (var fremd in gefunden)
             {
                 fremde.Add(fremd);
                 if (fremd.Abschaltbar) abschaltbar = true;
-                if (fremd.Art != FremdArt.Konflikt) loader++;
+                if (fremd.Art == FremdArt.Programme) programme = true;
+                else if (fremd.Art != FremdArt.Konflikt) loader++;
             }
             bereichFremd.Visibility = fremde.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (loader == fremde.Count)
+            if (programme)
+                fremdTitel.Text = fremde.Count == 1 ? "GTA liegt im Ordner „Programme“" : "Hinweise zu deinem GTA-Verzeichnis";
+            else if (loader == fremde.Count)
                 fremdTitel.Text = loader == 1 ? "Ein anderer ASI Loader liegt im GTA-Verzeichnis" : loader + " andere ASI Loader liegen im GTA-Verzeichnis";
             else
                 fremdTitel.Text = fremde.Count == 1 ? "Eine Datei passt nicht zu den Dateien des Servers" : fremde.Count + " Dateien passen nicht zu den Dateien des Servers";
@@ -1956,6 +1960,13 @@ namespace SamplifeEssentials
 
             if (zustand == "passwort") serverpasswortHaken.IsChecked = true;
             if (zustand == "dateien" || zustand == "directx") DateienUmschalten();
+            if (zustand == "programme")
+            {
+                FremdeZeigen(new List<FremdeDatei>
+                {
+                    new FremdeDatei { Pfad = "C:\\Program Files (x86)\\Rockstar Games\\GTA San Andreas", Art = FremdArt.Programme }
+                });
+            }
             if (zustand == "fremd")
             {
                 FremdeZeigen(new List<FremdeDatei>
@@ -1990,7 +2001,7 @@ namespace SamplifeEssentials
                 untertitel.Text = "Der Launcher hat 249 Dateien aufgeräumt, davon 2 in der Fassung von vorher zurückgeholt. Die Datei Samplife Launcher.exe kannst du jetzt löschen.";
                 return;
             }
-            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd"
+            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd" || zustand == "programme"
                 || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose"
                 || zustand == "problem" || zustand == "beendet")
             {
