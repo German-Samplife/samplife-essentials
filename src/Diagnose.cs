@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Microsoft.Win32;
@@ -292,6 +294,83 @@ namespace SamplifeEssentials
                     .Append(string.IsNullOrEmpty(crashlog) ? "kein Log zu diesem Spiel gefunden" : "Log mitgeschickt");
             }
             return text.ToString();
+        }
+
+        // So viele Absturz-Ereignisse (neueste zuerst) prueft FehlerModul hoechstens
+        const int FehlerModulEreignisse = 50;
+
+        /// <summary>
+        /// Wo gta_sa.exe abgestuerzt ist, laut Windows: Ereignis 1000 („Application Error“) im Anwendungsprotokoll, das
+        /// Windows bei jedem Absturz schreibt, mit DLL, ihrer Version und der Adresse in der DLL, z. B. „libcef.dll 150.0.11.0
+        /// +0x01A2B3C4“. „unknown“ heisst: Der Code gehoerte zu keiner geladenen DLL mehr (meist schon entladen). Lesbar ohne
+        /// Administratorrechte. prozessId: die beobachtete gta_sa.exe, damit kein frueherer Absturz passt. "" ohne Treffer
+        /// oder wenn sich das Protokoll nicht lesen laesst.
+        /// </summary>
+        public static string FehlerModul(int prozessId, DateTime seitUtc)
+        {
+            if (prozessId <= 0) return "";
+            try
+            {
+                var abfrage = new EventLogQuery("Application", PathType.LogName,
+                    "*[System[Provider[@Name='Application Error'] and (EventID=1000)]]") { ReverseDirection = true };
+                using (var leser = new EventLogReader(abfrage))
+                {
+                    for (var i = 0; i < FehlerModulEreignisse; i++)
+                    {
+                        using (var ereignis = leser.ReadEvent())
+                        {
+                            if (ereignis == null) return "";
+                            if (ereignis.TimeCreated.HasValue && ereignis.TimeCreated.Value.ToUniversalTime() < seitUtc) return "";
+                            // Felder: 0 Programm, 3 DLL, 4 ihre Version, 6 Ausnahme, 7 Adresse in der DLL, 8 Prozess-ID
+                            var werte = ereignis.Properties;
+                            if (werte.Count < 9) continue;
+                            if (!string.Equals(EreignisWert(werte, 0), "gta_sa.exe", StringComparison.OrdinalIgnoreCase)) continue;
+                            if (EreignisProzessId(werte[8].Value) != (ulong)prozessId) continue;
+                            var modul = EreignisWert(werte, 3);
+                            if (modul == "") modul = "unknown";
+                            if (modul.Length > 60) modul = modul.Substring(0, 60);
+                            var text = new StringBuilder(modul);
+                            var version = EreignisWert(werte, 4);
+                            if (version != "" && version != "0.0.0.0") text.Append(' ').Append(version);
+                            ulong adresse;
+                            if (HexLesen(EreignisWert(werte, 7), out adresse))
+                                text.Append(" +0x").Append(adresse.ToString(adresse > 0xFFFFFFFF ? "X16" : "X8", CultureInfo.InvariantCulture));
+                            return text.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+            return "";
+        }
+
+        static string EreignisWert(IList<EventProperty> werte, int index)
+        {
+            var wert = werte[index].Value;
+            return wert == null ? "" : wert.ToString().Trim();
+        }
+
+        // Windows 11 liefert die Prozess-ID als Zahl, aeltere Fassungen als Text „0x1a2b“; 0, wenn sie sich nicht lesen laesst
+        static ulong EreignisProzessId(object wert)
+        {
+            ulong zahl;
+            if (wert == null) return 0;
+            var text = wert as string;
+            if (text != null)
+            {
+                text = text.Trim();
+                if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) return HexLesen(text, out zahl) ? zahl : 0;
+                return ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out zahl) ? zahl : 0;
+            }
+            try { return Convert.ToUInt64(wert, CultureInfo.InvariantCulture); }
+            catch (Exception) { return 0; }
+        }
+
+        // Hexzahl mit oder ohne „0x“, wie Windows sie in Ereignis 1000 schreibt
+        static bool HexLesen(string text, out ulong zahl)
+        {
+            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) text = text.Substring(2);
+            return ulong.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out zahl);
         }
 
         static string UserFiles
