@@ -200,6 +200,8 @@ namespace SamplifeEssentials
         // „Problem melden“ oeffnet es von Hand (diagnoseGemeldet)
         bool absturzIstDiagnose, diagnoseGefragt, diagnoseGemeldet;
         string diagnoseSvLog = "", diagnoseCefLog = "", diagnoseCrashLog = "", diagnoseModule = "", diagnoseBefund = "";
+        // Gepackter Speicherabzug eines eingefrorenen Spiels (src/Haenger.cs), geht mit der Diagnose mit
+        string diagnoseSpeicherabzug = "";
         // Andere SA-MP-Version im GTA-Verzeichnis: vor dem Start fragen, ob der Launcher die passende einrichten soll
         readonly FrameworkElement sampFenster;
         readonly TextBlock sampText;
@@ -221,6 +223,14 @@ namespace SamplifeEssentials
         static readonly TimeSpan ModulWartezeit = TimeSpan.FromSeconds(40);
         // So lange wartet der Launcher auf gta_sa.exe, bevor er wieder bereit ist
         static readonly TimeSpan SpielWartezeit = TimeSpan.FromSeconds(60);
+        // Eingefrorenes Spiel (src/Haenger.cs): erst so lange nach dem Fenster pruefen (Laden am Anfang haengt auch mal),
+        // dann so viele Sekunden am Stueck haengend, bevor der Speicherabzug kommt. Windows meldet ein Fenster erst nach
+        // 5 Sekunden ohne Nachrichten als haengend, zusammen also etwa 15 Sekunden.
+        static readonly TimeSpan HaengerStart = TimeSpan.FromSeconds(60);
+        const int HaengerSchwelle = 10;
+        int haengerSekunden;
+        bool haengerSchreibt, haengerErholt;
+        string haengerDatei = "";
         readonly ObservableCollection<KomponenteZeile> komponenten = new ObservableCollection<KomponenteZeile>();
         readonly ObservableCollection<ProtokollZeile> zeilen = new ObservableCollection<ProtokollZeile>();
         readonly ObservableCollection<Neuigkeit> neuigkeiten = new ObservableCollection<Neuigkeit>();
@@ -1259,6 +1269,10 @@ namespace SamplifeEssentials
             SpielProzessLoslassen();
             spielModuleGelesen = false;
             spielModule = "";
+            haengerSekunden = 0;
+            haengerSchreibt = false;
+            haengerErholt = false;
+            haengerDatei = "";
             spielWarnung = warnung
                 ? "Die Anmeldung beim Server hat aber nicht geklappt, deshalb lässt dich der Server vielleicht nicht herein. Der Grund steht unten."
                 : "";
@@ -1294,6 +1308,7 @@ namespace SamplifeEssentials
                         : "Viel Spaß auf German Samplife. Den Launcher kannst du offen lassen oder schließen, das Spiel läuft weiter.";
                 }
                 if (spielFensterDa && !spielModuleGelesen && DateTime.UtcNow - spielFensterUtc > ModulWartezeit) SpielModuleLesen();
+                if (spielFensterDa && DateTime.UtcNow - spielFensterUtc > HaengerStart) HaengerPruefen();
                 return;
             }
             if (spielGefunden)
@@ -1320,6 +1335,13 @@ namespace SamplifeEssentials
             {
                 absturzGeprueft = true;
                 AbsturzZeigen(zeit.Value);
+                return;
+            }
+            // Eingefroren und nicht wieder aufgewacht (oder danach mit Fehlercode beendet, z. B. 0xCFFFFFFF, wenn Windows es
+            // schliesst): mit Speicherabzug melden
+            if (haengerDatei != "" && (!haengerErholt || (code.HasValue && code.Value < 0)))
+            {
+                BeendetZeigen(code ?? 0, haengerDatei);
                 return;
             }
             // Ohne crashinfo.txt, aber mit einem Fehlercode (oberstes Bit gesetzt, z. B. 0xC0000005 oder 0xE0000008 von
@@ -1354,10 +1376,38 @@ namespace SamplifeEssentials
         }
 
         /// <summary>
-        /// GTA hat sich ohne Absturzbericht mit einem Fehlercode beendet: dasselbe Fenster wie die Diagnose, mit Code und, bei
-        /// 0xE0000008 (Speicher), dem Hinweis auf den 4GB-Patch.
+        /// Jede Sekunde, solange das Spiel laeuft: Haengt das Fenster von GTA HaengerSchwelle Sekunden am Stueck, einmal je
+        /// Spiel einen Speicherabzug schreiben (im Hintergrund). Reagiert es danach wieder, merkt sich das haengerErholt.
         /// </summary>
-        void BeendetZeigen(int code)
+        async void HaengerPruefen()
+        {
+            if (spielProzess == null || haengerSchreibt) return;
+            if (!Haenger.Haengt(spielProzess))
+            {
+                if (haengerDatei != "" && haengerSekunden > 0) haengerErholt = true;
+                haengerSekunden = 0;
+                return;
+            }
+            haengerSekunden++;
+            if (haengerSekunden != HaengerSchwelle || haengerDatei != "") return;
+            haengerSchreibt = true;
+            var prozess = spielProzess;
+            untertitel.Text = "GTA reagiert nicht mehr. Der Launcher sichert, wo das Spiel hängt, damit das Team es sich ansehen kann.";
+            var datei = await Task.Run(() => Haenger.Schreiben(prozess));
+            haengerSchreibt = false;
+            haengerDatei = datei;
+            if (modus != Modus.Spiel) return;
+            untertitel.Text = datei != ""
+                ? "GTA reagiert nicht mehr. Der Launcher hat gesichert, wo das Spiel hängt. Schließt du GTA, kannst du es dem Team schicken."
+                : "GTA reagiert nicht mehr. Schließt du GTA, kannst du dem Team die Diagnose schicken.";
+        }
+
+        /// <summary>
+        /// GTA hat sich ohne Absturzbericht mit einem Fehlercode beendet: dasselbe Fenster wie die Diagnose, mit Code und, bei
+        /// 0xE0000008 (Speicher), dem Hinweis auf den 4GB-Patch. speicherabzug: Das Spiel war vorher eingefroren
+        /// (HaengerPruefen), der Speicherabzug geht mit.
+        /// </summary>
+        void BeendetZeigen(int code, string speicherabzug = "")
         {
             var seit = spielStartUtc;
             diagnoseSvLog = Diagnose.SvLogLesen(seit);
@@ -1366,6 +1416,15 @@ namespace SamplifeEssentials
             diagnoseModule = spielModule != "" ? spielModule : Diagnose.GemerkteModule(seit, DateTime.UtcNow);
             var hex = "0x" + unchecked((uint)code).ToString("X8", CultureInfo.InvariantCulture);
             var speicher = unchecked((uint)code) == 0xE0000008;
+            if (speicherabzug != "")
+            {
+                diagnoseBefund = "GTA eingefroren, Code " + hex + ", mit Speicherabzug";
+                DiagnoseZeigen(false, speicherabzug);
+                absturzTitel.Text = "GTA hat nicht mehr reagiert";
+                absturzText.Text = "Das Spiel ist eingefroren. Der Launcher hat dabei gesichert, an welcher Stelle es hing. "
+                    + "Schick uns die Diagnose, damit wir die Ursache finden. Schreib kurz dazu, was du gerade gemacht hast.";
+                return;
+            }
             diagnoseBefund = "GTA unerwartet beendet, Code " + hex + (speicher ? " (kein Speicher mehr)" : "");
             DiagnoseZeigen(false);
             absturzTitel.Text = "GTA wurde unerwartet beendet";
@@ -1416,10 +1475,13 @@ namespace SamplifeEssentials
             diagnoseCefLog = Diagnose.CefLogsLesen(Gta, seit);
             diagnoseCrashLog = Diagnose.CrashLogLesen(Gta, seit);
             diagnoseModule = Diagnose.GemerkteModule(seit, DateTime.UtcNow);
+            // Eingefroren, aber der Launcher war danach zu: den letzten Speicherabzug mitnehmen
+            var abzug = Haenger.Neuester(seit);
             diagnoseBefund = Diagnose.SampVoiceOhneGrafik(diagnoseSvLog)
                 ? "Vom Spieler gemeldet, SampVoice hat das Grafikgerät von GTA nicht gefunden"
                 : "Vom Spieler gemeldet";
-            DiagnoseZeigen(true);
+            if (abzug != "") diagnoseBefund += ", mit Speicherabzug";
+            DiagnoseZeigen(true, abzug);
         }
 
         /// <summary>
@@ -1707,11 +1769,12 @@ namespace SamplifeEssentials
             FensterBerichtZeigen();
         }
 
-        void DiagnoseZeigen(bool gemeldet)
+        void DiagnoseZeigen(bool gemeldet, string speicherabzug = "")
         {
             absturzZeit = DateTime.UtcNow;
             absturzIstDiagnose = true;
             diagnoseGemeldet = gemeldet;
+            diagnoseSpeicherabzug = speicherabzug;
             absturzTitel.Text = gemeldet ? "Problem melden" : "Sprach-Chat hat nicht geladen";
             absturzText.Text = gemeldet
                 ? "Geht der Sprach-Chat nicht oder laden die Browser-Oberflächen nicht, schick dem Team die Diagnose vom letzten Spiel "
@@ -1723,6 +1786,9 @@ namespace SamplifeEssentials
                 + "ob für GTA ein Kompatibilitätsmodus an ist, die Logs von SampVoice (svlog.txt) und CEF (cef_client.log), "
                 + "wenn vorhanden das Absturz-Log von CrashInfo, dein Name im Spiel, "
                 + "die Version des Launchers und deine Windows-Version. Keine Passwörter und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
+            if (speicherabzug != "")
+                absturzHinweis.Text += " Dazu der Speicherabzug von GTA" + KbText(speicherabzug) + ": Er zeigt, an welcher Stelle "
+                    + "das Spiel hing, und enthält dafür Ausschnitte aus dem Arbeitsspeicher von GTA, etwa Texte, die gerade im Spiel standen.";
             FensterBerichtZeigen();
         }
 
@@ -1771,6 +1837,8 @@ namespace SamplifeEssentials
                 zusatz["ceflog"] = diagnoseCefLog;
                 if (diagnoseCrashLog != "") zusatz["crashlog"] = diagnoseCrashLog;
                 if (diagnoseModule != "") zusatz["module"] = diagnoseModule;
+                var abzug = Haenger.Lesen(diagnoseSpeicherabzug);
+                if (abzug != "") zusatz["speicherabzug"] = abzug;
                 zusatz["umgebung"] = Diagnose.Umgebung(Gta, diagnoseCrashLog);
                 return true;
             }
@@ -1814,6 +1882,9 @@ namespace SamplifeEssentials
             if (zusatz.TryGetValue("svlog", out wert)) Abschnitt(text, "svlog.txt von SampVoice", (string)wert);
             if (zusatz.TryGetValue("ceflog", out wert)) Abschnitt(text, "Logs von CEF", (string)wert);
             if (zusatz.TryGetValue("crashlog", out wert)) Abschnitt(text, "Absturz-Log von CrashInfo", (string)wert);
+            if (zusatz.ContainsKey("speicherabzug"))
+                Abschnitt(text, "Speicherabzug von GTA", "Die Datei " + diagnoseSpeicherabzug + KbText(diagnoseSpeicherabzug)
+                    + ", gepackt. Sie lässt sich mit WinDbg oder Visual Studio öffnen.");
             try
             {
                 Directory.CreateDirectory(Pfade.Launcher);
@@ -1825,6 +1896,12 @@ namespace SamplifeEssentials
             {
                 AbsturzStatusZeigen(Farben.Fehler, "Die Vorschau ließ sich nicht öffnen: " + fehler.Message);
             }
+        }
+
+        static string KbText(string datei)
+        {
+            var kb = Haenger.GroesseKb(datei);
+            return kb > 0 ? " (" + kb.ToString("N0", CultureInfo.GetCultureInfo("de-DE")) + " KB)" : "";
         }
 
         static void Abschnitt(StringBuilder text, string titel, string inhalt)
@@ -2003,7 +2080,7 @@ namespace SamplifeEssentials
             }
             if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd" || zustand == "programme"
                 || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose"
-                || zustand == "problem" || zustand == "beendet")
+                || zustand == "problem" || zustand == "beendet" || zustand == "eingefroren")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
                 directxZeile.Info = "vorhanden";
@@ -2024,6 +2101,11 @@ namespace SamplifeEssentials
                     absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
                 }
                 if (zustand == "beendet") BeendetZeigen(unchecked((int)0xE0000008));
+                if (zustand == "eingefroren")
+                {
+                    BeendetZeigen(unchecked((int)0xCFFFFFFF), System.IO.Path.Combine(Haenger.Ordner, "gta_sa-haenger-20261101-120815.dmp.gz"));
+                    absturzKommentar.Text = "Beim Waffenbauen an der Werkbank ist alles stehen geblieben.";
+                }
                 if (zustand == "problem")
                 {
                     DiagnoseZeigen(true);
