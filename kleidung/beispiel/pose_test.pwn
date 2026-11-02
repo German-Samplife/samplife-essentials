@@ -9,6 +9,7 @@
 // Befehle:
 //   /pose halten   Pose handy_halten (Haende vorn, Blick nach unten)
 //   /pose funk     Pose handy_funk (Hand an der Schulter)
+//   /pose zeigen   Pose finger_point (Zeigefinger nach vorn, ab 0.9.3)
 //   /pose aus      eigene Pose beenden
 //   /pose info     wer gerade welche Pose hat
 
@@ -38,7 +39,7 @@ static PoseAnAlle(spieler)
 
 public OnFilterScriptInit()
 {
-	print("[Pose] Test-Filterscript geladen: /pose halten, /pose funk, /pose aus, /pose info");
+	print("[Pose] Test-Filterscript geladen: /pose halten, /pose funk, /pose zeigen, /pose aus, /pose info");
 	return 1;
 }
 
@@ -92,6 +93,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	{
 		format(gPose[playerid], sizeof(gPose[]), "handy_funk");
 	}
+	else if (!strcmp(cmdtext, "/pose zeigen", true))
+	{
+		format(gPose[playerid], sizeof(gPose[]), "finger_point");
+	}
 	else if (!strcmp(cmdtext, "/pose aus", true))
 	{
 		gPose[playerid][0] = EOS;
@@ -114,7 +119,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	}
 	else
 	{
-		SendClientMessage(playerid, -1, "[Pose] /pose halten | funk | aus | info");
+		SendClientMessage(playerid, -1, "[Pose] /pose halten | funk | zeigen | aus | info");
 		return 1;
 	}
 

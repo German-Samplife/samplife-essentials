@@ -113,10 +113,10 @@ Verhalten:
 Eine Pose bewegt nur die Knochen, die in der Datei stehen. `anim/posen_bauen.py` behält deshalb nur die Knochen des Oberkörpers, dieselben wie GTAs `CARRY/crry_prtial` (Wirbelsäule, Kopf, Arme, Hände, Bauch, Brust), und gibt starren Posen einen zweiten Keyframe, damit sie nicht 0 lang sind. Neue Posen:
 
 ```bash
-python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk
+python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk quelle.ifp:finger_point=finger_point
 ```
 
-Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten) und `handy_funk` (Hand an der Schulter).
+Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten), `handy_funk` (Hand an der Schulter) und ab 0.9.3 `finger_point` (mit dem rechten Zeigefinger nach vorn zeigen). Ein Plugin vor 0.9.3 kennt `finger_point` nicht; der Server schickt die Pose deshalb erst Clients ab 0.9.3.
 
 Testen: [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn), laden mit `/rcon loadfs pose_test`, dann `/pose halten`, `/pose funk`, `/pose aus`. `/kleidunginfo` zeigt eine Zeile „Posen“ mit den geladenen Posen und wie viele gerade laufen; im Log stehen das Laden und jede Pose mit Spieler-ID.
 
