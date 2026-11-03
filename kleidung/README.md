@@ -113,10 +113,16 @@ Verhalten:
 Eine Pose bewegt nur die Knochen, die in der Datei stehen. `anim/posen_bauen.py` behält deshalb nur die Knochen des Oberkörpers, dieselben wie GTAs `CARRY/crry_prtial` (Wirbelsäule, Kopf, Arme, Hände, Bauch, Brust), und gibt starren Posen einen zweiten Keyframe, damit sie nicht 0 lang sind. Neue Posen:
 
 ```bash
-python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk quelle.ifp:finger_point=finger_point
+python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk quelle.ifp:finger_point=finger_point handschellen_quelle.ifp:gift_give=handschellen
 ```
 
-Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten), `handy_funk` (Hand an der Schulter) und ab 0.9.3 `finger_point` (mit dem rechten Zeigefinger nach vorn zeigen). Ein Plugin vor 0.9.3 kennt `finger_point` nicht; der Server schickt die Pose deshalb erst Clients ab 0.9.3.
+Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten), `handy_funk` (Hand an der Schulter) ab 0.9.3 `finger_point` (mit dem rechten Zeigefinger nach vorn zeigen) und ab 0.9.4 `handschellen` (Hände zusammen hinter dem Rücken). Ein Plugin vor 0.9.3 kennt `finger_point` nicht, eins vor 0.9.4 nicht `handschellen`; der Server schickt neue Posen deshalb erst Clients ab der passenden Version.
+
+`handschellen` ersetzt für CJ die Spezialaktion `SPECIAL_ACTION_CUFFED`, die bei Skin 0 nichts zeigt. Die Quelle ist GTAs eigene Animation `KISSING/gift_give` in den ersten 0,83 Sekunden (Geschenk hinter dem Rücken), ausgeschnitten mit `anim/ausschnitt.py`; erstes und letztes Bild sind gleich, die Pose atmet also leicht in Schleife:
+
+```bash
+python anim/ausschnitt.py "<GTA>/anim/anim.img" kissing.ifp gift_give 0 0.84 handschellen_quelle.ifp
+```
 
 Testen: [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn), laden mit `/rcon loadfs pose_test`, dann `/pose halten`, `/pose funk`, `/pose aus`. `/kleidunginfo` zeigt eine Zeile „Posen“ mit den geladenen Posen und wie viele gerade laufen; im Log stehen das Laden und jede Pose mit Spieler-ID.
 
