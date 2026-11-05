@@ -94,9 +94,10 @@ POST https://www.german-samplife.de/api/launcher/start
 ```
 
 - **Website:** Sie schreibt IPv4-Adresse, Name, Stand, Launcher-Version und Zeit in die Tabelle `launcher_anmeldungen` der gemeinsamen Datenbank.
-- **Gamemode:** Er sucht beim Verbinden (`OnPlayerConnect`, ohne Bots) nach einer Anmeldung mit derselben IP und demselben Namen aus den letzten **12 Stunden** und einem Stand ab `LAUNCHER_MINDESTSTAND`. Fehlt sie, gibt es Hinweis und Kick nach dem Muster von `CefVersionKick`: Chatzeilen und Fenster mit dem Grund, Eintrag im `KICK_LOG`, Kick nach 1,5 Sekunden.
-- **Warum 12 Stunden:** Nach jedem Neustart des Servers (Auto-Deploy, nächtlicher Neustart) verbindet SA-MP von selbst neu, ohne Launcher. Diese Spieler sollen drinbleiben. Wer länger spielt, startet nach einem Neustart einmal den Launcher.
-- **Schalter `LAUNCHER_PFLICHT`:** Er steht zunächst auf `false`. Alles kann damit vorab auf `develop` und `main`, ohne dass jemand gekickt wird. Eingeschaltet wird erst, wenn der Launcher veröffentlicht ist und die Website auf ihn verweist.
+- **Gamemode:** Er sucht beim Verbinden (`OnPlayerConnect`, ohne Bots) nach einer Anmeldung mit derselben IP und demselben Namen aus den letzten **10 Minuten** (`LAUNCHER_GUELTIG`, dieselbe Zahl in `web/src/lib/launcher.ts`) und einem Stand ab `LAUNCHER_MINDESTSTAND`. Fehlt sie, gibt es Hinweis und Kick nach dem Muster von `CefVersionKick`: Chatzeilen und Fenster mit dem Grund, Eintrag im `KICK_LOG`, Kick nach 1,5 Sekunden.
+- **Warum 10 Minuten:** Die Zeit reicht vom Klick auf „Spielen“ bis ins Spiel. Solange ein Spieler online ist, setzt der Gamemode die Zeit seiner Anmeldung jede Minute neu (`LauncherAnmeldungenAuffrischen`). Nach einem Neustart des Servers (Auto-Deploy, nächtlicher Neustart) verbindet SA-MP von selbst neu, ohne Launcher; diese Spieler bleiben drin, weil ihre Anmeldung dann noch rund 10 Minuten gilt.
+- **Vorher waren es 12 Stunden** (geändert mit German-Samplife/samplife2026#1116, live mit dem nächsten Release nach `main`). Das ließ eine Lücke: Wer den Launcher einmal gestartet hatte, konnte danach 12 Stunden lang über den SA-MP-Browser oder den open.mp-Launcher verbinden. Die laden ihre eigene SA-MP-Version (oft 0.3.7-R3, R5 oder 0.3.DL), und die Spieler flogen kurz danach bei der Prüfung auf SA-MP 0.3.7 R1 und SampVoice. Die Hinweise beim Kick sagen jetzt, dass man jedes Mal über „Spielen“ im Launcher startet.
+- **Schalter `LAUNCHER_PFLICHT`:** Startwert `true` seit samplife2026#1116 (vorher `false`, solange der Launcher noch nicht veröffentlicht war). Die Projektleitung schaltet die Pflicht im Spiel mit `/launcherpflicht an|aus|status` ohne Neustart; der gespeicherte Wert in `config` gewinnt vor dem Startwert.
 
 Gründe für die Anmeldung über die Website:
 
@@ -207,7 +208,7 @@ Stand: 23.10.2026.
 
 1. **SA-MP-Client mitliefern:** entschieden (22.10.). Ohne `samp.exe` startet der Launcher wie der open.mp-Launcher: `gta_sa.exe` starten und die `samp.dll` laden, aus seinem eigenen Ordner oder dem des open.mp-Launchers. Fehlt beides, richtet er `samp_client` ein (Release `samp-client-0.3.7-R1`, Dateien unverändert aus dem Archiv des open.mp-Launchers). Eine vorhandene SA-MP-Installation ersetzt er nie. Siehe README, „Wie SA-MP startet“.
 2. **Eigene Modelle unter R1.** Neue Objekte gehen unter 0.3.7-R1 nur, indem vorhandene Modelle ersetzt werden, zum Beispiel über einen Ordner für modloader. Welche Technik, welche IDs, und wie das mit Mods der Spieler zusammengeht, braucht ein eigenes Konzept. Das Paketformat (`ziel`, `zip_unterordner`) reicht dafür schon.
-3. **Wann `LAUNCHER_PFLICHT` eingeschaltet wird** (vor oder nach dem Start am 23.10.).
+3. **Wann `LAUNCHER_PFLICHT` eingeschaltet wird:** entschieden (05.11.). Startwert `true`; umschalten im Spiel mit `/launcherpflicht`.
 4. **Zwischenspeicher für Pakete.** Ohne ihn lädt eine einzige beschädigte CEF-Datei das ganze Paket (rund 150 MB) neu. Ein Zwischenspeicher unter `%LOCALAPPDATA%` würde das vermeiden, kostet aber denselben Platz noch einmal.
 5. **Signatur der `.exe`.** Ohne Code-Signatur bleibt die Warnung von SmartScreen beim ersten Download.
-6. **Geltungsdauer der Anmeldung** (12 Stunden) und ob Admins einen Schalter im Spiel brauchen, um die Pflicht bei Problemen sofort abzuschalten.
+6. **Geltungsdauer der Anmeldung:** entschieden (05.11.). 10 Minuten, aufgefrischt jede Minute, solange der Spieler online ist (siehe „Wie der Server davon erfährt“). Den Schalter im Spiel gibt es mit `/launcherpflicht` (Projektleitung).
