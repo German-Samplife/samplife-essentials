@@ -50,6 +50,13 @@ Jeweils im Modus `mouse`, wenn nichts anderes steht.
 - [ ] SampVoice: Sprechtaste B und Funk Z funktionieren im Modus `mouse`.
 - [ ] F8 (Screenshot) und F7 (Chat ein/aus) gehen weiter.
 
+### Maustaste 4 und 5 (`maustasten.patch`)
+- [ ] Im Modus `mouse` Maustaste 4 und 5 drücken: Die zweite Seite (links) zeigt `down` und `up` mit Code `5` bzw. `6`.
+- [ ] Nach `/nurmaus aus` zeigt die zweite Seite die beiden Tasten genauso.
+- [ ] `/nurmaus voll`: Die Testseite selbst zeigt Code `5`/`6`, die zweite Seite nichts.
+- [ ] Chat mit T offen: Maustaste 4 erscheint auf keiner Seite. Gedrückt halten, Chat öffnen, loslassen: `up` kommt trotzdem an.
+- [ ] Im Chat steht die Client-Version `400`.
+
 ### SA-MP
 - [ ] Chat mit T öffnen, schreiben, mit Enter senden; ESC schließt die Chat-Eingabe. Danach ist wieder `mouse` aktiv (Cursor da, Kamera fest).
 - [ ] Ein SA-MP-Dialog (z. B. über einen Befehl des Servers) lässt sich mit der Maus bedienen, das Eingabefeld darin nimmt Text, ESC schließt ihn. Danach wieder `mouse`.

@@ -1,0 +1,55 @@
+diff --git a/client/src/app.rs b/client/src/app.rs
+index 656e3e4..ddc3f00 100644
+--- a/client/src/app.rs
++++ b/client/src/app.rs
+@@ -32,7 +32,8 @@ use retour::GenericDetour;
+ const CEF_SERVER_PORT_OFFSET: u16 = 2;
+ // 0x000200: input modes (SetInputMode / InputModeChanged, mouse only)
+ // 0x000300: server events for client plugins (cef_server_event, cef_server_emitter)
+-pub const CEF_PLUGIN_VERSION: i32 = 0x00_03_00;
++// 0x000400: mouse buttons 4 and 5 reach the pages as keys (VK_XBUTTON1/2)
++pub const CEF_PLUGIN_VERSION: i32 = 0x00_04_00;
+ const CONNECT_BACKOFF_BASE: Duration = Duration::from_secs(1);
+ const CONNECT_BACKOFF_MAX: Duration = Duration::from_secs(10);
+ const AUDIO_SPATIAL_UPDATE_INTERVAL: Duration = Duration::from_millis(33);
+@@ -803,6 +804,40 @@ fn win_event(msg: UINT, wparam: WPARAM, lparam: LPARAM) -> bool {
+             }
+             WM_MBUTTONUP => manager.send_mouse_click_event(MouseKey::Middle, false),
+ 
++            // Mouse buttons 4 and 5 (side buttons back/forward): CEF has no mouse
++            // event for them, so the pages get them as keys with the Windows key
++            // codes VK_XBUTTON1 (5) and VK_XBUTTON2 (6) and handle them like any
++            // other key (keyCode 5/6). They go where keys go: the focused browser,
++            // or browsers that always listen to keys. The game still gets the
++            // message. Key-up is sent even while the chat or a dialog is open,
++            // so a held button can't get stuck in a page.
++            WM_XBUTTONDOWN | WM_XBUTTONDBLCLK | WM_XBUTTONUP => {
++                let code = match ((wparam >> 16) & 0xFFFF) as u16 {
++                    XBUTTON1 => VK_XBUTTON1,
++                    XBUTTON2 => VK_XBUTTON2,
++                    _ => return false,
++                };
++
++                let up = msg == WM_XBUTTONUP;
++                let input_active = inputs::Input::is_active()
++                    || inputs::Dialog::is_input_focused()
++                    || CMenuManager::is_menu_active();
++
++                if up || !input_active {
++                    let mut event: cef_key_event_t = unsafe { std::mem::zeroed() };
++
++                    event.size = std::mem::size_of::<cef_key_event_t>();
++                    event.windows_key_code = code;
++                    event.type_ = if up {
++                        cef_key_event_type_t::KEYEVENT_KEYUP
++                    } else {
++                        cef_key_event_type_t::KEYEVENT_RAWKEYDOWN
++                    };
++
++                    manager.send_keyboard_event(event);
++                }
++            }
++
+             WM_MOUSEWHEEL => {
+                 let delta = if (wparam >> 16) as i16 > 0 { 1 } else { -1 };
+                 manager.send_mouse_wheel(delta);
