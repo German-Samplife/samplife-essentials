@@ -93,6 +93,21 @@ Ein Server-Ereignis, das kein Plugin wollte, kostet nur eine Abfrage: In Text um
 | `client/src/external.rs` | Exporte `cef_server_event` und `cef_server_emitter` beim Laden suchen, `server_event`, `cef_emit_server_event` |
 | `client/src/app.rs` | Server-Ereignisse zuerst an die Plugins, `list_arguments`, `CEF_PLUGIN_VERSION` = `0x000300` |
 
+## Maustaste 4 und 5
+
+Die Seitentasten der Maus („Zurück“ und „Vor“) kamen im Original bei keiner Seite an: `win_event` wertet nur linke, rechte und mittlere Maustaste und das Mausrad aus, und CEF kennt als Mausereignis ohnehin nur diese drei Tasten (`cef_mouse_button_type_t`). Für die freie Tastenbelegung im Spiel (`/icp` auf German Samplife) ergänzt [`maustasten.patch`](maustasten.patch) das, nur im Client:
+
+- `WM_XBUTTONDOWN`, `WM_XBUTTONDBLCLK` und `WM_XBUTTONUP` gehen als **Tasten** an die Seiten, mit den Windows-Tastencodes `VK_XBUTTON1` (5, Maustaste 4) und `VK_XBUTTON2` (6, Maustaste 5). Die Seite bekommt `keydown`/`keyup` mit `keyCode` 5 bzw. 6, nicht `mousedown`.
+- Sie gehen dorthin, wo auch Tasten hingehen: an den fokussierten Browser (FULL), sonst und im Modus nur Maus an alle Browser mit `cef_always_listen_keys`.
+- Solange die Chat-Eingabe, ein SA-MP-Dialog oder das Pausemenü offen ist, geht kein Druck an die Seiten. Das Loslassen geht immer hin, damit keine Taste in einer Seite hängen bleibt; Alt+Tab und Moduswechsel lassen sie wie andere Tasten los.
+- GTA bekommt die Nachricht weiter wie bisher. Im Modus nur Maus blendet `GetAsyncKeyState` die Tasten schon aus (siehe oben).
+
+Der Client meldet sich mit `CEF_PLUGIN_VERSION` = `0x000400` (vorher `0x000300`). Der Server kann so Maustasten nur Spielern anbieten, deren Client sie weitergibt (`cef_get_client_version(player_id) >= 0x000400`). Eine neue Server-Seite braucht es nicht.
+
+| Datei | Änderung |
+|---|---|
+| `client/src/app.rs` | `WM_XBUTTON*` in `win_event` als Tasten-Ereignis an `send_keyboard_event`, `CEF_PLUGIN_VERSION` = `0x000400` |
+
 ## Umlaute bei der Eingabe
 
 Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. Auf deutschen Windows-Systemen wurden ä, ö, ü, ß, „ “ und – dadurch zu kyrillischen Buchstaben. Der Patch liest sie als Windows-1252 (`client/src/app.rs`, `win_event`). Zeichen, die Eingabemethoden als Unicode schicken, bleiben unverändert.
@@ -129,7 +144,7 @@ Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. A
 
 Das übernimmt GitHub mit [`.github/workflows/cef.yml`](../.github/workflows/cef.yml):
 
-1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
+1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch` und `maustasten.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
 2. DirectX SDK (Juni 2010, nur `Lib/x86`) und die CEF-Distribution aus `cef-distribution.json` holen (CEF 150, Prüfsumme wird geprüft).
 3. Mit Rust stable `cargo build --release --target i686-pc-windows-msvc` bauen, dazu die Tests von `cef-messages` und `cef-server-core`.
 4. Prüfen, dass die Dateien 32 Bit sind und die Änderung enthalten.
