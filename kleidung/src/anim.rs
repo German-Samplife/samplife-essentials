@@ -58,18 +58,26 @@ const CLUMP_FIRST_ASSOC: usize = 0x4D15E0;
 const NEXT_ASSOC: usize = 0x4D6AB0;
 
 // CAnimBlock (0x20): Name[16], IsLoaded at 0x10
+// CAnimBlendHierarchy (0x18): m_hashKey, m_pSequences, m_nSeqCount, two bools, m_nAnimBlockId,
+// m_fTotalTime at 0x10 (AnimBlendHierarchy.h)
+const HIER_TOTAL_TIME: usize = 0x10;
 const BLOCK_IS_LOADED: usize = 0x10;
 // CAnimBlendAssociation (0x3C, vtable first): m_BlendHier 0x14, m_BlendAmount 0x18,
 // m_BlendDelta 0x1C, m_Flags (uint16) 0x2E
 pub(crate) const ASSOC_SIZE: usize = 0x3C;
 pub(crate) const ASSOC_HIER: usize = 0x14;
 pub(crate) const ASSOC_BLEND_DELTA: usize = 0x1C;
+// m_Speed after m_BlendDelta and m_CurrentTime (ziehen.rs)
+const ASSOC_SPEED: usize = 0x24;
 pub(crate) const ASSOC_FLAGS: usize = 0x2E;
 
 // eAnimationFlags (AnimBlendAssociation.h)
 pub(crate) const ANIM_PLAYING: u16 = 0x1;
 pub(crate) const ANIM_LOOPED: u16 = 0x2;
 pub(crate) const ANIM_BLEND_AUTO_REMOVE: u16 = 0x4;
+/// at the end of a non-looped animation: fade out over a quarter second (UpdateTime sets
+/// m_BlendDelta to -4 and BLEND_AUTO_REMOVE), otherwise it stays on the last frame
+pub(crate) const ANIM_FINISH_AUTO_REMOVE: u16 = 0x8;
 pub(crate) const ANIM_PARTIAL: u16 = 0x10;
 
 /// blend in/out over a quarter second
@@ -166,6 +174,14 @@ impl Anims {
         }
     }
 
+    /// Hierarchy of an animation in our block, once loaded (ziehen.rs)
+    pub fn hier(&self, name: &str) -> Option<usize> {
+        match &self.laden {
+            Laden::Fertig(hiers) => hiers.get(name).copied(),
+            _ => None,
+        }
+    }
+
     pub fn aktive_posen(&self) -> usize {
         self.posen.len()
     }
@@ -252,6 +268,7 @@ impl Anims {
         };
 
         let mut gesehen = Vec::new();
+        let ziehen = hiers.get(crate::ziehen::ANIMATION).copied();
 
         for (&id, name) in &self.posen {
             let Some(&hier) = hiers.get(name) else {
@@ -274,6 +291,11 @@ impl Anims {
                 continue;
             }
 
+            // drawing a weapon (ziehen.rs) faded the pose out: back once it is over
+            if ziehen.is_some_and(|z| find_assoc(clump, |h| h == z).is_some()) {
+                continue;
+            }
+
             match find_assoc(clump, |h| h == hier) {
                 // running and not fading out: nothing to do
                 Some(assoc) if blend_delta(assoc) >= 0.0 => {}
@@ -292,7 +314,7 @@ impl Anims {
         self.zuletzt.retain(|ped, _| gesehen.contains(ped));
     }
 
-    /// Fades out every animation of our block on this ped.
+    /// Fades out every pose of our block on this ped (not a weapon being drawn).
     fn ausblenden(&self, ped: usize) {
         let Laden::Fertig(hiers) = &self.laden else {
             return;
@@ -316,7 +338,9 @@ impl Anims {
         while let Some(a) = assoc {
             let hier = read_ptr(a + ASSOC_HIER).unwrap_or(0);
 
-            if hiers.values().any(|&h| h == hier) && writable(a, ASSOC_SIZE) {
+            let pose = hiers.iter().any(|(name, &h)| h == hier && name != crate::ziehen::ANIMATION);
+
+            if pose && writable(a, ASSOC_SIZE) {
                 unsafe {
                     ((a + ASSOC_BLEND_DELTA) as *mut f32).write_unaligned(BLEND_OUT);
                     let flags = ((a + ASSOC_FLAGS) as *const u16).read_unaligned();
@@ -425,8 +449,9 @@ fn blend(clump: usize, hier: usize) {
 /// `CAnimManager::BlendAnimation`. For a partial animation GTA fades out every other
 /// partial animation on the clump (blend delta below 0, auto remove); the ones for which
 /// `schonen(hierarchy)` holds get their blend delta and flags back right after the call,
-/// in the same frame, before GTA updates or deletes anything.
-pub(crate) fn blend_schonend(clump: usize, hier: usize, flags: u16, delta: f32, schonen: impl Fn(usize) -> bool) {
+/// in the same frame, before GTA updates or deletes anything. Returns the association
+/// (CAnimBlendAssociation*) BlendAnimation hands back, 0 if none.
+pub(crate) fn blend_schonend(clump: usize, hier: usize, flags: u16, delta: f32, schonen: impl Fn(usize) -> bool) -> usize {
     let mut vorher = Vec::new();
     let mut assoc = first_assoc(clump);
 
@@ -447,7 +472,7 @@ pub(crate) fn blend_schonend(clump: usize, hier: usize, flags: u16, delta: f32, 
     }
 
     let blend: extern "C" fn(usize, usize, i32, f32) -> usize = unsafe { std::mem::transmute(BLEND_ANIMATION) };
-    blend(clump, hier, flags as i32, delta);
+    let neu = blend(clump, hier, flags as i32, delta);
 
     for (a, delta, flags) in vorher {
         if writable(a, ASSOC_SIZE) {
@@ -455,6 +480,35 @@ pub(crate) fn blend_schonend(clump: usize, hier: usize, flags: u16, delta: f32, 
                 ((a + ASSOC_BLEND_DELTA) as *mut f32).write_unaligned(delta);
                 ((a + ASSOC_FLAGS) as *mut u16).write_unaligned(flags);
             }
+        }
+    }
+
+    neu
+}
+
+/// Length of an animation in seconds (m_fTotalTime), 0 if unreadable.
+pub(crate) fn gesamtzeit(hier: usize) -> f32 {
+    if !readable(hier, 0x18) {
+        return 0.0;
+    }
+
+    unsafe { ((hier + HIER_TOTAL_TIME) as *const f32).read_unaligned() }
+}
+
+/// Playback speed of a running animation (1.0 = as in the file).
+pub(crate) fn geschwindigkeit_setzen(assoc: usize, speed: f32) {
+    if speed.is_finite() && speed > 0.0 && writable(assoc, ASSOC_SIZE) {
+        unsafe { ((assoc + ASSOC_SPEED) as *mut f32).write_unaligned(speed) };
+    }
+}
+
+/// Fades one association out; GTA deletes it once it is gone.
+pub(crate) fn ausblenden_assoc(assoc: usize, delta: f32) {
+    if writable(assoc, ASSOC_SIZE) {
+        unsafe {
+            ((assoc + ASSOC_BLEND_DELTA) as *mut f32).write_unaligned(delta);
+            let flags = ((assoc + ASSOC_FLAGS) as *const u16).read_unaligned();
+            ((assoc + ASSOC_FLAGS) as *mut u16).write_unaligned(flags | ANIM_BLEND_AUTO_REMOVE);
         }
     }
 }
@@ -523,6 +577,7 @@ mod tests {
         assert!(!namen.is_empty());
         assert!(namen.iter().all(|n| gueltiger_name(n)), "{namen:?}");
         assert!(BLOCK.len() < 16);
+        assert!(namen.iter().any(|n| n == crate::ziehen::ANIMATION), "{namen:?}");
     }
 
     #[test]

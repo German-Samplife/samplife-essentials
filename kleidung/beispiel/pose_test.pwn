@@ -13,6 +13,8 @@
 //   /pose hs       Pose handschellen (Haende hinter dem Ruecken, ab 0.9.4)
 //   /pose aus      eigene Pose beenden
 //   /pose info     wer gerade welche Pose hat
+//   /pose ziehen [ms]  Waffe ziehen fuer alle an (waffe_raus beim Wechsel auf eine Schusswaffe,
+//                  so lange kein Schiessen, ab 0.9.5); ohne Zahl 1000 ms, 0 schaltet aus
 
 #define FILTERSCRIPT
 
@@ -40,7 +42,7 @@ static PoseAnAlle(spieler)
 
 public OnFilterScriptInit()
 {
-	print("[Pose] Test-Filterscript geladen: /pose halten, /pose funk, /pose zeigen, /pose hs, /pose aus, /pose info");
+	print("[Pose] Test-Filterscript geladen: /pose halten, /pose funk, /pose zeigen, /pose hs, /pose aus, /pose info, /pose ziehen [ms]");
 	return 1;
 }
 
@@ -102,6 +104,17 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	{
 		format(gPose[playerid], sizeof(gPose[]), "handschellen");
 	}
+	else if (!strcmp(cmdtext, "/pose ziehen", true, 12) && (cmdtext[12] == ' ' || cmdtext[12] == EOS))
+	{
+		new ms = cmdtext[12] ? strval(cmdtext[13]) : 1000, zeile[64];
+		for (new i = 0; i < MAX_PLAYERS; i++)
+		{
+			if (IsPlayerConnected(i)) cef_emit_event(i, "anim:ziehen", CEFINT(ms));
+		}
+		format(zeile, sizeof(zeile), "[Pose] Waffe ziehen: %d ms (0 = aus, sonst 100 bis 3000)", ms);
+		SendClientMessage(playerid, -1, zeile);
+		return 1;
+	}
 	else if (!strcmp(cmdtext, "/pose aus", true))
 	{
 		gPose[playerid][0] = EOS;
@@ -124,7 +137,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	}
 	else
 	{
-		SendClientMessage(playerid, -1, "[Pose] /pose halten | funk | zeigen | hs | aus | info");
+		SendClientMessage(playerid, -1, "[Pose] /pose halten | funk | zeigen | hs | aus | info | ziehen [ms]");
 		return 1;
 	}
 

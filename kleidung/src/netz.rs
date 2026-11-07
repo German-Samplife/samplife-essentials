@@ -14,6 +14,7 @@
 //! | `kleidung:koerper` | server -> client | player id, Fett and Muskeln (0 to 1000, like STAT_FAT/STAT_MUSCLE) |
 //! | `anim:start` | server -> client | player id, pose name (anim.rs); partial animation until `anim:stopp` |
 //! | `anim:stopp` | server -> client | player id; the pose fades out |
+//! | `anim:ziehen` | server -> client | milliseconds (100 to 3000) drawing a firearm takes, `0` off (ziehen.rs) |
 //! | `lippen:an` | server -> client | player id; his face talks (lippen.rs) until `lippen:aus` |
 //! | `lippen:aus` | server -> client | player id; the face stops talking |
 //! | `lippen:mikro` | server -> client | `1` a talk key of the local player is held, `0` released (mikro.rs) |
@@ -44,6 +45,7 @@ pub enum Nachricht {
     Weg(u16),
     AnimStart(u16, String),
     AnimStopp(u16),
+    Ziehen(u32),
     LippenAn(u16),
     LippenAus(u16),
     LippenMikro(bool),
@@ -196,6 +198,15 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
                 push(Nachricht::AnimStopp(id));
                 Ok(())
             }
+        },
+
+        (PREFIX_ANIM, "ziehen") => match (tokens.next().map(str::parse::<u32>), tokens.next()) {
+            (Some(Ok(ms)), None) if ms == 0 || crate::ziehen::DAUER_MS.contains(&ms) => {
+                push(Nachricht::Ziehen(ms));
+                Ok(())
+            }
+            (_, Some(_)) => Err("zu viele Argumente".to_owned()),
+            _ => Err("0 oder 100 bis 3000 Millisekunden erwartet".to_owned()),
         },
 
         (PREFIX_LIPPEN, "an") => match parse_id(tokens.next()) {

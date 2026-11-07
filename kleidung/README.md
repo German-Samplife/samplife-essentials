@@ -6,6 +6,8 @@ Ab 0.6.0 spielt es außerdem **Posen**: Teilanimationen nur für den Oberkörper
 
 Ab 0.8.0 bewegen sich die **Lippen**, wenn jemand im Sprach-Chat spricht (siehe [Lippen](#lippen-beim-sprechen)): Taste gedrückt und Stimme am Mikrofon.
 
+Ab 0.9.5 spielt es beim **Ziehen einer Schusswaffe** die Teilanimation `waffe_raus` und sperrt bis zu ihrem Ende das Schießen (siehe [Waffe ziehen](#waffe-ziehen)).
+
 Ab 0.9.0 kann der Server einzelne Teile **färben**, z. B. ein gelbes T-Shirt für die Vagos oder ein lila T-Shirt für die Ballas, auch wo GTA keine solche Textur hat. Ab 0.9.1 nur noch Oberteil und Hose (siehe [Farben](#farben)).
 
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
@@ -113,10 +115,12 @@ Verhalten:
 Eine Pose bewegt nur die Knochen, die in der Datei stehen. `anim/posen_bauen.py` behält deshalb nur die Knochen des Oberkörpers, dieselben wie GTAs `CARRY/crry_prtial` (Wirbelsäule, Kopf, Arme, Hände, Bauch, Brust), und gibt starren Posen einen zweiten Keyframe, damit sie nicht 0 lang sind. Neue Posen:
 
 ```bash
-python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk quelle.ifp:finger_point=finger_point handschellen_quelle.ifp:gift_give=handschellen
+python anim/posen_bauen.py anim/samplife.ifp quelle.ifp:handy_halten=handy_halten quelle.ifp:handy_funk=handy_funk quelle.ifp:finger_point=finger_point handschellen_quelle.ifp:gift_give=handschellen quelle.ifp:waffe_raus=waffe_raus
 ```
 
-Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten), `handy_funk` (Hand an der Schulter) ab 0.9.3 `finger_point` (mit dem rechten Zeigefinger nach vorn zeigen) und ab 0.9.4 `handschellen` (Hände zusammen hinter dem Rücken). Ein Plugin vor 0.9.3 kennt `finger_point` nicht, eins vor 0.9.4 nicht `handschellen`; der Server schickt neue Posen deshalb erst Clients ab der passenden Version.
+Die schon gebaute `anim/samplife.ifp` taugt selbst als Quelle: Ihre Posen haben nur noch Knochen des Oberkörpers und mindestens zwei Keyframes, `posen_bauen.py` übernimmt sie byte-gleich. So entstand 0.9.5 (alte Datei für die vier Posen, `samplife_edited.ifp` für `waffe_raus`).
+
+Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 23 Zeichen aus `a-z`, `0-9` und `_`. Alle Posen müssen in einem Aufruf stehen, die Datei wird jedes Mal neu gebaut. Danach eine neue Plugin-Version und im Gamemode die Namen eintragen (`funktionen/posen.inc`). Bisher: `handy_halten` (Hände vorn, Blick nach unten), `handy_funk` (Hand an der Schulter) ab 0.9.3 `finger_point` (mit dem rechten Zeigefinger nach vorn zeigen) ab 0.9.4 `handschellen` (Hände zusammen hinter dem Rücken) und ab 0.9.5 `waffe_raus` (Waffe ziehen, einmal statt in Schleife, siehe [Waffe ziehen](#waffe-ziehen)). Ein Plugin vor 0.9.3 kennt `finger_point` nicht, eins vor 0.9.4 nicht `handschellen`; der Server schickt neue Posen deshalb erst Clients ab der passenden Version.
 
 `handschellen` ersetzt für CJ die Spezialaktion `SPECIAL_ACTION_CUFFED`, die bei Skin 0 nichts zeigt. Die Quelle ist GTAs eigene Animation `KISSING/gift_give` in den ersten 0,83 Sekunden (Geschenk hinter dem Rücken), ausgeschnitten mit `anim/ausschnitt.py`; erstes und letztes Bild sind gleich, die Pose atmet also leicht in Schleife:
 
@@ -124,7 +128,31 @@ Jede Angabe ist `datei.ifp:animation=name` (ANP3, wie GTA SA); Namen höchstens 
 python anim/ausschnitt.py "<GTA>/anim/anim.img" kissing.ifp gift_give 0 0.84 handschellen_quelle.ifp
 ```
 
-Testen: [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn), laden mit `/rcon loadfs pose_test`, dann `/pose halten`, `/pose funk`, `/pose aus`. `/kleidunginfo` zeigt eine Zeile „Posen“ mit den geladenen Posen und wie viele gerade laufen; im Log stehen das Laden und jede Pose mit Spieler-ID.
+Testen: [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn), laden mit `/rcon loadfs pose_test`, dann `/pose halten`, `/pose funk`, `/pose aus`, für das Ziehen `/pose ziehen` (1000 ms) oder `/pose ziehen 0`. `/kleidunginfo` zeigt eine Zeile „Posen“ mit den geladenen Posen und wie viele gerade laufen; im Log stehen das Laden und jede Pose mit Spieler-ID.
+
+## Waffe ziehen
+
+Ab **0.9.5**. Wechselt eine Figur zu Fuß auf eine Schusswaffe (Faust → Desert Eagle, aber auch Desert Eagle → M4), spielt das Plugin einmal `waffe_raus` aus dem Block `samplife`, als Teilanimation nur für den Oberkörper: Man läuft, rennt und springt weiter. Beim eigenen Spieler geht bis zum Ende kein Schuss los, wie man es aus FiveM kennt. Zielen geht.
+
+| Ereignis | Richtung | Argumente |
+|---|---|---|
+| `anim:ziehen` | Server → Client | Dauer in Millisekunden (100 bis 3000), `0` schaltet aus. Nach `kleidung:hallo` an Clients ab `0.9.5`. |
+
+Verhalten:
+
+- Ohne `anim:ziehen` passiert nichts. Beim Trennen vom CEF-Server ist es wieder aus.
+- **Dauer.** Die Animation wird so schnell oder langsam abgespielt, dass sie genau die Dauer vom Server braucht (`m_Speed` = Länge der Animation / Dauer). Die Zahl steht also nur im Gamemode; dieselbe Zeit lehnt der Server Schüsse ab (`OnPlayerWeaponShot`).
+- **Erkannt wird im Client**, bei allen gestreamten Figuren (eigene und andere Spieler, deren Waffe SA-MP aus dem Sync setzt), ohne Umweg über den Server. Die Animation startet im selben Bild wie der Wechsel.
+- **Schusswaffen** sind die Waffen 22 bis 34 (Pistolen, Schrotflinten, MPs, Sturmgewehre, Gewehre). Nahkampf, Wurfwaffen, RPG, Flammenwerfer, Minigun und der Rest nicht. Wechselt man währenddessen auf etwas anderes, blendet die Animation aus und Schießen geht sofort wieder.
+- **Nicht gezählt** werden Wechsel im Fahrzeug, als Toter und in der ersten halben Sekunde zu Fuß (Aussteigen, Spawn), wenn SA-MP die Waffe zurückgibt.
+- Läuft `waffe_raus` noch (samt Ausblenden), startet ein schneller zweiter Wechsel sie nicht neu; die Sperre beginnt trotzdem von vorn.
+- Posen blendet `waffe_raus` aus, sie kommen danach von selbst wieder. Die Lippen bleiben.
+
+**Schießen sperren.** Das Plugin setzt dafür GTAs eigenen Schalter für Missionen (Skriptbefehl `SET_PLAYER_FIRE_BUTTON`): `CPad::bDisablePlayerFireWeapon` von Pad 0 (`CPad::Pads` `0xB73458`, Offset `0x11B`), den `CPad::GetWeapon` (`0x540180`) prüft. Solange die Sperre läuft, schreibt es ihn in jedem Bild neu (`CPad::Clear` setzt ihn z. B. nach dem Pausemenü zurück), danach einmal auf 0. Steigt man ein oder stirbt man, endet die Sperre sofort.
+
+**Adressen** aus gta-reversed: `Pad.h` (`VALIDATE_SIZE(CPad, 0x134)`, nach `bApplyBrakes` 0x118 folgen EnterCar 0x119, Duck 0x11A, FireWeapon 0x11B), `Entity/Ped/Ped.h` und `Weapon.h` (`m_aWeapons[13]` ab `0x5A0`, `CWeapon` `0x1C` mit `m_Type` vorn, `m_nActiveWeaponSlot` `0x718`, wie im plugin-sdk), `AnimBlendAssociation.h` (`m_Speed` `0x24`, Flag `0x8`: am Ende ausblenden und löschen) und `AnimBlendHierarchy.h` (`m_fTotalTime` `0x10`). Gespielt wird mit den Flags laufend, nach dem Ausblenden löschen, am Ende ausblenden und Teilanimation (`0x1 | 0x4 | 0x8 | 0x10`), eingeblendet in einer Achtelsekunde.
+
+`/kleidunginfo` zeigt eine Zeile „Waffe ziehen“: an oder aus, Dauer, wie oft gespielt (davon beim eigenen Spieler) und ob Schießen gerade gesperrt ist.
 
 ## Lippen beim Sprechen
 

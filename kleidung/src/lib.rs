@@ -7,7 +7,8 @@
 //! watchdog thread that logs a sign of life, installs entry B (Direct3D Present) and
 //! reports what happens. The clothes logic runs on the game thread (logic.rs), and so do
 //! the partial animations (poses) the server starts per player (anim.rs) and the talking
-//! faces in the voice chat (lippen.rs, with the microphone level from mikro.rs). Ab 0.9.0 färbt es einzelne Teile in
+//! faces in the voice chat (lippen.rs, with the microphone level from mikro.rs) and the
+//! weapon draw (ziehen.rs: upper body animation, no firing until it is over). Ab 0.9.0 färbt es einzelne Teile in
 //! der Farbe, die der Server schickt (farbe.rs, faerben.rs).
 
 #![allow(clippy::missing_safety_doc)]
@@ -27,6 +28,7 @@ mod outfit;
 mod rebuild;
 mod samp;
 mod watchdog;
+mod ziehen;
 
 use std::ffi::{c_char, c_int, CStr};
 use std::sync::atomic::Ordering;
