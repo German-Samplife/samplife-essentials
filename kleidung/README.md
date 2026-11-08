@@ -8,6 +8,8 @@ Ab 0.8.0 bewegen sich die **Lippen**, wenn jemand im Sprach-Chat spricht (siehe 
 
 Ab 0.9.5 spielt es beim **Ziehen einer Schusswaffe** die Teilanimation `waffe_raus` und sperrt bis zu ihrem Ende das Schießen (siehe [Waffe ziehen](#waffe-ziehen)).
 
+Ab 0.9.6 lehnt sich ein Beifahrer **beim Zielen aus dem Fenster** und setzt sich beim Loslassen wieder hin (siehe [Drive-by beim Zielen](#drive-by-beim-zielen)).
+
 Ab 0.9.0 kann der Server einzelne Teile **färben**, z. B. ein gelbes T-Shirt für die Vagos oder ein lila T-Shirt für die Ballas, auch wo GTA keine solche Textur hat. Ab 0.9.1 nur noch Oberteil und Hose (siehe [Farben](#farben)).
 
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
@@ -153,6 +155,36 @@ Verhalten:
 **Adressen** aus gta-reversed: `Pad.h` (`VALIDATE_SIZE(CPad, 0x134)`, nach `bApplyBrakes` 0x118 folgen EnterCar 0x119, Duck 0x11A, FireWeapon 0x11B), `Entity/Ped/Ped.h` und `Weapon.h` (`m_aWeapons[13]` ab `0x5A0`, `CWeapon` `0x1C` mit `m_Type` vorn, `m_nActiveWeaponSlot` `0x718`, wie im plugin-sdk), `AnimBlendAssociation.h` (`m_Speed` `0x24`, Flag `0x8`: am Ende ausblenden und löschen) und `AnimBlendHierarchy.h` (`m_fTotalTime` `0x10`). Gespielt wird mit den Flags laufend, nach dem Ausblenden löschen, am Ende ausblenden und Teilanimation (`0x1 | 0x4 | 0x8 | 0x10`), eingeblendet in einer Achtelsekunde.
 
 `/kleidunginfo` zeigt eine Zeile „Waffe ziehen“: an oder aus, Dauer, wie oft gespielt (davon beim eigenen Spieler) und ob Schießen gerade gesperrt ist.
+
+## Drive-by beim Zielen
+
+Ab **0.9.6**. Ein Beifahrer mit erlaubter Waffe lehnt sich aus dem Fenster, solange er die **rechte Maustaste** hält, und setzt sich wieder hin, sobald er loslässt. Vorher ging das nur mit H, und zurück kam man nur über die Faust: SA-MP wertet ein zweites H nicht aus.
+
+| Ereignis | Richtung | Argumente |
+|---|---|---|
+| `driveby:waffen` | Server → Client | Waffen-IDs (1 bis 46, höchstens 24), mit denen man sich beim Zielen rauslehnt, durch Leerzeichen getrennt. Ohne IDs ist es aus. Nach `kleidung:hallo` an Clients ab `0.9.6`. |
+
+Verhalten:
+
+- Ohne `driveby:waffen` passiert nichts, H funktioniert wie in SA-MP. Beim Trennen vom CEF-Server ist es wieder aus.
+- **Welche Waffen** erlaubt sind, steht nur im Gamemode. Ein Drive-by mit einer anderen Waffe oder ohne gedrückte rechte Maustaste endet sofort, auch wenn er mit H begonnen wurde.
+- **Nur als Beifahrer**, sitzend (nicht beim Ein- oder Aussteigen), nicht tot.
+- Im Pausemenü, bei offener Chat-Eingabe und solange GTA die Steuerung gesperrt hat (`CPad::DisablePlayerControls`, z. B. ein SA-MP-Cursor, der die Steuerung sperrt), ändert sich nichts. Im Modus „nur Maus“ von samp-cef löscht samp-cef GTAs Maus-Zustand; öffnet man so eine Seite (Handy, Fahrzeugmenü), setzt man sich also wieder hin.
+- **Andere Spieler sehen es**, weil das Plugin denselben Merker setzt wie SA-MP bei H (`CLocalPlayer::m_bPassengerDriveBy`); der Beifahrer-Sync schickt genau diesen Merker als Drive-by-Bit.
+- Gelesen wird die rechte Maustaste selbst (`CPad::NewMouseControllerState` `0xB73418`, `rmb` an `+1`), nicht die Zielen-Taste aus den Einstellungen.
+
+**Wie.** Das Plugin ruft dieselben Funktionen in `samp.dll` auf wie SA-MP bei H und beim Wechsel auf die Faust. Gefunden mit einem Disassembler in `samp.dll` 0.3.7 R1 (0.3.7.0) und R3-1, der Name der ersten aus BlastHackNet/SAMP-API:
+
+| | R1 | R3 |
+|---|---|---|
+| `CPed::EnablePassengerDrivebyMode()` (thiscall, BOOL) | `0xA7850` | `0xAC700` |
+| Drive-by-Aufgabe aktiv? (Aufgabe `0x3FE` im Hauptslot 3) | `0xA78F0` | `0xAC7A0` |
+| Drive-by beenden (löscht die Aufgabe) | `0xA7940` | `0xAC7F0` |
+| `CLocalPlayer::m_bPassengerDriveBy` | `+0x1A7` | `+0x1CB` |
+
+Aufrufer in `CLocalPlayer::Process`: R1 `0x782E`/`0x7865`, R3 `0x784B`/`0x7882`. Ein Test prüft, dass die Offsets des Merkers aus samp-client-api zu diesen Werten passen. Beifahrer heißt wie in `samp.dll` (`CPed::IsAPassenger`): `CPed::m_pVehicle` (`+0x58C`) gesetzt und dessen `m_pDriver` (`+0x460`) nicht die eigene Figur.
+
+`/kleidunginfo` zeigt eine Zeile „Drive-by“: an oder aus, erlaubte Waffen und wie oft rausgelehnt und wieder rein.
 
 ## Lippen beim Sprechen
 
@@ -322,6 +354,7 @@ Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/
 | `src/anim.rs` | Posen: eingebettete IFP laden, Teilanimationen je Spieler starten, wiederholen, ausblenden; Blenden, ohne andere Teilanimationen zu beenden |
 | `src/lippen.rs` | Lippen: `factalk` je sprechendem Spieler starten, wiederholen, ausblenden |
 | `src/mikro.rs` | Pegel des eigenen Mikrofons über waveIn, Stimme erkennen, `lippen:pegel` |
+| `src/driveby.rs` | Drive-by beim Zielen: rauslehnen, solange die rechte Maustaste gedrückt ist, über die Funktionen in `samp.dll` |
 | `anim/samplife.ifp` | die Posen (Block `samplife`), wird in die DLL gebaut |
 | `anim/posen_bauen.py` | baut `anim/samplife.ifp` aus IFP-Dateien, nur Oberkörper |
 | `src/log.rs` | Logdatei |

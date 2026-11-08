@@ -8,13 +8,15 @@
 //! reports what happens. The clothes logic runs on the game thread (logic.rs), and so do
 //! the partial animations (poses) the server starts per player (anim.rs) and the talking
 //! faces in the voice chat (lippen.rs, with the microphone level from mikro.rs) and the
-//! weapon draw (ziehen.rs: upper body animation, no firing until it is over). Ab 0.9.0 färbt es einzelne Teile in
+//! weapon draw (ziehen.rs: upper body animation, no firing until it is over) and the drive-by while aiming
+//! (driveby.rs: a passenger leans out while he holds the right mouse button). Ab 0.9.0 färbt es einzelne Teile in
 //! der Farbe, die der Server schickt (farbe.rs, faerben.rs).
 
 #![allow(clippy::missing_safety_doc)]
 
 mod anim;
 mod diag;
+mod driveby;
 mod faerben;
 mod farbe;
 mod game;

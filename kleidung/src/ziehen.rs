@@ -249,8 +249,8 @@ impl Ziehen {
     }
 }
 
-/// eWeaponType in the active slot of a ped
-fn waffe_von(ped: usize) -> Option<u32> {
+/// eWeaponType in the active slot of a ped (also driveby.rs)
+pub fn waffe_von(ped: usize) -> Option<u32> {
     if !readable(ped + PED_ACTIVE_SLOT, 1) {
         return None;
     }

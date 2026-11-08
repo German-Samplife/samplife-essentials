@@ -3,7 +3,7 @@
 //! samp-cef loads every DLL in `GTA/cef/plugins/` and, with our patch, hands it
 //! every event the server sends with `cef_emit_event` (`cef_server_event`) and a
 //! function to send events to the server (`cef_server_emitter`). Events starting with
-//! `kleidung:`, `anim:` or `lippen:` are ours and don't go on to the browsers.
+//! `kleidung:`, `anim:`, `lippen:` or `driveby:` are ours and don't go on to the browsers.
 //!
 //! | Event | Direction | Arguments |
 //! |---|---|---|
@@ -19,6 +19,7 @@
 //! | `lippen:aus` | server -> client | player id; the face stops talking |
 //! | `lippen:mikro` | server -> client | `1` a talk key of the local player is held, `0` released (mikro.rs) |
 //! | `lippen:pegel` | client -> server | `1` speech at the microphone while the key is held, `0` quiet again |
+//! | `driveby:waffen` | server -> client | weapon ids a passenger leans out with while aiming (driveby.rs), none = off |
 //!
 //! The callbacks run on samp-cef's thread; they only queue. The game thread takes the
 //! queue in logic.rs.
@@ -38,6 +39,7 @@ pub const EXTERNAL_CONTINUE: c_int = 0;
 const PREFIX: &str = "kleidung:";
 const PREFIX_ANIM: &str = "anim:";
 const PREFIX_LIPPEN: &str = "lippen:";
+const PREFIX_DRIVEBY: &str = "driveby:";
 
 pub enum Nachricht {
     Spieler(u16, Box<(Teile, Farben)>),
@@ -49,6 +51,7 @@ pub enum Nachricht {
     LippenAn(u16),
     LippenAus(u16),
     LippenMikro(bool),
+    DrivebyWaffen(Vec<u32>),
     Getrennt,
 }
 
@@ -236,6 +239,8 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
             }
             _ => Err("1 oder 0 erwartet".to_owned()),
         },
+
+        (PREFIX_DRIVEBY, "waffen") => crate::driveby::parse_waffen(tokens).map(|waffen| push(Nachricht::DrivebyWaffen(waffen))),
 
         _ => Err("unbekanntes Ereignis".to_owned()),
     };
