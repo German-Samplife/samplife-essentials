@@ -59,7 +59,7 @@ pub fn loaded() -> bool {
     client_api::samp::is_loaded()
 }
 
-fn base() -> usize {
+pub fn base() -> usize {
     client_api::samp::handle() as usize
 }
 
@@ -211,6 +211,30 @@ pub fn local_ped(ver: SampVersion) -> Option<usize> {
         .or_else(crate::game::world_player0_ped)
 }
 
+/// CPed (SA-MP) -> GTA ped, `CPed::m_pGamePed` (R1 and R3, see local_ped)
+pub const SAMP_PED_GAME_PED: usize = 0x2A4;
+
+/// SA-MP CPed of the local player and the address of `CLocalPlayer::m_bPassengerDriveBy`
+/// (driveby.rs). The field offsets come from samp-client-api; tests check them against
+/// samp.dll (R1 +0x1A7, R3 +0x1CB).
+pub fn local_driveby(ver: SampVersion) -> Option<(usize, usize)> {
+    unsafe {
+        let (ped, flag) = match ver {
+            SampVersion::R1 => {
+                let local = client_api::samp::v037::local_player()? as *mut client_api::samp::v037::CLocalPlayer;
+                (std::ptr::addr_of!((*local).m_pPed).read_unaligned() as usize, std::ptr::addr_of!((*local).m_bPassengerDriveBy) as usize)
+            }
+            SampVersion::R3 => {
+                let local = client_api::samp::v037r3::local_player()? as *mut client_api::samp::v037r3::CLocalPlayer;
+                (std::ptr::addr_of!((*local).m_pPed).read_unaligned() as usize, std::ptr::addr_of!((*local).m_bPassengerDriveBy) as usize)
+            }
+            SampVersion::Dl => return None,
+        };
+
+        (ped != 0 && readable(ped, SAMP_PED_GAME_PED + 4) && readable(flag, 4)).then_some((ped, flag))
+    }
+}
+
 /// SA-MP player id of the local player (CPlayerPool::m_localInfo.m_nId).
 pub fn local_id() -> Option<u16> {
     client_api::samp::players::local_player()?
@@ -237,4 +261,14 @@ pub fn remote_peds() -> Vec<(u16, usize)> {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn driveby_merker_wie_in_samp_dll() {
+        // samp.dll R1 CLocalPlayer::Process 0x781B, R3 0x7838
+        assert_eq!(std::mem::offset_of!(client_api::samp::v037::CLocalPlayer, m_bPassengerDriveBy), 0x1A7);
+        assert_eq!(std::mem::offset_of!(client_api::samp::v037r3::CLocalPlayer, m_bPassengerDriveBy), 0x1CB);
+    }
 }
