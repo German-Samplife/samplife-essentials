@@ -15,6 +15,13 @@
 //! weapons are allowed lives only in the gamemode. While it is on, a drive-by with a weapon
 //! that is not in the list or without the aim button ends at once, also one started with H.
 //!
+//! While it is on, only "fire weapon" (left mouse button by default) shoots from the window.
+//! `CPad::GetWeapon` (0x540180) normally adds LeftShoulder1 ("secondary fire", right mouse
+//! button by default) when the ped is in a drive-by task (or attached to something):
+//! `test bl, bl; movsx eax, [esi+0x22]; je +0x1A; movsx ecx, [esi+8]; add eax, ecx`. The
+//! `je` at 0x540219 (74 1A) becomes `jmp` (EB 1A), so holding the right button only leans
+//! out and aims. Put back when the server switches it off or the connection ends.
+//!
 //! Nothing changes in the pause menu, with the SA-MP chat input open or while the game has
 //! the player's controls disabled (cutscene, SA-MP cursor locking the controls). The
 //! mouse-only mode of samp-cef clears GTA's mouse state, so a page that takes the mouse
@@ -46,6 +53,11 @@ use crate::samp::{self, SampVersion};
 const MOUSE_RMB: usize = 0xB73418 + 1;
 const PAD0_DISABLE_PLAYER_CONTROLS: usize = 0xB73458 + 0x10E;
 const MENU_ACTIVE: usize = 0xBA67A4;
+
+/// `je` in CPad::GetWeapon that skips LeftShoulder1 outside a drive-by (see above)
+const ZWEITFEUER_SPRUNG: usize = 0x540219;
+const ZWEITFEUER_AN: [u8; 2] = [0x74, 0x1A];
+const ZWEITFEUER_AUS: [u8; 2] = [0xEB, 0x1A];
 
 const PED_VEHICLE: usize = 0x58C;
 const VEHICLE_DRIVER: usize = 0x460;
@@ -81,6 +93,8 @@ pub struct DriveBy {
     raus_seit: Option<Instant>,
     /// what the last frame found, for /kleidunginfo
     grund: &'static str,
+    /// secondary fire does not shoot from the window (patch in CPad::GetWeapon is in)
+    nur_hauptfeuer: bool,
     pub raus: u32,
     pub rein: u32,
 }
@@ -91,6 +105,7 @@ impl DriveBy {
             waffen: Vec::new(),
             raus_seit: None,
             grund: "noch nicht geprüft",
+            nur_hauptfeuer: false,
             raus: 0,
             rein: 0,
         }
@@ -102,7 +117,14 @@ impl DriveBy {
         }
 
         let waffen: Vec<String> = self.waffen.iter().map(u32::to_string).collect();
-        format!("an, Waffen {}, raus {}x, rein {}x, zuletzt: {}", waffen.join(" "), self.raus, self.rein, self.grund)
+        format!(
+            "an, Waffen {}, raus {}x, rein {}x, zuletzt: {}, schießen {}",
+            waffen.join(" "),
+            self.raus,
+            self.rein,
+            self.grund,
+            if self.nur_hauptfeuer { "nur Hauptfeuer" } else { "auch Zweitfeuer" }
+        )
     }
 
     // -----------------------------------------------------------------------
@@ -117,8 +139,34 @@ impl DriveBy {
             crate::log!("Drive-by beim Zielen an, Waffen {waffen:?}");
         }
 
+        self.nur_hauptfeuer(!waffen.is_empty());
         self.waffen = waffen;
         self.raus_seit = None;
+    }
+
+    /// Game thread: switches the patch in CPad::GetWeapon, only over the original bytes
+    fn nur_hauptfeuer(&mut self, an: bool) {
+        if an == self.nur_hauptfeuer {
+            return;
+        }
+
+        let (vorher, nachher) = if an { (ZWEITFEUER_AN, ZWEITFEUER_AUS) } else { (ZWEITFEUER_AUS, ZWEITFEUER_AN) };
+        let jetzt = lese_u16(ZWEITFEUER_SPRUNG).map(u16::to_le_bytes);
+
+        if jetzt != Some(vorher) {
+            crate::log!(
+                "Drive-by: 0x{ZWEITFEUER_SPRUNG:x} ist {:02X?} statt {vorher:02X?}, Zweitfeuer bleibt, wie es ist",
+                jetzt
+            );
+            return;
+        }
+
+        if crate::diag::write_code(ZWEITFEUER_SPRUNG, &nachher) {
+            self.nur_hauptfeuer = an;
+            crate::log!("Drive-by: Zweitfeuer schießt {}", if an { "nicht mehr aus dem Fenster" } else { "wieder" });
+        } else {
+            crate::log!("Drive-by: 0x{ZWEITFEUER_SPRUNG:x} nicht beschreibbar");
+        }
     }
 
     pub fn getrennt(&mut self) {
@@ -285,6 +333,13 @@ mod tests {
         assert!(parse_waffen("0".split_whitespace()).is_err());
         assert!(parse_waffen("47".split_whitespace()).is_err());
         assert!(parse_waffen("m4".split_whitespace()).is_err());
+    }
+
+    #[test]
+    fn sprung_bleibt_im_ziel() {
+        // je and jmp with the same distance land on the same return (0x540235)
+        assert_eq!(ZWEITFEUER_AN[1], ZWEITFEUER_AUS[1]);
+        assert_eq!(ZWEITFEUER_SPRUNG + 2 + ZWEITFEUER_AN[1] as usize, 0x540235);
     }
 
     #[test]
