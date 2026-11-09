@@ -15,12 +15,16 @@
 //! weapons are allowed lives only in the gamemode. While it is on, a drive-by with a weapon
 //! that is not in the list or without the aim button ends at once, also one started with H.
 //!
-//! While it is on, only "fire weapon" (left mouse button by default) shoots from the window.
-//! `CPad::GetWeapon` (0x540180) normally adds LeftShoulder1 ("secondary fire", right mouse
-//! button by default) when the ped is in a drive-by task (or attached to something):
-//! `test bl, bl; movsx eax, [esi+0x22]; je +0x1A; movsx ecx, [esi+8]; add eax, ecx`. The
-//! `je` at 0x540219 (74 1A) becomes `jmp` (EB 1A), so holding the right button only leans
-//! out and aims. Put back when the server switches it off or the connection ends.
+//! While it is on, the right button only leans out and aims, and the left mouse button
+//! shoots, whatever the vehicle keys are set to. `CPad::GetWeapon` (0x540180) decides if a
+//! drive-by shoots; in a drive-by task (or attached to something) it returns
+//! ButtonCircle ("vehicle fire") plus LeftShoulder1 ("secondary fire", often the right
+//! button): `test bl, bl; movsx eax, [esi+0x22]; je +0x1A; movsx ecx, [esi+8]; pop edi;
+//! pop ebx; add eax, ecx; pop esi; ret 4`. The plugin puts a `jmp` to its own code over
+//! `movsx ecx, [esi+8]; pop edi` at 0x54021B. That code drops LeftShoulder1 and, for pad 0
+//! only (0xB73458, the local player; SA-MP gives remote players their own pads), adds the
+//! left mouse button (`CPad::NewMouseControllerState.lmb`, 0xB73418). Put back when the
+//! server switches it off or the connection ends.
 //!
 //! Nothing changes in the pause menu, with the SA-MP chat input open or while the game has
 //! the player's controls disabled (cutscene, SA-MP cursor locking the controls). The
@@ -54,10 +58,11 @@ const MOUSE_RMB: usize = 0xB73418 + 1;
 const PAD0_DISABLE_PLAYER_CONTROLS: usize = 0xB73458 + 0x10E;
 const MENU_ACTIVE: usize = 0xBA67A4;
 
-/// `je` in CPad::GetWeapon that skips LeftShoulder1 outside a drive-by (see above)
-const ZWEITFEUER_SPRUNG: usize = 0x540219;
-const ZWEITFEUER_AN: [u8; 2] = [0x74, 0x1A];
-const ZWEITFEUER_AUS: [u8; 2] = [0xEB, 0x1A];
+/// `movsx ecx, word ptr [esi+8]; pop edi` in CPad::GetWeapon, only reached in a drive-by
+const FEUER_STELLE: usize = 0x54021B;
+const FEUER_ORIGINAL: [u8; 5] = [0x0F, 0xBF, 0x4E, 0x08, 0x5F];
+const PAD0: u32 = 0xB73458;
+const MOUSE_LMB: u32 = 0xB73418;
 
 const PED_VEHICLE: usize = 0x58C;
 const VEHICLE_DRIVER: usize = 0x460;
@@ -93,8 +98,10 @@ pub struct DriveBy {
     raus_seit: Option<Instant>,
     /// what the last frame found, for /kleidunginfo
     grund: &'static str,
-    /// secondary fire does not shoot from the window (patch in CPad::GetWeapon is in)
-    nur_hauptfeuer: bool,
+    /// the jump in CPad::GetWeapon is in: left button shoots, secondary fire does not
+    linksklick: bool,
+    /// our code behind the jump, allocated once and kept
+    hoehle: usize,
     pub raus: u32,
     pub rein: u32,
 }
@@ -105,7 +112,8 @@ impl DriveBy {
             waffen: Vec::new(),
             raus_seit: None,
             grund: "noch nicht geprüft",
-            nur_hauptfeuer: false,
+            linksklick: false,
+            hoehle: 0,
             raus: 0,
             rein: 0,
         }
@@ -123,7 +131,7 @@ impl DriveBy {
             self.raus,
             self.rein,
             self.grund,
-            if self.nur_hauptfeuer { "nur Hauptfeuer" } else { "auch Zweitfeuer" }
+            if self.linksklick { "Linksklick und Fire-Taste" } else { "wie in GTA eingestellt" }
         )
     }
 
@@ -139,33 +147,43 @@ impl DriveBy {
             crate::log!("Drive-by beim Zielen an, Waffen {waffen:?}");
         }
 
-        self.nur_hauptfeuer(!waffen.is_empty());
+        self.linksklick(!waffen.is_empty());
         self.waffen = waffen;
         self.raus_seit = None;
     }
 
-    /// Game thread: switches the patch in CPad::GetWeapon, only over the original bytes
-    fn nur_hauptfeuer(&mut self, an: bool) {
-        if an == self.nur_hauptfeuer {
+    /// Game thread: switches the jump in CPad::GetWeapon, only over the original bytes
+    fn linksklick(&mut self, an: bool) {
+        if an == self.linksklick {
             return;
         }
 
-        let (vorher, nachher) = if an { (ZWEITFEUER_AN, ZWEITFEUER_AUS) } else { (ZWEITFEUER_AUS, ZWEITFEUER_AN) };
-        let jetzt = lese_u16(ZWEITFEUER_SPRUNG).map(u16::to_le_bytes);
+        if an && self.hoehle == 0 {
+            self.hoehle = hoehle_anlegen();
+
+            if self.hoehle == 0 {
+                crate::log!("Drive-by: kein Speicher für den Linksklick, Schießen bleibt, wie es ist");
+                return;
+            }
+        }
+
+        let sprung = sprung_zu(self.hoehle);
+        let (vorher, nachher) = if an { (FEUER_ORIGINAL, sprung) } else { (sprung, FEUER_ORIGINAL) };
+        let jetzt = readable(FEUER_STELLE, 5).then(|| unsafe { (FEUER_STELLE as *const [u8; 5]).read_unaligned() });
 
         if jetzt != Some(vorher) {
-            crate::log!(
-                "Drive-by: 0x{ZWEITFEUER_SPRUNG:x} ist {:02X?} statt {vorher:02X?}, Zweitfeuer bleibt, wie es ist",
-                jetzt
-            );
+            crate::log!("Drive-by: 0x{FEUER_STELLE:x} ist {jetzt:02X?} statt {vorher:02X?}, Schießen bleibt, wie es ist");
             return;
         }
 
-        if crate::diag::write_code(ZWEITFEUER_SPRUNG, &nachher) {
-            self.nur_hauptfeuer = an;
-            crate::log!("Drive-by: Zweitfeuer schießt {}", if an { "nicht mehr aus dem Fenster" } else { "wieder" });
+        if crate::diag::write_code(FEUER_STELLE, &nachher) {
+            self.linksklick = an;
+            crate::log!(
+                "Drive-by: {}",
+                if an { "Linksklick schießt aus dem Fenster, Zweitfeuer nicht" } else { "Schießen wieder wie in GTA eingestellt" }
+            );
         } else {
-            crate::log!("Drive-by: 0x{ZWEITFEUER_SPRUNG:x} nicht beschreibbar");
+            crate::log!("Drive-by: 0x{FEUER_STELLE:x} nicht beschreibbar");
         }
     }
 
@@ -247,6 +265,42 @@ impl DriveBy {
             self.raus_seit = None;
         }
     }
+}
+
+/// Code behind the jump: eax holds ButtonCircle, edi/ebx/esi are still pushed.
+/// `cmp esi, PAD0; jne +6; or al, [MOUSE_LMB]; pop edi; pop ebx; pop esi; ret 4`
+fn hoehle_code() -> [u8; 20] {
+    let mut c = [0u8; 20];
+    c[0..2].copy_from_slice(&[0x81, 0xFE]);
+    c[2..6].copy_from_slice(&PAD0.to_le_bytes());
+    c[6..8].copy_from_slice(&[0x75, 0x06]);
+    c[8..10].copy_from_slice(&[0x0A, 0x05]);
+    c[10..14].copy_from_slice(&MOUSE_LMB.to_le_bytes());
+    c[14..20].copy_from_slice(&[0x5F, 0x5B, 0x5E, 0xC2, 0x04, 0x00]);
+    c
+}
+
+/// `jmp hoehle` written at FEUER_STELLE
+fn sprung_zu(hoehle: usize) -> [u8; 5] {
+    let rel = (hoehle as u32).wrapping_sub(FEUER_STELLE as u32 + 5);
+    let mut b = [0xE9, 0, 0, 0, 0];
+    b[1..].copy_from_slice(&rel.to_le_bytes());
+    b
+}
+
+fn hoehle_anlegen() -> usize {
+    use winapi::um::memoryapi::VirtualAlloc;
+    use winapi::um::winnt::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE};
+
+    let code = hoehle_code();
+    let ziel = unsafe { VirtualAlloc(std::ptr::null_mut(), code.len(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) };
+
+    if ziel.is_null() {
+        return 0;
+    }
+
+    unsafe { std::ptr::copy_nonoverlapping(code.as_ptr(), ziel as *mut u8, code.len()) };
+    ziel as usize
 }
 
 /// Weapon ids from `driveby:waffen`; an error if one is not a weapon id
@@ -336,10 +390,27 @@ mod tests {
     }
 
     #[test]
-    fn sprung_bleibt_im_ziel() {
-        // je and jmp with the same distance land on the same return (0x540235)
-        assert_eq!(ZWEITFEUER_AN[1], ZWEITFEUER_AUS[1]);
-        assert_eq!(ZWEITFEUER_SPRUNG + 2 + ZWEITFEUER_AN[1] as usize, 0x540235);
+    fn sprung_landet_in_der_hoehle() {
+        let hoehle = 0x1234_5000usize;
+        let b = sprung_zu(hoehle);
+        assert_eq!(b[0], 0xE9);
+        let rel = u32::from_le_bytes([b[1], b[2], b[3], b[4]]);
+        assert_eq!((FEUER_STELLE as u32 + 5).wrapping_add(rel), hoehle as u32);
+        // also backwards
+        let b = sprung_zu(0x1000_0000);
+        let rel = u32::from_le_bytes([b[1], b[2], b[3], b[4]]);
+        assert_eq!((FEUER_STELLE as u32 + 5).wrapping_add(rel), 0x1000_0000);
+    }
+
+    #[test]
+    fn hoehle_wie_geplant() {
+        let c = hoehle_code();
+        assert_eq!(&c[..], &[
+            0x81, 0xFE, 0x58, 0x34, 0xB7, 0x00, // cmp esi, 0xB73458
+            0x75, 0x06, // jne +6 (over the or)
+            0x0A, 0x05, 0x18, 0x34, 0xB7, 0x00, // or al, [0xB73418]
+            0x5F, 0x5B, 0x5E, 0xC2, 0x04, 0x00, // pop edi; pop ebx; pop esi; ret 4
+        ]);
     }
 
     #[test]
