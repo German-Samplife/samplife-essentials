@@ -40,7 +40,7 @@
 use std::ffi::c_void;
 use std::time::{Duration, Instant};
 
-use crate::game::{read_ptr, readable, writable, Ped};
+use crate::game::{read_ptr, read_u32, readable, writable, Ped};
 use crate::samp::{self, SampVersion};
 
 const MOUSE_RMB: usize = 0xB73418 + 1;
@@ -79,6 +79,8 @@ pub struct DriveBy {
     waffen: Vec<u32>,
     /// we leaned out and the task has not shown up yet
     raus_seit: Option<Instant>,
+    /// what the last frame found, for /kleidunginfo
+    grund: &'static str,
     pub raus: u32,
     pub rein: u32,
 }
@@ -88,6 +90,7 @@ impl DriveBy {
         DriveBy {
             waffen: Vec::new(),
             raus_seit: None,
+            grund: "noch nicht geprüft",
             raus: 0,
             rein: 0,
         }
@@ -99,7 +102,7 @@ impl DriveBy {
         }
 
         let waffen: Vec<String> = self.waffen.iter().map(u32::to_string).collect();
-        format!("an, Waffen {}, raus {}x, rein {}x", waffen.join(" "), self.raus, self.rein)
+        format!("an, Waffen {}, raus {}x, rein {}x, zuletzt: {}", waffen.join(" "), self.raus, self.rein, self.grund)
     }
 
     // -----------------------------------------------------------------------
@@ -135,20 +138,24 @@ impl DriveBy {
         };
 
         let Some((samp_ped, flag)) = samp::local_driveby(ver) else {
+            self.grund = "kein SA-MP-Spieler";
             return;
         };
 
         let Some(ped) = read_ptr(samp_ped + samp::SAMP_PED_GAME_PED).filter(|&p| p != 0) else {
+            self.grund = "keine Spielfigur";
             return;
         };
 
         if !beifahrer(ped) {
             self.raus_seit = None;
+            self.grund = "kein Beifahrer";
             return;
         }
 
         // pause menu, chat input, controls off: leave everything as it is
         if eingabe_gesperrt() {
+            self.grund = "Eingabe gesperrt";
             return;
         }
 
@@ -156,6 +163,12 @@ impl DriveBy {
         let erlaubt = crate::ziehen::waffe_von(ped).is_some_and(|w| self.waffen.contains(&w));
         let raus = lese_u32(flag).is_some_and(|f| f != 0);
         let now = Instant::now();
+
+        self.grund = match (zielt, erlaubt) {
+            (_, false) => "Waffe nicht erlaubt",
+            (false, true) => "zielt nicht",
+            (true, true) => "zielt",
+        };
 
         if !raus {
             self.raus_seit = None;
@@ -210,7 +223,8 @@ pub fn parse_waffen<'a>(tokens: impl Iterator<Item = &'a str>) -> Result<Vec<u32
     Ok(waffen)
 }
 
-/// Sits in a vehicle and does not drive it
+/// Sits in a vehicle and does not drive it. An empty driver seat counts, as in SA-MP's
+/// `CPed::IsAPassenger` (R1 0xA6880: passenger when `m_pDriver != ped`).
 fn beifahrer(ped: usize) -> bool {
     let view = Ped(ped);
 
@@ -222,7 +236,7 @@ fn beifahrer(ped: usize) -> bool {
         return false;
     };
 
-    read_ptr(vehicle + VEHICLE_DRIVER).is_some_and(|driver| driver != ped)
+    read_u32(vehicle + VEHICLE_DRIVER).is_some_and(|driver| driver as usize != ped)
 }
 
 fn eingabe_gesperrt() -> bool {
