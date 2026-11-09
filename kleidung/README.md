@@ -172,6 +172,7 @@ Verhalten:
 - Im Pausemenü, bei offener Chat-Eingabe und solange GTA die Steuerung gesperrt hat (`CPad::DisablePlayerControls`, z. B. ein SA-MP-Cursor, der die Steuerung sperrt), ändert sich nichts. Im Modus „nur Maus“ von samp-cef löscht samp-cef GTAs Maus-Zustand; öffnet man so eine Seite (Handy, Fahrzeugmenü), setzt man sich also wieder hin.
 - **Andere Spieler sehen es**, weil das Plugin denselben Merker setzt wie SA-MP bei H (`CLocalPlayer::m_bPassengerDriveBy`); der Beifahrer-Sync schickt genau diesen Merker als Drive-by-Bit.
 - Gelesen wird die rechte Maustaste selbst (`CPad::NewMouseControllerState` `0xB73418`, `rmb` an `+1`), nicht die Zielen-Taste aus den Einstellungen.
+- Ab **0.9.9** schießt aus dem Fenster nur „Fahrzeug: Waffe abfeuern“ (Standard: linke Maustaste). Rechts hält man also zum Rauslehnen und Zielen, links schießt man. GTA zählt im Drive-by sonst auch das Zweitfeuer (Standard: rechte Maustaste): `CPad::GetWeapon` (`0x540180`) addiert `LeftShoulder1`, wenn die Figur eine Drive-by-Aufgabe hat. Das Plugin macht aus dem `je` an `0x540219` (`74 1A`) ein `jmp` (`EB 1A`), nur über den Originalbytes und nur solange `driveby:waffen` an ist; beim Ausschalten und Trennen kommt das Original zurück. Das gilt auch für den Fahrer beim Drive-by mit MP.
 
 **Wie.** Das Plugin ruft dieselben Funktionen in `samp.dll` auf wie SA-MP bei H und beim Wechsel auf die Faust. Gefunden mit einem Disassembler in `samp.dll` 0.3.7 R1 (0.3.7.0) und R3-1, der Name der ersten aus BlastHackNet/SAMP-API:
 
@@ -184,7 +185,7 @@ Verhalten:
 
 Aufrufer in `CLocalPlayer::Process`: R1 `0x782E`/`0x7865`, R3 `0x784B`/`0x7882`. Ein Test prüft, dass die Offsets des Merkers aus samp-client-api zu diesen Werten passen. Beifahrer heißt wie in `samp.dll` (`CPed::IsAPassenger`): `CPed::m_pVehicle` (`+0x58C`) gesetzt und dessen `m_pDriver` (`+0x460`) nicht die eigene Figur.
 
-`/kleidunginfo` zeigt eine Zeile „Drive-by“: an oder aus, erlaubte Waffen und wie oft rausgelehnt und wieder rein.
+`/kleidunginfo` zeigt eine Zeile „Drive-by“: an oder aus, erlaubte Waffen, wie oft rausgelehnt und wieder rein, woran es zuletzt hing (z. B. „kein Beifahrer“, „zielt nicht“) und ob nur das Hauptfeuer schießt.
 
 ## Lippen beim Sprechen
 
