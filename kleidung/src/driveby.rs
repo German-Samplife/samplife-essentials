@@ -21,9 +21,10 @@
 //! ButtonCircle ("vehicle fire") plus LeftShoulder1 ("secondary fire", often the right
 //! button): `test bl, bl; movsx eax, [esi+0x22]; je +0x1A; movsx ecx, [esi+8]; pop edi;
 //! pop ebx; add eax, ecx; pop esi; ret 4`. The plugin puts a `jmp` to its own code over
-//! `movsx ecx, [esi+8]; pop edi` at 0x54021B. That code drops LeftShoulder1 and, for pad 0
-//! only (0xB73458, the local player; SA-MP gives remote players their own pads), adds the
-//! left mouse button (`CPad::NewMouseControllerState.lmb`, 0xB73418). Put back when the
+//! `movsx ecx, [esi+8]; pop edi` at 0x54021B. That code drops LeftShoulder1 and, only when
+//! the ped (edi, the argument) is our own (`CWorld::Players[0].m_pPed`, 0xB7CD98), adds the
+//! left mouse button (`CPad::NewMouseControllerState.lmb`, 0xB73418). Not by pad: SA-MP
+//! writes the keys of remote players into pad 0 while it processes them. Put back when the
 //! server switches it off or the connection ends.
 //!
 //! Nothing changes in the pause menu, with the SA-MP chat input open or while the game has
@@ -61,7 +62,8 @@ const MENU_ACTIVE: usize = 0xBA67A4;
 /// `movsx ecx, word ptr [esi+8]; pop edi` in CPad::GetWeapon, only reached in a drive-by
 const FEUER_STELLE: usize = 0x54021B;
 const FEUER_ORIGINAL: [u8; 5] = [0x0F, 0xBF, 0x4E, 0x08, 0x5F];
-const PAD0: u32 = 0xB73458;
+/// CWorld::Players[0].m_pPed, the local player (FindPlayerPed 0x56E210)
+const EIGENE_FIGUR: u32 = 0xB7CD98;
 const MOUSE_LMB: u32 = 0xB73418;
 
 const PED_VEHICLE: usize = 0x58C;
@@ -268,11 +270,11 @@ impl DriveBy {
 }
 
 /// Code behind the jump: eax holds ButtonCircle, edi/ebx/esi are still pushed.
-/// `cmp esi, PAD0; jne +6; or al, [MOUSE_LMB]; pop edi; pop ebx; pop esi; ret 4`
+/// `cmp edi, [EIGENE_FIGUR]; jne +6; or al, [MOUSE_LMB]; pop edi; pop ebx; pop esi; ret 4`
 fn hoehle_code() -> [u8; 20] {
     let mut c = [0u8; 20];
-    c[0..2].copy_from_slice(&[0x81, 0xFE]);
-    c[2..6].copy_from_slice(&PAD0.to_le_bytes());
+    c[0..2].copy_from_slice(&[0x3B, 0x3D]);
+    c[2..6].copy_from_slice(&EIGENE_FIGUR.to_le_bytes());
     c[6..8].copy_from_slice(&[0x75, 0x06]);
     c[8..10].copy_from_slice(&[0x0A, 0x05]);
     c[10..14].copy_from_slice(&MOUSE_LMB.to_le_bytes());
@@ -406,7 +408,7 @@ mod tests {
     fn hoehle_wie_geplant() {
         let c = hoehle_code();
         assert_eq!(&c[..], &[
-            0x81, 0xFE, 0x58, 0x34, 0xB7, 0x00, // cmp esi, 0xB73458
+            0x3B, 0x3D, 0x98, 0xCD, 0xB7, 0x00, // cmp edi, [0xB7CD98]
             0x75, 0x06, // jne +6 (over the or)
             0x0A, 0x05, 0x18, 0x34, 0xB7, 0x00, // or al, [0xB73418]
             0x5F, 0x5B, 0x5E, 0xC2, 0x04, 0x00, // pop edi; pop ebx; pop esi; ret 4
