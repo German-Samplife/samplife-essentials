@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "samplife-kleidung"
-version = "0.9.9"
+version = "0.9.10"
 dependencies = [
  "client-api",
  "winapi",
