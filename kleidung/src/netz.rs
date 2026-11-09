@@ -41,6 +41,9 @@ const PREFIX_ANIM: &str = "anim:";
 const PREFIX_LIPPEN: &str = "lippen:";
 const PREFIX_DRIVEBY: &str = "driveby:";
 
+/// every prefix we take; an event with another prefix goes on to the browsers
+const PREFIXE: [&str; 4] = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN, PREFIX_DRIVEBY];
+
 pub enum Nachricht {
     Spieler(u16, Box<(Teile, Farben)>),
     Koerper(u16, u16, u16),
@@ -141,17 +144,19 @@ fn parse_id(token: Option<&str>) -> Option<u16> {
     token?.parse::<u16>().ok().filter(|&id| id < 1000)
 }
 
+/// (prefix, name): kleidung:frage -> ("kleidung:", "frage"), anim:start -> ("anim:", "start");
+/// None for an event that is not ours
+fn aufteilen(event: &str) -> Option<(&'static str, &str)> {
+    PREFIXE.into_iter().find_map(|prefix| event.strip_prefix(prefix).map(|name| (prefix, name)))
+}
+
 /// `cef_server_event`: every event from the server. Returns `EXTERNAL_BREAK` for ours.
 pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
     let Ok(event) = event.to_str() else {
         return EXTERNAL_CONTINUE;
     };
 
-    // (prefix, name): kleidung:frage -> ("kleidung:", "frage"), anim:start -> ("anim:", "start")
-    let Some((prefix, name)) = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN]
-        .into_iter()
-        .find_map(|prefix| event.strip_prefix(prefix).map(|name| (prefix, name)))
-    else {
+    let Some((prefix, name)) = aufteilen(event) else {
         return EXTERNAL_CONTINUE;
     };
 
@@ -252,4 +257,18 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
     }
 
     EXTERNAL_BREAK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alle_praefixe_werden_angenommen() {
+        assert_eq!(aufteilen("kleidung:frage"), Some((PREFIX, "frage")));
+        assert_eq!(aufteilen("anim:ziehen"), Some((PREFIX_ANIM, "ziehen")));
+        assert_eq!(aufteilen("lippen:an"), Some((PREFIX_LIPPEN, "an")));
+        assert_eq!(aufteilen("driveby:waffen"), Some((PREFIX_DRIVEBY, "waffen")));
+        assert_eq!(aufteilen("handy:zu"), None);
+    }
 }
