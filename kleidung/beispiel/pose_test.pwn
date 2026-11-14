@@ -11,6 +11,7 @@
 //   /pose funk     Pose handy_funk (Hand an der Schulter)
 //   /pose zeigen   Pose finger_point (Zeigefinger nach vorn, ab 0.9.3)
 //   /pose hs       Pose handschellen (Haende hinter dem Ruecken, ab 0.9.4)
+//   /pose cop      Pose cop_halten (Haltung mit beiden Haenden, ab 0.9.11)
 //   /pose aus      eigene Pose beenden
 //   /pose info     wer gerade welche Pose hat
 //   /pose ziehen [ms]  Waffe ziehen fuer alle an (waffe_raus beim Wechsel auf eine Schusswaffe,
@@ -42,7 +43,7 @@ static PoseAnAlle(spieler)
 
 public OnFilterScriptInit()
 {
-	print("[Pose] Test-Filterscript geladen: /pose halten, /pose funk, /pose zeigen, /pose hs, /pose aus, /pose info, /pose ziehen [ms]");
+	print("[Pose] Test-Filterscript geladen: /pose halten, /pose funk, /pose zeigen, /pose hs, /pose cop, /pose aus, /pose info, /pose ziehen [ms]");
 	return 1;
 }
 
@@ -104,6 +105,10 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	{
 		format(gPose[playerid], sizeof(gPose[]), "handschellen");
 	}
+	else if (!strcmp(cmdtext, "/pose cop", true))
+	{
+		format(gPose[playerid], sizeof(gPose[]), "cop_halten");
+	}
 	else if (!strcmp(cmdtext, "/pose ziehen", true, 12) && (cmdtext[12] == ' ' || cmdtext[12] == EOS))
 	{
 		new ms = cmdtext[12] ? strval(cmdtext[13]) : 1000, zeile[64];
@@ -137,7 +142,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 	}
 	else
 	{
-		SendClientMessage(playerid, -1, "[Pose] /pose halten | funk | zeigen | hs | aus | info | ziehen [ms]");
+		SendClientMessage(playerid, -1, "[Pose] /pose halten | funk | zeigen | hs | cop | aus | info | ziehen [ms]");
 		return 1;
 	}
 
