@@ -294,7 +294,7 @@ namespace SamplifeEssentials
                     plan.Grund = "Im GTA-Verzeichnis liegt SA-MP " + (andere == "" ? "in einer anderen Version" : andere)
                         + ". Der Server läuft nur mit SA-MP " + Benoetigt(manifest) + ". "
                         + (manifest.SampClient != null && manifest.SampVersionen.Count > 0
-                            ? "Beim Klick auf „Spielen“ fragt der Launcher, ob er die passende Version einrichten soll; dein bisheriges SA-MP sichert er dabei."
+                            ? "Beim Klick auf „Verbinden“ fragt der Launcher, ob er die passende Version einrichten soll; dein bisheriges SA-MP sichert er dabei."
                             : "Entferne samp.dll und samp.exe aus dem GTA-Verzeichnis und installiere SA-MP " + Benoetigt(manifest) + ".");
                     return plan;
                 }

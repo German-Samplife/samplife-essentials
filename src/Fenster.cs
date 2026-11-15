@@ -169,10 +169,10 @@ namespace SamplifeEssentials
         int fremdRunde;
         // Systemvoraussetzungen (DirectX), die auf diesem Rechner fehlen; aus der letzten Vorschau
         List<Komponente> systemFehlt = new List<Komponente>();
-        readonly FrameworkElement bereichAuswahl, bereichProtokoll, listeLaedt, listeRollen, bereichSuche, bereichPfad, hinweis;
+        readonly FrameworkElement bereichAuswahl, listeLaedt, listeRollen, bereichSuche, hinweis;
         readonly ItemsControl fundListe;
         readonly FrameworkElement bereichVersion;
-        readonly StackPanel versionen;
+        readonly Panel versionen;
         readonly TextBlock versionPflicht, versionHinweis, versionTitel;
         bool nurEineVersion;
         readonly ObservableCollection<Fund> funde = new ObservableCollection<Fund>();
@@ -183,8 +183,36 @@ namespace SamplifeEssentials
         readonly CheckBox serverpasswortHaken, laaHaken;
         readonly FrameworkElement bereichPasswort, protokollFenster;
         readonly Button knopfDateien;
-        // Die letzten drei Zeilen von „Was gerade passiert“; alles steht im Fenster hinter „Mehr anzeigen“
-        readonly ObservableCollection<ProtokollZeile> kurzZeilen = new ObservableCollection<ProtokollZeile>();
+        // Grosser Titel in zwei Zeilen (zweite blau), wie auf der Startseite der Website
+        readonly TextBlock titelZwei;
+        // Waehrend der Launcher arbeitet, steht an Stelle von „Verbinden“ der Fortschritt; darunter Groesse, „Details“, „Abbrechen“
+        readonly FrameworkElement fortschritt, zeileServer, zeileFortschritt, bereichStart;
+        readonly TextBlock fortschrittText, fortschrittDetail;
+        // Zeile unter dem Knopf: Spieler auf dem Server (SampStart.Abfragen), alle 30 Sekunden neu
+        readonly TextBlock serverStatus;
+        readonly System.Windows.Shapes.Shape serverPunkt;
+        DispatcherTimer serverTimer;
+        bool serverPasswortGeprueft;
+        // Hinweis ueber den Feldern, rechts auf Wunsch ein Knopf (z. B. „Erneut versuchen“)
+        readonly Button knopfHinweis;
+        Action hinweisAktion;
+        // Fremde Dateien: eine Zeile im Hauptbereich, Einzelheiten in den Einstellungen
+        readonly FrameworkElement fremdZeile;
+        readonly TextBlock fremdKurz;
+        // Einstellungen: Tafel von rechts mit Verzeichnis, Schaltern, Liste der Dateien und seltenen Aktionen
+        readonly FrameworkElement einstellungenFenster, einstellungenTafel, einstellungenSchleier;
+        readonly Button knopfEinstellungen;
+        // Fuss: GTA-Verzeichnis mit Zustand
+        readonly TextBlock fussPfad, fussSymbol;
+        readonly Button knopfFussPfad;
+        // Platzhalter in leeren Feldern
+        readonly TextBlock namePlatzhalter, kontoPlatzhalter, serverPlatzhalter;
+        // Bewegung (Kamerafahrt, Lichtstreifen, Streifen im Fortschritt); aus fuer Bildschirmfotos und ohne Animationen in Windows
+        bool animationen;
+        // Die Suche nach GTA laeuft gerade (Karte „Ist das dein GTA-Verzeichnis?“)
+        bool sucheLaeuft;
+        // Vorher fehlte das Verzeichnis: nach dem Bestaetigen den Titel einmal auf „Bereit machen“ setzen
+        bool warOhneVerzeichnis = true;
         bool titelbildGezeigt;
         bool direktVersucht;       // samplife://verbinden: nur einmal von selbst starten
         // Absturzbericht (src/Absturzbericht.cs): Fenster ueber dem Launcher, einmal je Start geprueft
@@ -277,6 +305,7 @@ namespace SamplifeEssentials
             {
                 Wurzel.FontFamily = new FontFamily(schriften, "./#Inter, Segoe UI");
                 Wurzel.Resources["Anzeige"] = new FontFamily(schriften, "./#Inter Display, ./#Inter, Segoe UI");
+                Wurzel.Resources["Spieltitel"] = new FontFamily(schriften, "./#Anton, Impact, Segoe UI");
             }
 
             pfad = Finde<TextBox>("Pfad");
@@ -308,7 +337,6 @@ namespace SamplifeEssentials
             knopfDeinstallieren.Click += delegate { DeinstallierenGedrueckt(); };
             knopfAbschalten.Click += delegate { FremdeAbschalten(); };
             bereichAuswahl = Finde<FrameworkElement>("BereichAuswahl");
-            bereichProtokoll = Finde<FrameworkElement>("BereichProtokoll");
             listeLaedt = Finde<FrameworkElement>("ListeLaedt");
             listeRollen = Finde<FrameworkElement>("ListeRollen");
             protokollRollen = Finde<ScrollViewer>("ProtokollRollen");
@@ -322,12 +350,46 @@ namespace SamplifeEssentials
             bereichPasswort = Finde<FrameworkElement>("BereichPasswort");
             protokollFenster = Finde<FrameworkElement>("ProtokollFenster");
             knopfDateien = Finde<Button>("KnopfDateien");
-            Finde<ItemsControl>("ProtokollKurz").ItemsSource = kurzZeilen;
-            serverpasswortHaken.Checked += delegate { bereichPasswort.Visibility = Visibility.Visible; passwort.Focus(); };
+            titelZwei = Finde<TextBlock>("TitelZwei");
+            fortschritt = Finde<FrameworkElement>("Fortschritt");
+            zeileServer = Finde<FrameworkElement>("ZeileServer");
+            zeileFortschritt = Finde<FrameworkElement>("ZeileFortschritt");
+            bereichStart = Finde<FrameworkElement>("BereichStart");
+            fortschrittText = Finde<TextBlock>("FortschrittText");
+            fortschrittDetail = Finde<TextBlock>("FortschrittDetail");
+            serverStatus = Finde<TextBlock>("ServerStatus");
+            serverPunkt = Finde<System.Windows.Shapes.Shape>("ServerPunkt");
+            knopfHinweis = Finde<Button>("KnopfHinweis");
+            knopfHinweis.Click += delegate { if (hinweisAktion != null) hinweisAktion(); };
+            fremdZeile = Finde<FrameworkElement>("FremdZeile");
+            fremdKurz = Finde<TextBlock>("FremdKurz");
+            Finde<Button>("KnopfFremdAnsehen").Click += delegate { EinstellungenZeigen(true); };
+            einstellungenFenster = Finde<FrameworkElement>("EinstellungenFenster");
+            einstellungenTafel = Finde<FrameworkElement>("EinstellungenTafel");
+            einstellungenSchleier = Finde<FrameworkElement>("EinstellungenSchleier");
+            knopfEinstellungen = Finde<Button>("KnopfEinstellungen");
+            knopfEinstellungen.Click += delegate { EinstellungenZeigen(einstellungenFenster.Visibility != Visibility.Visible); };
+            Finde<Button>("KnopfEinstellungenZu").Click += delegate { EinstellungenZeigen(false); };
+            einstellungenSchleier.MouseLeftButtonDown += delegate { EinstellungenZeigen(false); };
+            fussPfad = Finde<TextBlock>("FussPfad");
+            fussSymbol = Finde<TextBlock>("FussSymbol");
+            knopfFussPfad = Finde<Button>("KnopfFussPfad");
+            knopfFussPfad.Click += delegate { EinstellungenZeigen(true); };
+            namePlatzhalter = Finde<TextBlock>("NamePlatzhalter");
+            kontoPlatzhalter = Finde<TextBlock>("KontoPlatzhalter");
+            serverPlatzhalter = Finde<TextBlock>("ServerPlatzhalter");
+            kontopasswort.PasswordChanged += delegate { PlatzhalterAktualisieren(); };
+            passwort.PasswordChanged += delegate { PlatzhalterAktualisieren(); };
+            serverpasswortHaken.Checked += delegate
+            {
+                bereichPasswort.Visibility = Visibility.Visible;
+                if (einstellungenFenster.Visibility != Visibility.Visible) passwort.Focus();
+            };
             serverpasswortHaken.Unchecked += delegate { bereichPasswort.Visibility = Visibility.Collapsed; };
             // Zuletzt benutzte Passwoerter; das Kaestchen „Serverpasswort“ hakt PasswortAbfragen an, wenn der Server eins verlangt
             kontopasswort.Password = einstellungen.Kontopasswort;
             passwort.Password = einstellungen.Serverpasswort;
+            PlatzhalterAktualisieren();
             knopfDateien.Click += delegate { DateienUmschalten(); };
             Finde<Button>("KnopfMehr").Click += delegate { protokollFenster.Visibility = Visibility.Visible; protokollRollen.ScrollToEnd(); };
             Finde<Button>("KnopfFensterZu").Click += delegate { protokollFenster.Visibility = Visibility.Collapsed; };
@@ -365,17 +427,18 @@ namespace SamplifeEssentials
             };
             Wurzel.KeyDown += delegate(object s, KeyEventArgs e)
             {
-                if (e.Key == Key.Escape && protokollFenster.Visibility == Visibility.Visible) protokollFenster.Visibility = Visibility.Collapsed;
+                if (e.Key != Key.Escape) return;
+                if (protokollFenster.Visibility == Visibility.Visible) protokollFenster.Visibility = Visibility.Collapsed;
+                else if (einstellungenFenster.Visibility == Visibility.Visible) EinstellungenZeigen(false);
             };
             pfadTitel = Finde<TextBlock>("PfadTitel");
             sucheText = Finde<TextBlock>("SucheText");
             knopfSuchen = Finde<Button>("KnopfSuchen");
             knopfAnderer = Finde<Button>("KnopfAnderer");
             bereichSuche = Finde<FrameworkElement>("BereichSuche");
-            bereichPfad = Finde<FrameworkElement>("BereichPfad");
             fundListe = Finde<ItemsControl>("Funde");
             bereichVersion = Finde<FrameworkElement>("BereichVersion");
-            versionen = Finde<StackPanel>("Versionen");
+            versionen = Finde<Panel>("Versionen");
             versionPflicht = Finde<TextBlock>("VersionPflicht");
             versionHinweis = Finde<TextBlock>("VersionHinweis");
             versionTitel = Finde<TextBlock>("VersionTitel");
@@ -394,8 +457,8 @@ namespace SamplifeEssentials
             Finde<Button>("KnopfSchliessenX").Click += delegate { Wurzel.Close(); };
             Finde<Button>("KnopfAlleUpdates").Click += delegate { Oeffnen(UpdatesSeite); };
             knopfDurchsuchen.Click += delegate { Durchsuchen(); };
-            knopfSuchen.Click += delegate { VerzeichnisSuchen(); };
-            knopfAnderer.Click += delegate { SucheBeenden(); Durchsuchen(); };
+            knopfSuchen.Click += delegate { EinstellungenZeigen(false); VerzeichnisSuchen(); };
+            knopfAnderer.Click += delegate { Durchsuchen(); };
             // Die Knoepfe "Ja, verwenden" liegen in den Zeilen der Fundliste und tragen den Pfad im Tag
             fundListe.AddHandler(Button.ClickEvent, new RoutedEventHandler(delegate(object s, RoutedEventArgs e)
             {
@@ -414,7 +477,7 @@ namespace SamplifeEssentials
             knopfAbbrechen.Click += delegate { if (abbruch != null) abbruch.Cancel(); };
             knopfProtokoll.Click += delegate { Oeffnen(protokollDatei); };
             pfad.TextChanged += delegate { if (pfad.IsKeyboardFocusWithin) bestaetigt = true; VerzeichnisPruefen(); };
-            name.TextChanged += delegate { NamePruefen(false); KnoepfeAktualisieren(); };
+            name.TextChanged += delegate { NamePruefen(false); PlatzhalterAktualisieren(); KnoepfeAktualisieren(); };
             Wurzel.AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(LinkGeklickt));
             Wurzel.Closing += delegate(object s, CancelEventArgs e)
             {
@@ -439,6 +502,9 @@ namespace SamplifeEssentials
             // in den Thread der Oberflaeche zurueckfuehrt
             Wurzel.Loaded += delegate
             {
+                // Bewegung nur im echten Fenster und wenn Windows Animationen zeigt
+                animationen = optionen.Bildschirmfoto == "" && SystemParameters.ClientAreaAnimation;
+                if (animationen) AnimationenStarten();
                 // Sofort ein schon geladenes Bild zeigen; die Liste bringt spaeter weitere
                 if (optionen.Bildschirmfoto == "") TitelbildZeigen(Titelbild.Gespeichertes());
                 else if (optionen.Titelbild != "" && File.Exists(optionen.Titelbild)) TitelbildZeigen(File.ReadAllBytes(optionen.Titelbild));
@@ -481,9 +547,9 @@ namespace SamplifeEssentials
             bestaetigt = false;
             funde.Clear();
             pfadTitel.Text = "GTA-Verzeichnis";
+            sucheLaeuft = true;
+            pfadTitel.Text = "Wo liegt dein GTA San Andreas?";
             sucheText.Text = "Suche nach GTA San Andreas auf diesem Rechner …";
-            bereichPfad.Visibility = Visibility.Collapsed;
-            bereichSuche.Visibility = Visibility.Visible;
             knopfAnderer.Content = "Selbst einen Ordner wählen …";
             KnoepfeAktualisieren();
 
@@ -491,6 +557,7 @@ namespace SamplifeEssentials
             try { gefunden = await Task.Run(() => GtaVerzeichnis.Suchen(token)); }
             catch (Exception) { gefunden = new List<Fund>(); }
             if (token.IsCancellationRequested) return;
+            sucheLaeuft = false;
             FundeZeigen(gefunden);
         }
 
@@ -505,12 +572,11 @@ namespace SamplifeEssentials
                 PfadMeldung("\uE7BA", Farben.Warnung, "Kein GTA-Verzeichnis gefunden. Wähle den Ordner, in dem gta_sa.exe liegt.");
                 return;
             }
-            bereichPfad.Visibility = Visibility.Collapsed;
-            bereichSuche.Visibility = Visibility.Visible;
+            sucheLaeuft = false;
             pfadTitel.Text = funde.Count == 1 ? "Ist das dein GTA-Verzeichnis?" : "Welches ist dein GTA-Verzeichnis?";
             sucheText.Text = funde.Count == 1
-                ? "Die Suche hat ein Verzeichnis gefunden. Bestätige es, oder wähle einen anderen Ordner."
-                : "Die Suche hat " + funde.Count + " Verzeichnisse gefunden. Wähle das, mit dem du auf dem Server spielst.";
+                ? "Bestätige es, oder wähle einen anderen Ordner."
+                : "Die Suche hat " + funde.Count + " gefunden. Wähle das, mit dem du auf dem Server spielst.";
             knopfAnderer.Content = "Anderen Ordner wählen …";
             KnoepfeAktualisieren();
         }
@@ -518,9 +584,9 @@ namespace SamplifeEssentials
         void SucheBeenden()
         {
             if (suchAbbruch != null) suchAbbruch.Cancel();
-            pfadTitel.Text = "GTA-Verzeichnis";
-            bereichSuche.Visibility = Visibility.Collapsed;
-            bereichPfad.Visibility = Visibility.Visible;
+            sucheLaeuft = false;
+            funde.Clear();
+            KnoepfeAktualisieren();
         }
 
         /// <summary>Wie ein Klick auf „Ja, verwenden“ beim ersten Fund (nur fuer das Bildschirmfoto des ganzen Ablaufs).</summary>
@@ -624,6 +690,7 @@ namespace SamplifeEssentials
             {
                 fremde.Clear();
                 bereichFremd.Visibility = Visibility.Collapsed;
+                fremdZeile.Visibility = Visibility.Collapsed;
                 return;
             }
             // Vor dem Laden des Fensters (Konstruktor mit gemerktem Verzeichnis) kaeme das Warten auf einem fremden Thread zurueck
@@ -659,6 +726,9 @@ namespace SamplifeEssentials
             else
                 fremdTitel.Text = fremde.Count == 1 ? "Eine Datei passt nicht zu den Dateien des Servers" : fremde.Count + " Dateien passen nicht zu den Dateien des Servers";
             knopfAbschalten.Visibility = abschaltbar ? Visibility.Visible : Visibility.Collapsed;
+            // Im Hauptbereich nur eine Zeile, bei einer einzelnen Datei mit ihrem Namen
+            fremdZeile.Visibility = bereichFremd.Visibility;
+            fremdKurz.Text = fremde.Count == 1 && !programme ? fremdTitel.Text + ": " + fremde[0].Pfad : fremdTitel.Text;
         }
 
         /// <summary>„Ausschalten“: fremde Loader und Konflikte umbenennen, nach Rueckfrage. Geloescht wird nichts.</summary>
@@ -700,6 +770,61 @@ namespace SamplifeEssentials
             pfadSymbol.Text = symbol;
             pfadSymbol.Foreground = farbe;
             pfadStatus.Text = text;
+            // Im Fuss: das Verzeichnis mit Haken, sonst was nicht stimmt; die ganze Meldung als Hinweis beim Ueberfahren
+            fussSymbol.Text = symbol;
+            fussSymbol.Foreground = farbe;
+            fussPfad.Text = verzeichnisGueltig ? Gta : Gta == "" ? "Kein GTA-Verzeichnis gewählt" : text;
+            knopfFussPfad.ToolTip = (Gta != "" ? Gta + "\n" : "") + text;
+            AnsichtAktualisieren();
+        }
+
+        void PlatzhalterAktualisieren()
+        {
+            namePlatzhalter.Visibility = name.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            kontoPlatzhalter.Visibility = kontopasswort.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            serverPlatzhalter.Visibility = passwort.Password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>Titel in zwei Zeilen, in Grossbuchstaben wie auf der Startseite der Website; die zweite Zeile ist blau.</summary>
+        void TitelSetzen(string oben, string unten)
+        {
+            titel.Text = Gross(oben);
+            titelZwei.Text = Gross(unten);
+        }
+
+        static string Gross(string text)
+        {
+            return text.ToUpper(CultureInfo.GetCultureInfo("de-DE")).Replace("ß", "SS");
+        }
+
+        /// <summary>
+        /// Ohne bestaetigtes, gueltiges GTA-Verzeichnis zeigt der Hauptbereich die Karte zum Suchen und Bestaetigen, sonst Name,
+        /// Passwort und „Verbinden“. Nur, solange der Launcher nicht arbeitet.
+        /// </summary>
+        void AnsichtAktualisieren()
+        {
+            if (modus != Modus.Spielen || titelZwei == null) return;
+            var ohne = !bestaetigt || !verzeichnisGueltig;
+            bereichSuche.Visibility = ohne ? Visibility.Visible : Visibility.Collapsed;
+            bereichStart.Visibility = ohne ? Visibility.Collapsed : Visibility.Visible;
+            if (ohne)
+            {
+                if (!sucheLaeuft && funde.Count == 0)
+                {
+                    pfadTitel.Text = "Wo liegt dein GTA San Andreas?";
+                    sucheText.Text = pfadStatus.Text;
+                    knopfAnderer.Content = "Ordner wählen …";
+                }
+                TitelSetzen("Willkommen", "in Los Santos");
+                untertitel.Text = "Einmal das GTA-Verzeichnis bestätigen, dann geht es los.";
+                warOhneVerzeichnis = true;
+            }
+            else if (warOhneVerzeichnis)
+            {
+                warOhneVerzeichnis = false;
+                TitelSetzen("Bereit", "machen");
+                untertitel.Text = manifest == null ? "Der Launcher fragt den Server nach dem aktuellen Stand …" : "Der Launcher prüft deine Dateien …";
+            }
         }
 
         bool NamePruefen(bool laut)
@@ -707,13 +832,13 @@ namespace SamplifeEssentials
             var fehler = Spielstart.NamePruefen(name.Text.Trim());
             if (fehler == "")
             {
-                nameStatus.Text = "Passwort freiwillig: Damit entfällt der Login im Spiel.";
-                nameStatus.Foreground = Farben.Leise;
+                nameStatus.Visibility = Visibility.Collapsed;
                 return true;
             }
-            // Beim Tippen nicht gleich meckern, erst beim Klick auf „Spielen“
-            nameStatus.Text = laut || name.Text.Length > 0 ? fehler : "Dein Name so, wie du auf dem Server heißt, z. B. Max_Mustermann";
-            nameStatus.Foreground = laut ? Farben.Fehler : Farben.Leise;
+            // Beim Tippen nicht gleich meckern, erst beim Klick auf „Verbinden“; ein leeres Feld erklaert der Platzhalter
+            nameStatus.Text = fehler;
+            nameStatus.Foreground = laut ? Farben.Fehler : Farben.Gedaempft;
+            nameStatus.Visibility = laut || name.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             return false;
         }
 
@@ -730,6 +855,7 @@ namespace SamplifeEssentials
             knopfErneut.Visibility = Visibility.Collapsed;
             listeStatus.Foreground = Farben.Gedaempft;
             listeStatus.Text = "Lade die Liste der Dateien von " + optionen.ManifestQuelle + " …";
+            if (hinweisAktion != null) HinweisVerbergen();
             KnoepfeAktualisieren();
             // Parallel zur Liste GitHub fragen, ob es einen neueren Launcher gibt; einmal je Start
             if (releaseAbfrage == null)
@@ -776,7 +902,7 @@ namespace SamplifeEssentials
                 try
                 {
                     ausSicherung = false;
-                    hinweis.Visibility = Visibility.Collapsed;
+                    HinweisVerbergen();
                     ManifestSetzen(neu, json);
                     if (aktualisierungFehler != "") HinweisZeigen(aktualisierungFehler);
                 }
@@ -800,17 +926,17 @@ namespace SamplifeEssentials
                 {
                     ausSicherung = true;
                     ManifestSetzen(Manifest.Lesen(sicherung.ManifestJson), sicherung.ManifestJson);
-                    HinweisZeigen("Die Server-Liste ist gerade nicht erreichbar. Du spielst mit dem geprüften Stand vom "
-                        + sicherung.Geprueft.ToLocalTime().ToString("dd.MM.yyyy, HH:mm", CultureInfo.InvariantCulture)
-                        + ". Fehlt eine Datei, kann der Launcher sie erst wieder laden, wenn der Server antwortet.");
+                    HinweisZeigen("Server-Liste nicht erreichbar. Du spielst mit dem geprüften Stand vom "
+                        + sicherung.Geprueft.ToLocalTime().ToString("dd.MM.yyyy, HH:mm", CultureInfo.InvariantCulture) + ".");
                 }
                 catch (Exception) { manifest = null; ausSicherung = false; }
             }
             if (manifest != null) DirektVersuchen();
             if (manifest == null)
             {
-                // Den Fehler zeigen, auch wenn die Liste sonst hinter „Was wird geladen?“ versteckt ist
-                if (bereichAuswahl.Visibility != Visibility.Visible) DateienUmschalten();
+                // Den Fehler im Hauptbereich zeigen, mit „Erneut versuchen“; die Einzelheiten stehen in den Einstellungen
+                HinweisZeigen("Die Liste der Dateien konnte nicht geladen werden. " + fehlerText, "Erneut versuchen", ListeLaden);
+                ServerStatusZeigen(null, "");
                 listeStatus.Foreground = Farben.Fehler;
                 listeStatus.Text = "Die Liste der Dateien konnte nicht geladen werden.\n" + fehlerText
                     + (verzeichnisGueltig ? "" : "\nBestätige oben dein GTA-Verzeichnis, dann versucht der Launcher es mit dem zuletzt geprüften Stand.");
@@ -819,10 +945,19 @@ namespace SamplifeEssentials
             KnoepfeAktualisieren();
         }
 
-        void HinweisZeigen(string text)
+        void HinweisZeigen(string text, string knopf = null, Action aktion = null)
         {
             hinweisText.Text = text;
+            hinweisAktion = aktion;
+            knopfHinweis.Content = knopf ?? "";
+            knopfHinweis.Visibility = knopf != null ? Visibility.Visible : Visibility.Collapsed;
             hinweis.Visibility = Visibility.Visible;
+        }
+
+        void HinweisVerbergen()
+        {
+            hinweisAktion = null;
+            hinweis.Visibility = Visibility.Collapsed;
         }
 
         public void ManifestSetzen(Manifest neu, string json)
@@ -858,7 +993,7 @@ namespace SamplifeEssentials
                 versionHinweis.Text = "Der Launcher erkennt die Version an der samp.dll in deinem GTA-Verzeichnis. Liegt dort eine andere Version, "
                     + "zum Beispiel 0.3.7-R3 oder 0.3.DL, "
                     + (manifest.SampClient != null
-                        ? "fragt er beim Klick auf „Spielen“, ob er SA-MP " + unterstuetzt + " für dich einrichten soll."
+                        ? "fragt er beim Klick auf „Verbinden“, ob er SA-MP " + unterstuetzt + " für dich einrichten soll."
                         : "installiere SA-MP " + unterstuetzt + " in diesen Ordner.");
                 versionen.Visibility = Visibility.Collapsed;
             }
@@ -878,11 +1013,12 @@ namespace SamplifeEssentials
             }
             VerzeichnisPruefen();
             TitelbildLaden(manifest.Bilder);
-            PasswortAbfragen(manifest.ServerAdresse, manifest.ServerPort);
+            ServerBeobachten();
             // Fuer Bildschirmfotos nicht: Dort laeuft ManifestSetzen vor dem Fenster, und das Warten kaeme auf einem fremden Thread zurueck
             if (manifest.Updates != "" && neuigkeiten.Count == 0 && optionen.Bildschirmfoto == "") NeuigkeitenLaden(manifest.Updates);
             else if (manifest.Updates == "") neuStatus.Text = "Die Updates findest du in der Community auf unserer Website.";
             AbsturzPruefen();
+            AnsichtAktualisieren();
         }
 
         /// <summary>Groesse, Verfuegbarkeit und – wenn schon moeglich – der Stand jeder Komponente auf der Platte.</summary>
@@ -1006,13 +1142,12 @@ namespace SamplifeEssentials
             if (modus != Modus.Spielen) return;
             if (alleAktuell)
             {
-                titel.Text = "Bereit zum Spielen";
-                untertitel.Text = "Alle Dateien sind auf dem Stand des Servers. Mit „Spielen“ startet SA-MP und verbindet dich mit "
-                    + manifest.ServerAdresse + ".";
+                TitelSetzen("Bereit", "zum Spielen");
+                untertitel.Text = "Alles aktuell" + (sampVersion != "" ? ", SA-MP " + sampVersion : "") + ". Ein Klick, und du bist drin.";
             }
             else
             {
-                titel.Text = "Bereit machen";
+                TitelSetzen("Bereit", "machen");
                 untertitel.Text = ausSicherung
                     ? "Es fehlen Dateien, und die Server-Liste ist gerade nicht erreichbar. Versuche es gleich noch einmal."
                     : "Vor dem Start lädt der Launcher " + (nachladen > 0 ? Installation.Groesse(nachladen) : "die fehlenden Dateien") + " nach."
@@ -1065,14 +1200,50 @@ namespace SamplifeEssentials
             knopfDateien.Content = zeigen ? "Liste ausblenden" : "Was wird geladen?";
         }
 
-        /// <summary>Verlangt der Server ein Passwort, ist das Kaestchen „Serverpasswort“ schon angehakt.</summary>
-        async void PasswortAbfragen(string adresse, int port)
+        /// <summary>Fragt den Server sofort und danach alle 30 Sekunden nach Spielern und Passwort (wie die Serverliste von SA-MP).</summary>
+        void ServerBeobachten()
         {
-            if (optionen.Bildschirmfoto != "" || adresse == "" || port <= 0) return;
-            bool? verlangt;
-            try { verlangt = await Task.Run(() => SampStart.VerlangtPasswort(adresse, port)); }
-            catch (Exception) { return; }
-            if (verlangt == true && modus == Modus.Spielen) serverpasswortHaken.IsChecked = true;
+            if (optionen.Bildschirmfoto != "") return;
+            ServerAbfragen();
+            if (serverTimer != null) return;
+            serverTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            serverTimer.Tick += delegate { ServerAbfragen(); };
+            serverTimer.Start();
+        }
+
+        /// <summary>Verlangt der Server ein Passwort, ist „Serverpasswort“ beim ersten Mal schon an.</summary>
+        async void ServerAbfragen()
+        {
+            if (manifest == null || manifest.ServerAdresse == "" || manifest.ServerPort <= 0) return;
+            var adresse = manifest.ServerAdresse;
+            var port = manifest.ServerPort;
+            ServerAntwort antwort;
+            try { antwort = await Task.Run(() => SampStart.Abfragen(adresse, port)); }
+            catch (Exception) { antwort = null; }
+            ServerStatusZeigen(antwort, adresse);
+            if (antwort == null || serverPasswortGeprueft) return;
+            serverPasswortGeprueft = true;
+            if (antwort.Passwort && modus == Modus.Spielen) serverpasswortHaken.IsChecked = true;
+        }
+
+        /// <summary>„● 34 / 52 online · german-samplife.de“, ohne Antwort „Server gerade nicht erreichbar“.</summary>
+        void ServerStatusZeigen(ServerAntwort antwort, string adresse)
+        {
+            serverStatus.Inlines.Clear();
+            if (antwort == null)
+            {
+                serverPunkt.Fill = Farben.Fehler;
+                serverStatus.Inlines.Add(new Run("Server gerade nicht erreichbar"));
+                return;
+            }
+            serverPunkt.Fill = Farben.Erfolg;
+            serverStatus.Inlines.Add(new Run(antwort.Spieler.ToString(CultureInfo.InvariantCulture))
+            {
+                Foreground = Farben.Text, FontWeight = FontWeights.SemiBold, FontSize = 15,
+                FontFamily = (FontFamily)Wurzel.FindResource("Anzeige")
+            });
+            serverStatus.Inlines.Add(new Run(" / " + antwort.Plaetze.ToString(CultureInfo.InvariantCulture) + " online"));
+            serverStatus.Inlines.Add(new Run("  ·  " + adresse) { Foreground = Farben.Leise });
         }
 
         /// <summary>Ueber samplife://verbinden gestartet: Ist alles bereit, startet der Launcher ohne Klick.</summary>
@@ -1088,7 +1259,7 @@ namespace SamplifeEssentials
                 return;
             }
             untertitel.Text = "Bevor der Launcher dich direkt verbinden kann, bestätige dein GTA-Verzeichnis und gib deinen Namen ein. "
-                + "Dann auf „Spielen“.";
+                + "Dann auf „Verbinden“.";
         }
 
         async void NeuigkeitenLaden(string url)
@@ -1098,7 +1269,7 @@ namespace SamplifeEssentials
             try
             {
                 var testmodus = optionen.Testmodus;
-                var liste = await Task.Run(() => Neuigkeiten.Laden(url, testmodus, 6));
+                var liste = await Task.Run(() => Neuigkeiten.Laden(url, testmodus, 3));
                 neuigkeiten.Clear();
                 foreach (var neuigkeit in liste) neuigkeiten.Add(neuigkeit);
                 neuStatus.Visibility = neuigkeiten.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -1115,7 +1286,8 @@ namespace SamplifeEssentials
         void KnoepfeAktualisieren()
         {
             if (modus != Modus.Spielen) return;
-            knopfSpielen.Content = brauchtAdmin ? "Als Administrator starten" : "Spielen";
+            Hauptknopf(brauchtAdmin ? "Als Administrator starten" : "Verbinden", "spielen");
+            AnsichtAktualisieren();
             var bereit = bestaetigt && verzeichnisGueltig && manifest != null;
             knopfSpielen.IsEnabled = bereit;
             knopfGruendlich.IsEnabled = bereit && !brauchtAdmin;
@@ -1123,6 +1295,98 @@ namespace SamplifeEssentials
             knopfDeinstallieren.IsEnabled = bestaetigt && verzeichnisGueltig;
             knopfProblem.Visibility = manifest != null && manifest.Absturzbericht != "" ? Visibility.Visible : Visibility.Collapsed;
             knopfProblem.IsEnabled = bestaetigt && verzeichnisGueltig;
+        }
+
+        /// <summary>Text und Art des grossen Knopfs: "spielen" mit Pfeil und Lichtstreifen, "laeuft" grau mit gruenem Punkt, "" nur Text.</summary>
+        void Hauptknopf(string text, string art)
+        {
+            knopfSpielen.Content = text;
+            knopfSpielen.Tag = art;
+        }
+
+        /// <summary>Waehrend der Launcher arbeitet: Fortschritt an Stelle des Knopfs.</summary>
+        void ArbeitZeigen(bool laeuft)
+        {
+            fortschritt.Visibility = laeuft ? Visibility.Visible : Visibility.Collapsed;
+            knopfSpielen.Visibility = laeuft ? Visibility.Collapsed : Visibility.Visible;
+            knopfAbbrechen.Visibility = Visibility.Collapsed;
+            if (laeuft)
+            {
+                fortschrittText.Text = "Einen Moment …";
+                fortschrittDetail.Text = "";
+            }
+        }
+
+        /// <summary>Zeile unter dem Knopf: Spieler auf dem Server oder (protokoll) Groesse, „Details“ und „Abbrechen“.</summary>
+        void ZeileZeigen(bool protokoll)
+        {
+            zeileFortschritt.Visibility = protokoll ? Visibility.Visible : Visibility.Collapsed;
+            zeileServer.Visibility = protokoll ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        /// <summary>Einstellungen von rechts einblenden oder schliessen.</summary>
+        void EinstellungenZeigen(bool zeigen)
+        {
+            knopfEinstellungen.Tag = zeigen ? "an" : null;
+            if (!zeigen)
+            {
+                einstellungenFenster.Visibility = Visibility.Collapsed;
+                return;
+            }
+            einstellungenFenster.Visibility = Visibility.Visible;
+            if (!animationen) return;
+            var weg = new CubicEase { EasingMode = EasingMode.EaseOut };
+            ((TranslateTransform)einstellungenTafel.RenderTransform).BeginAnimation(TranslateTransform.XProperty,
+                new DoubleAnimation(einstellungenTafel.ActualWidth > 0 ? einstellungenTafel.ActualWidth : 380, 0, TimeSpan.FromMilliseconds(380)) { EasingFunction = weg });
+            einstellungenSchleier.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)));
+        }
+
+        /// <summary>
+        /// Bewegung wie auf der Startseite der Website: langsame Kamerafahrt ueber das Bild, der Titel faehrt hoch, alle paar
+        /// Sekunden ein Lichtstreifen ueber „Verbinden“, laufende Streifen im Fortschritt. Nur im echten Fenster.
+        /// </summary>
+        void AnimationenStarten()
+        {
+            try
+            {
+                var ruhig = new SineEase { EasingMode = EasingMode.EaseInOut };
+                var gruppe = titelbild.RenderTransform as TransformGroup;
+                if (gruppe != null && gruppe.Children.Count == 2)
+                {
+                    var zoom = (ScaleTransform)gruppe.Children[0];
+                    var fahrt = (TranslateTransform)gruppe.Children[1];
+                    var dauer = TimeSpan.FromSeconds(26);
+                    zoom.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.12, 1.03, dauer) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ruhig });
+                    zoom.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.12, 1.03, dauer) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ruhig });
+                    fahrt.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(14, -14, dauer) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ruhig });
+                    fahrt.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(8, -8, dauer) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ruhig });
+                }
+
+                var titelBlock = Finde<FrameworkElement>("TitelBlock");
+                var hoch = new CubicEase { EasingMode = EasingMode.EaseOut };
+                ((TranslateTransform)titelBlock.RenderTransform).BeginAnimation(TranslateTransform.YProperty,
+                    new DoubleAnimation(36, 0, TimeSpan.FromMilliseconds(900)) { EasingFunction = hoch });
+                titelBlock.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(700)));
+
+                knopfSpielen.ApplyTemplate();
+                var glanz = knopfSpielen.Template.FindName("Glanz", knopfSpielen) as FrameworkElement;
+                var glanzGruppe = glanz != null ? glanz.RenderTransform as TransformGroup : null;
+                if (glanzGruppe != null && glanzGruppe.Children.Count == 2)
+                {
+                    var streifen = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(3.6), RepeatBehavior = RepeatBehavior.Forever };
+                    streifen.KeyFrames.Add(new DiscreteDoubleKeyFrame(-200, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                    streifen.KeyFrames.Add(new EasingDoubleKeyFrame(560, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2))) { EasingFunction = ruhig });
+                    streifen.KeyFrames.Add(new DiscreteDoubleKeyFrame(560, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(3.6))));
+                    glanzGruppe.Children[1].BeginAnimation(TranslateTransform.XProperty, streifen);
+                }
+
+                // Diagonale Streifen im Fortschritt: das Muster wiederholt sich nach 48 px in x-Richtung
+                var pinsel = balken.Background as LinearGradientBrush;
+                if (pinsel != null && !pinsel.IsFrozen && pinsel.Transform is TranslateTransform)
+                    pinsel.Transform.BeginAnimation(TranslateTransform.XProperty,
+                        new DoubleAnimation(0, 48, TimeSpan.FromSeconds(1)) { RepeatBehavior = RepeatBehavior.Forever });
+            }
+            catch (Exception) { }
         }
 
         void HauptknopfGedrueckt()
@@ -1190,18 +1454,20 @@ namespace SamplifeEssentials
             ++pruefRunde;
             abbruch = new CancellationTokenSource();
             zeilen.Clear();
-            kurzZeilen.Clear();
+            EinstellungenZeigen(false);
+            ArbeitZeigen(true);
+            ZeileZeigen(true);
             FortschrittZeigen(0);
-            bereichProtokoll.Visibility = Visibility.Visible;
             Sperren(true);
             knopfSpielen.IsEnabled = false;
-            knopfSpielen.Content = nurPruefen ? "Prüfe …" : "Einen Moment …";
+            fortschrittText.Text = nurPruefen ? "Prüfe …" : "Einen Moment …";
             knopfAbbrechen.Visibility = Visibility.Visible;
             knopfProtokoll.Visibility = Visibility.Collapsed;
-            titel.Text = nurPruefen ? "Gründlich prüfen" : "Bereit machen";
+            if (nurPruefen) TitelSetzen("Gründlich", "prüfen");
+            else TitelSetzen("Bereit", "machen");
             untertitel.Text = nurPruefen
-                ? "Der Launcher rechnet die Prüfsumme jeder Datei nach und lädt neu, was nicht stimmt."
-                : "Der Launcher gleicht deine Dateien mit dem Server ab, lädt nach, was fehlt, und startet dann SA-MP.";
+                ? "Der Launcher rechnet jede Datei nach und lädt neu, was nicht stimmt."
+                : "Dein Spiel wird auf den Stand des Servers gebracht.";
 
             var ablauf = new Ablauf
             {
@@ -1225,7 +1491,7 @@ namespace SamplifeEssentials
             await Task.Delay(150);
 
             protokollDatei = ergebnis.Protokoll;
-            knopfAbbrechen.Visibility = Visibility.Collapsed;
+            ArbeitZeigen(false);
             knopfProtokoll.Visibility = protokollDatei == "" ? Visibility.Collapsed : Visibility.Visible;
             knopfSpielen.IsEnabled = true;
             if (ergebnis.Erfolg && ergebnis.Gestartet)
@@ -1239,15 +1505,15 @@ namespace SamplifeEssentials
                 // Nur geprueft: zurueck zur Liste mit dem frischen Stand
                 FortschrittZeigen(1);
                 modus = Modus.Erneut;
-                knopfSpielen.Content = "Weiter";
-                titel.Text = "Geprüft";
+                Hauptknopf("Weiter", "");
+                TitelSetzen("Alles", "geprüft");
                 untertitel.Text = ergebnis.Nachgeladen > 0
                     ? "Der Launcher hat " + ergebnis.Nachgeladen + (ergebnis.Nachgeladen == 1 ? " Komponente" : " Komponenten") + " neu geladen."
                     : "Alle Dateien stimmen.";
                 return;
             }
             modus = Modus.Erneut;
-            knopfSpielen.Content = "Zurück";
+            Hauptknopf("Zurück", "");
             if (ergebnis.Code == 8)
             {
                 // Falsches Kontopasswort nicht weiter merken
@@ -1255,7 +1521,9 @@ namespace SamplifeEssentials
                 einstellungen.Kontopasswort = "";
                 einstellungen.Speichern();
             }
-            titel.Text = ergebnis.Abgebrochen ? "Abgebrochen" : ergebnis.Code == 8 ? "Anmeldung nicht möglich" : "Das hat nicht geklappt";
+            if (ergebnis.Abgebrochen) TitelSetzen("Vorgang", "abgebrochen");
+            else if (ergebnis.Code == 8) TitelSetzen("Anmeldung", "nicht möglich");
+            else TitelSetzen("Das hat nicht", "geklappt");
             untertitel.Text = ergebnis.Abgebrochen ? "Bereits geladene Dateien bleiben im GTA-Verzeichnis." : ergebnis.Fehler;
         }
 
@@ -1284,8 +1552,9 @@ namespace SamplifeEssentials
                 ? "Die Anmeldung beim Server hat aber nicht geklappt, deshalb lässt dich der Server vielleicht nicht herein. Der Grund steht unten."
                 : "";
             knopfSpielen.IsEnabled = false;
-            knopfSpielen.Content = "Starte Spiel …";
-            titel.Text = "Starte Spiel …";
+            Hauptknopf("Starte Spiel …", "laeuft");
+            ZeileZeigen(false);
+            TitelSetzen("Starte", "Spiel …");
             untertitel.Text = "GTA San Andreas startet und verbindet dich mit " + manifest.ServerAdresse + "."
                 + (spielWarnung != "" ? " " + spielWarnung : "");
             if (spielTimer == null)
@@ -1308,11 +1577,11 @@ namespace SamplifeEssentials
                 {
                     spielFensterDa = true;
                     spielFensterUtc = DateTime.UtcNow;
-                    knopfSpielen.Content = "Spiel läuft";
-                    titel.Text = "Spiel läuft";
+                    Hauptknopf("Spiel läuft", "laeuft");
+                    TitelSetzen("Viel Spaß", "in Los Santos");
                     untertitel.Text = spielWarnung != ""
                         ? "Das Spiel läuft. " + spielWarnung
-                        : "Viel Spaß auf German Samplife. Den Launcher kannst du offen lassen oder schließen, das Spiel läuft weiter.";
+                        : "Das Spiel läuft. Den Launcher kannst du offen lassen oder schließen.";
                 }
                 if (spielFensterDa && !spielModuleGelesen && DateTime.UtcNow - spielFensterUtc > ModulWartezeit) SpielModuleLesen();
                 if (spielFensterDa && DateTime.UtcNow - spielFensterUtc > HaengerStart) HaengerPruefen();
@@ -1320,13 +1589,13 @@ namespace SamplifeEssentials
             }
             if (spielGefunden)
             {
-                SpielBeendet("Das Spiel ist beendet. Mit „Spielen“ verbindest du dich erneut.");
+                SpielBeendet("Das Spiel ist beendet. Mit „Verbinden“ bist du gleich wieder drin.");
                 return;
             }
             // samp.exe startet gta_sa.exe erst kurz nach sich selbst; so lange warten
             if (DateTime.UtcNow - spielStartUtc > SpielWartezeit)
                 SpielBeendet("Der Launcher hat GTA San Andreas nicht laufen sehen. Vielleicht hat es sich gleich wieder beendet. "
-                    + "Mit „Spielen“ versuchst du es erneut.");
+                    + "Mit „Verbinden“ versuchst du es erneut.");
         }
 
         void SpielBeendet(string text)
@@ -1443,7 +1712,7 @@ namespace SamplifeEssentials
                 ? "Dem Spiel ist der Speicher ausgegangen, meist bei hoher Auflösung oder vielen Mods. "
                     + (laaHaken.IsChecked == true
                         ? "Stell die Auflösung in GTA auf 1920 × 1080 und versuch es noch einmal."
-                        : "Setz oben den Haken „4GB-Patch“ und versuch es noch einmal.")
+                        : "Schalte in den Einstellungen (Zahnrad oben rechts) den 4GB-Patch ein und versuch es noch einmal.")
                     + " Schick uns gern die Diagnose."
                 : "GTA hat sich ohne Absturzbericht beendet (Code " + hex + "). Schick uns die Diagnose, damit wir sehen, woran es lag.";
         }
@@ -1540,12 +1809,12 @@ namespace SamplifeEssentials
         void ZurueckZurListe()
         {
             modus = Modus.Spielen;
-            bereichProtokoll.Visibility = Visibility.Collapsed;
+            ArbeitZeigen(false);
+            ZeileZeigen(false);
             protokollFenster.Visibility = Visibility.Collapsed;
-            knopfProtokoll.Visibility = Visibility.Collapsed;
             Sperren(false);
-            titel.Text = "Bereit machen";
-            untertitel.Text = "Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt.";
+            TitelSetzen("Bereit", "machen");
+            untertitel.Text = "Der Launcher prüft deine Dateien …";
             KomponentenAbgleichen();
             KnoepfeAktualisieren();
             FremdePruefen();
@@ -1587,14 +1856,15 @@ namespace SamplifeEssentials
             modus = Modus.Laeuft;
             ++pruefRunde;
             zeilen.Clear();
-            kurzZeilen.Clear();
+            EinstellungenZeigen(false);
+            ArbeitZeigen(true);
+            ZeileZeigen(true);
             FortschrittZeigen(0);
-            bereichProtokoll.Visibility = Visibility.Visible;
             Sperren(true);
             knopfSpielen.IsEnabled = false;
-            knopfSpielen.Content = "Entferne …";
+            fortschrittText.Text = "Entferne …";
             knopfProtokoll.Visibility = Visibility.Collapsed;
-            titel.Text = "Deinstallieren";
+            TitelSetzen("Wird", "deinstalliert");
             untertitel.Text = "Der Launcher entfernt seine Dateien und holt zurück, was er ersetzt hat.";
 
             var deinstallation = new Deinstallation { Gta = Gta, Testmodus = optionen.Testmodus };
@@ -1602,24 +1872,26 @@ namespace SamplifeEssentials
             deinstallation.Melden = m => ((IProgress<Meldung>)meldungen).Report(m);
             var ergebnis = await Task.Run(() => deinstallation.Ausfuehren());
             await Task.Delay(150);
+            ArbeitZeigen(false);
             knopfSpielen.IsEnabled = true;
             if (ergebnis.Erfolg)
             {
                 FortschrittZeigen(1);
                 // Danach gibt es nichts mehr zu tun als zu schliessen: Einstellungen sind weg, „Spielen“ wuerde alles neu laden
                 modus = Modus.Schliessen;
-                knopfSpielen.Content = "Schließen";
-                titel.Text = "Alles entfernt";
+                Hauptknopf("Schließen", "");
+                TitelSetzen("Alles", "entfernt");
                 untertitel.Text = "Der Launcher hat " + (ergebnis.Entfernt + ergebnis.Wiederhergestellt) + " Dateien aufgeräumt"
                     + (ergebnis.Wiederhergestellt > 0 ? ", davon " + ergebnis.Wiederhergestellt + " in der Fassung von vorher zurückgeholt" : "")
                     + ". Die Datei " + EigenerName() + " kannst du jetzt löschen."
-                    + (ergebnis.Uebrig > 0 ? " Einige Dateien ließen sich nicht entfernen; sie stehen unter „Mehr anzeigen“." : "");
+                    + (ergebnis.Uebrig > 0 ? " Einige Dateien ließen sich nicht entfernen; sie stehen unter „Details“." : "");
                 bereichFremd.Visibility = Visibility.Collapsed;
+                fremdZeile.Visibility = Visibility.Collapsed;
                 return;
             }
             modus = Modus.Erneut;
-            knopfSpielen.Content = "Zurück";
-            titel.Text = "Das hat nicht geklappt";
+            Hauptknopf("Zurück", "");
+            TitelSetzen("Das hat nicht", "geklappt");
             untertitel.Text = ergebnis.Fehler;
         }
 
@@ -1649,12 +1921,12 @@ namespace SamplifeEssentials
         {
             modus = Modus.Laeuft;
             zeilen.Clear();
-            kurzZeilen.Clear();
-            bereichProtokoll.Visibility = Visibility.Visible;
+            ArbeitZeigen(true);
+            ZeileZeigen(true);
             Sperren(true);
             knopfSpielen.IsEnabled = false;
-            knopfSpielen.Content = "Aktualisiere …";
-            titel.Text = "Neue Fassung des Launchers";
+            fortschrittText.Text = "Aktualisiere …";
+            TitelSetzen("Neue Fassung", "wird geladen");
             untertitel.Text = "Der Launcher aktualisiert sich auf " + fassung.Version + " und startet danach von selbst neu.";
             var zeile = new Meldung { Nummer = 1, Art = MeldungArt.Download, Text = "Lade Samplife Launcher " + fassung.Version + " herunter", Url = fassung.Url, Gesamt = fassung.Groesse };
             MeldungZeigen(zeile);
@@ -1684,18 +1956,20 @@ namespace SamplifeEssentials
                     aktualisierungFehler = "Launcher " + fassung.Version + " konnte nicht geladen werden (" + fehler.Message + "). Du spielst mit "
                         + Programm.Version + " weiter; beim nächsten Start versucht der Launcher es erneut.";
                     modus = Modus.Spielen;
-                    bereichProtokoll.Visibility = Visibility.Collapsed;
+                    ArbeitZeigen(false);
+                    ZeileZeigen(false);
                     Sperren(false);
-                    titel.Text = "Bereit machen";
-                    untertitel.Text = "Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt.";
+                    TitelSetzen("Bereit", "machen");
+                    untertitel.Text = "Der Launcher fragt den Server nach dem aktuellen Stand …";
                     ListeLaden();
                     return;
                 }
                 MeldungZeigen(new Meldung { Nummer = 3, Art = MeldungArt.Fehler, Text = "Die Aktualisierung hat nicht geklappt: " + fehler.Message, Fertig = true });
                 modus = Modus.Download;
+                ArbeitZeigen(false);
                 knopfSpielen.IsEnabled = true;
-                knopfSpielen.Content = "Download öffnen";
-                titel.Text = "Bitte den neuen Launcher laden";
+                Hauptknopf("Download öffnen", "");
+                TitelSetzen("Neuer Launcher", "nötig");
                 untertitel.Text = "Diese Fassung ist zu alt für den Server, und die Aktualisierung hat nicht geklappt. Lade den aktuellen Launcher "
                     + "von GitHub und starte ihn. Deine Dateien bleiben, wie sie sind.";
             }
@@ -1714,17 +1988,27 @@ namespace SamplifeEssentials
                 zeile.Uebernehmen(m);
                 zeilen.Add(zeile);
                 protokollRollen.ScrollToEnd();
-                // Auf der Seite nur die letzten drei Zeilen
-                kurzZeilen.Add(zeile);
-                while (kurzZeilen.Count > 3) kurzZeilen.RemoveAt(0);
             }
             else zeile.Uebernehmen(m);
+            // Im Fortschritt nur der aktuelle Schritt, darunter bei Downloads die Groesse; alles Weitere unter „Details“
+            if (m.Art == MeldungArt.Download)
+            {
+                fortschrittText.Text = m.Text.Replace(" herunter", "").Replace("Lade ", "Lädt ") + " …";
+                fortschrittDetail.Text = m.Gesamt > 0
+                    ? Installation.Groesse(m.Erledigt) + " von " + Installation.Groesse(m.Gesamt)
+                    : Installation.Groesse(m.Erledigt);
+            }
+            else if (m.Text != "")
+            {
+                fortschrittText.Text = m.Text;
+                if (m.Art != MeldungArt.Datei) fortschrittDetail.Text = "";
+            }
         }
 
         public void FortschrittZeigen(double anteil)
         {
             var breite = ((FrameworkElement)balken.Parent).ActualWidth;
-            if (breite <= 0) breite = 680;
+            if (breite <= 0) breite = 400;
             balken.Width = Math.Max(0, Math.Min(breite, breite * anteil));
             prozent.Text = ((int)Math.Round(anteil * 100)) + " %";
         }
@@ -2013,15 +2297,19 @@ namespace SamplifeEssentials
                 return;
             }
 
-            // Beispieldaten fuer die uebrigen Zustaende
+            // Beispieldaten fuer die uebrigen Zustaende: bestaetigtes Verzeichnis, Name, Updates, Liste und Server
             name.Text = "Max_Mustermann";
             pfad.Text = @"D:\Spiele\GTA San Andreas";
+            bestaetigt = true;
+            verzeichnisGueltig = true;
+            brauchtAdmin = false;
+            sampVersion = "0.3.7-R1";
             PfadMeldung("\uE73E", Farben.Erfolg, "gta_sa.exe gefunden · SA-MP 0.3.7-R1");
             neuStatus.Visibility = Visibility.Collapsed;
             neuigkeiten.Clear();
-            neuigkeiten.Add(new Neuigkeit { Titel = "Eigenes Profilbild, Avatar mit Initial", Kurz = "Lade auf deinem Profil ein eigenes Profilbild hoch.", Datum = new DateTime(2026, 10, 21), Url = UpdatesSeite });
-            neuigkeiten.Add(new Neuigkeit { Titel = "Bewusstlose im Fahrzeug mitnehmen", Kurz = "Wen du mit K trägst, nimmst du jetzt mit ins Fahrzeug.", Datum = new DateTime(2026, 10, 21), Url = UpdatesSeite });
-            neuigkeiten.Add(new Neuigkeit { Titel = "Fahrzeugmenü und F3-Menü mit der Maus", Kurz = "Bedienen mit der Maus, weiterfahren mit der Tastatur.", Datum = new DateTime(2026, 10, 20), Url = UpdatesSeite });
+            neuigkeiten.Add(new Neuigkeit { Titel = "Neue Animation: /cophold", Kurz = "Halte eine Waffe wie ein Polizist im Einsatz.", Datum = new DateTime(2026, 11, 14), Url = UpdatesSeite });
+            neuigkeiten.Add(new Neuigkeit { Titel = "Anzeige im Bild, wenn du im Nebenjob-Dienst bist", Kurz = "Über der No-DM-Anzeige steht, als was du im Dienst bist.", Datum = new DateTime(2026, 11, 14), Url = UpdatesSeite });
+            neuigkeiten.Add(new Neuigkeit { Titel = "Eventboxen sind zurück: Das Team versteckt Geschenke", Kurz = "Wer eine Box findet, bekommt ihren Inhalt.", Datum = new DateTime(2026, 11, 14), Url = UpdatesSeite });
             komponenten.Clear();
             var beispiel = new[]
             {
@@ -2045,14 +2333,20 @@ namespace SamplifeEssentials
             komponenten.Add(directxZeile);
             listeLaedt.Visibility = Visibility.Collapsed;
             listeRollen.Visibility = Visibility.Visible;
+            KnoepfeAktualisieren();
             knopfSpielen.IsEnabled = true;
             knopfGruendlich.IsEnabled = true;
             knopfDeinstallieren.IsEnabled = true;
             knopfProblem.Visibility = Visibility.Visible;
             knopfProblem.IsEnabled = true;
+            knopfProtokoll.Visibility = Visibility.Visible;
+            ServerStatusZeigen(new ServerAntwort { Spieler = 34, Plaetze = 52 }, "german-samplife.de");
+            foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
+            directxZeile.Info = "vorhanden";
+            TitelSetzen("Bereit", "zum Spielen");
+            untertitel.Text = "Alles aktuell, SA-MP 0.3.7-R1. Ein Klick, und du bist drin.";
 
             if (zustand == "passwort") serverpasswortHaken.IsChecked = true;
-            if (zustand == "dateien" || zustand == "directx") DateienUmschalten();
             if (zustand == "programme")
             {
                 FremdeZeigen(new List<FremdeDatei>
@@ -2060,7 +2354,7 @@ namespace SamplifeEssentials
                     new FremdeDatei { Pfad = "C:\\Program Files (x86)\\Rockstar Games\\GTA San Andreas", Art = FremdArt.Programme }
                 });
             }
-            if (zustand == "fremd")
+            if (zustand == "fremd" || zustand == "einstellungen")
             {
                 FremdeZeigen(new List<FremdeDatei>
                 {
@@ -2069,74 +2363,70 @@ namespace SamplifeEssentials
                         Grund = "alte Fassung der CJ-Kleidung; zusammen mit der neuen stürzt GTA ab." }
                 });
             }
+            if (zustand == "einstellungen") EinstellungenZeigen(true);
+            if (zustand == "dateien" || zustand == "directx")
+            {
+                EinstellungenZeigen(true);
+                DateienUmschalten();
+            }
             if (zustand == "directx")
             {
                 foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = Farben.Erfolg; }
                 directxZeile.Info = "fehlt auf diesem Rechner · 95,6 MB";
                 directxZeile.InfoFarbe = Farben.Warnung;
-                titel.Text = "Bereit machen";
+                TitelSetzen("Bereit", "machen");
                 untertitel.Text = "Vor dem Start lädt der Launcher 95,6 MB nach. Für die DirectX-Laufzeit fragt Windows einmal nach Administratorrechten.";
-                // Die Zeile steht am Ende der Liste
-                Wurzel.Dispatcher.BeginInvoke(new Action(delegate { ((ScrollViewer)listeRollen).ScrollToEnd(); }), DispatcherPriority.Loaded);
                 return;
             }
+            if (zustand == "offline")
+                HinweisZeigen("Server-Liste nicht erreichbar. Du spielst mit dem geprüften Stand vom 21.10.2026, 13:40.");
             if (zustand == "deinstalliert")
             {
-                bereichProtokoll.Visibility = Visibility.Visible;
+                ZeileZeigen(true);
                 Sperren(true);
                 var m = 1;
                 MeldungZeigen(new Meldung { Nummer = m++, Art = MeldungArt.Datei, Text = "Hole vorbisFile.dll in der Fassung von vor dem Launcher zurück", Fertig = true });
                 MeldungZeigen(new Meldung { Nummer = m++, Art = MeldungArt.Datei, Text = @"Entferne C:\Users\Max\AppData\Local\German Samplife\Launcher (Einstellungen, Bilder, Schriften)", Fertig = true });
                 MeldungZeigen(new Meldung { Nummer = m++, Art = MeldungArt.Erfolg, Text = "Fertig. 247 Dateien entfernt, 2 Dateien in der Fassung von vorher zurückgeholt, 1 ausgeschaltete Datei wieder eingeschaltet.", Fertig = true });
-                FortschrittZeigen(1);
-                knopfSpielen.Content = "Schließen";
-                titel.Text = "Alles entfernt";
+                fortschrittDetail.Text = "247 Dateien entfernt";
+                modus = Modus.Schliessen;
+                Hauptknopf("Schließen", "");
+                TitelSetzen("Alles", "entfernt");
                 untertitel.Text = "Der Launcher hat 249 Dateien aufgeräumt, davon 2 in der Fassung von vorher zurückgeholt. Die Datei Samplife Launcher.exe kannst du jetzt löschen.";
                 return;
             }
-            if (zustand == "bereit" || zustand == "offline" || zustand == "passwort" || zustand == "dateien" || zustand == "fremd" || zustand == "programme"
-                || zustand == "absturz" || zustand == "absturzgesendet" || zustand == "sampandere" || zustand == "diagnose"
-                || zustand == "problem" || zustand == "beendet" || zustand == "eingefroren")
+            if (zustand == "absturz" || zustand == "absturzgesendet")
             {
-                foreach (var zeile in komponenten) { zeile.Info = "aktuell"; zeile.InfoFarbe = zustand == "offline" ? Farben.Gedaempft : Farben.Erfolg; }
-                directxZeile.Info = "vorhanden";
-                titel.Text = "Bereit zum Spielen";
-                untertitel.Text = "Alle Dateien sind auf dem Stand des Servers. Mit „Spielen“ startet SA-MP und verbindet dich mit german-samplife.de.";
-                if (zustand == "offline")
-                    HinweisZeigen("Die Server-Liste ist gerade nicht erreichbar. Du spielst mit dem geprüften Stand vom 21.10.2026, 13:40. "
-                        + "Fehlt eine Datei, kann der Launcher sie erst wieder laden, wenn der Server antwortet.");
-                if (zustand == "absturz" || zustand == "absturzgesendet")
-                {
-                    AbsturzZeigen(new DateTime(2026, 10, 26, 20, 43, 0, DateTimeKind.Utc));
-                    absturzKommentar.Text = "Bin gerade aus dem Autohaus gefahren, dann ist das Spiel eingefroren.";
-                    if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
-                }
-                if (zustand == "diagnose")
-                {
-                    DiagnoseZeigen(false);
-                    absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
-                }
-                if (zustand == "beendet") BeendetZeigen(unchecked((int)0xE0000008));
-                if (zustand == "eingefroren")
-                {
-                    BeendetZeigen(unchecked((int)0xCFFFFFFF), System.IO.Path.Combine(Haenger.Ordner, "gta_sa-haenger-20261101-120815.dmp.gz"));
-                    absturzKommentar.Text = "Beim Waffenbauen an der Werkbank ist alles stehen geblieben.";
-                }
-                if (zustand == "problem")
-                {
-                    DiagnoseZeigen(true);
-                    absturzKommentar.Text = "Login und Handy laden nur manchmal, dann ist der Bildschirm leer.";
-                }
-                if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
-                return;
+                AbsturzZeigen(new DateTime(2026, 10, 26, 20, 43, 0, DateTimeKind.Utc));
+                absturzKommentar.Text = "Bin gerade aus dem Autohaus gefahren, dann ist das Spiel eingefroren.";
+                if (zustand == "absturzgesendet") AbsturzGesendetZeigen(1287);
             }
+            if (zustand == "diagnose")
+            {
+                DiagnoseZeigen(false);
+                absturzKommentar.Text = "Kein Sprach-Chat, B und F11 gehen nicht.";
+            }
+            if (zustand == "beendet") BeendetZeigen(unchecked((int)0xE0000008));
+            if (zustand == "eingefroren")
+            {
+                BeendetZeigen(unchecked((int)0xCFFFFFFF), System.IO.Path.Combine(Haenger.Ordner, "gta_sa-haenger-20261101-120815.dmp.gz"));
+                absturzKommentar.Text = "Beim Waffenbauen an der Werkbank ist alles stehen geblieben.";
+            }
+            if (zustand == "problem")
+            {
+                DiagnoseZeigen(true);
+                absturzKommentar.Text = "Login und Handy laden nur manchmal, dann ist der Bildschirm leer.";
+            }
+            if (zustand == "sampandere") SampFensterZeigen(new SampPlan { AndereVersion = true, Andere = "0.3.DL-R1" });
+            if (zustand != "laeuft" && zustand != "mehr" && zustand != "fertig" && zustand != "spielstart" && zustand != "spiellaeuft") return;
 
-            bereichProtokoll.Visibility = Visibility.Visible;
-            knopfSpielen.Content = "Einen Moment …";
-            knopfSpielen.IsEnabled = false;
+            // Der Launcher arbeitet: Fortschritt an Stelle des Knopfs
+            modus = Modus.Laeuft;
+            ArbeitZeigen(true);
+            ZeileZeigen(true);
             knopfAbbrechen.Visibility = Visibility.Visible;
-            titel.Text = "Bereit machen";
-            untertitel.Text = "Der Launcher gleicht deine Dateien mit dem Server ab, lädt nach, was fehlt, und startet dann SA-MP.";
+            TitelSetzen("Bereit", "machen");
+            untertitel.Text = "Dein Spiel wird auf den Stand des Servers gebracht.";
             var n = 1;
             MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Prüfe die Dateien im GTA-Verzeichnis", Fertig = true });
             MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Browser-Oberfläche (CEF): neue Fassung", Fertig = true });
@@ -2148,15 +2438,17 @@ namespace SamplifeEssentials
                 MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Melde Max_Mustermann beim Server an", Fertig = true });
                 MeldungZeigen(new Meldung { Nummer = n++, Art = MeldungArt.Schritt, Text = "Starte SA-MP und verbinde mit german-samplife.de:7777", Fertig = true });
                 FortschrittZeigen(1);
-                knopfAbbrechen.Visibility = Visibility.Collapsed;
-                knopfProtokoll.Visibility = Visibility.Visible;
                 // Ab 2.5.0 bleibt der Launcher offen: „fertig“ zeigt wie „spielstart“ das Starten, „spiellaeuft“ das laufende Spiel
-                knopfSpielen.IsEnabled = false;
                 modus = Modus.Spiel;
-                knopfSpielen.Content = zustand == "spiellaeuft" ? "Spiel läuft" : "Starte Spiel …";
-                titel.Text = zustand == "spiellaeuft" ? "Spiel läuft" : "Starte Spiel …";
-                untertitel.Text = zustand == "spiellaeuft"
-                    ? "Viel Spaß auf German Samplife. Den Launcher kannst du offen lassen oder schließen, das Spiel läuft weiter."
+                ArbeitZeigen(false);
+                ZeileZeigen(false);
+                knopfSpielen.IsEnabled = false;
+                var laeuft = zustand == "spiellaeuft";
+                Hauptknopf(laeuft ? "Spiel läuft" : "Starte Spiel …", "laeuft");
+                if (laeuft) TitelSetzen("Viel Spaß", "in Los Santos");
+                else TitelSetzen("Starte", "Spiel …");
+                untertitel.Text = laeuft
+                    ? "Das Spiel läuft. Den Launcher kannst du offen lassen oder schließen."
                     : "GTA San Andreas startet und verbindet dich mit german-samplife.de.";
             }
             else
