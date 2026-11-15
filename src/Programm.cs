@@ -143,6 +143,7 @@ namespace SamplifeEssentials
             anwendung.DispatcherUnhandledException += delegate(object s, DispatcherUnhandledExceptionEventArgs e)
             {
                 if (optionen.Selbsttest) Environment.Exit(98);
+                if (optionen.Bildschirmfoto != "") FehlerFuerBildschirmfoto(optionen, e.Exception);
                 MessageBox.Show("Unerwarteter Fehler: " + e.Exception.Message, "Samplife Launcher", MessageBoxButton.OK, MessageBoxImage.Error);
                 e.Handled = true;
             };
@@ -152,6 +153,7 @@ namespace SamplifeEssentials
             {
                 if (optionen.Selbsttest) Environment.Exit(99);
                 var fehler = e.ExceptionObject as Exception;
+                if (optionen.Bildschirmfoto != "") FehlerFuerBildschirmfoto(optionen, fehler);
                 MessageBox.Show("Der Launcher muss wegen eines unerwarteten Fehlers beendet werden:\n\n"
                     + (fehler != null ? fehler.GetType().Name + ": " + fehler.Message : "unbekannt")
                     + "\n\nBitte melde das in der Community. Die aktuelle Fassung gibt es unter "
@@ -336,6 +338,17 @@ namespace SamplifeEssentials
             {
                 return 3;
             }
+        }
+
+        /// <summary>
+        /// Bildschirmfotos laufen ohne Menschen davor (GitHub Actions): Statt eines Meldungsfensters, das niemand schliesst,
+        /// den Fehler neben das Bild schreiben und beenden.
+        /// </summary>
+        static void FehlerFuerBildschirmfoto(Optionen optionen, Exception fehler)
+        {
+            try { File.WriteAllText(optionen.Bildschirmfoto + ".fehler.txt", fehler != null ? fehler.ToString() : "unbekannt"); }
+            catch (Exception) { }
+            Environment.Exit(97);
         }
 
         static int Bildschirmfoto(Application anwendung, Optionen optionen)
