@@ -1,13 +1,15 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Samplife Launcher" Width="1100" Height="820"
+        Title="Samplife Launcher" Width="860" Height="520"
         WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
         Background="#08090E" Foreground="#F1F3F6" FontFamily="Inter, Segoe UI" FontSize="15"
         UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Ideal">
   <Window.Resources>
-    <!-- Farben, Rundungen und Bausteine wie auf der Website (DESIGN.md im Repo samplife). Die Schriften Inter und
-         Inter Display bringt der Launcher mit (Schriften.cs); geht das nicht, gilt Segoe UI. -->
+    <!-- Farben, Rundungen und Bausteine wie auf der Website (DESIGN.md im Repo samplife). Die Schriften Inter, Inter Display
+         und Anton bringt der Launcher mit (Schriften.cs); geht das nicht, gilt Segoe UI bzw. Impact. Anton steht wie auf der
+         Startseite der Website nur fuer den grossen Titel. -->
     <FontFamily x:Key="Anzeige">Inter Display, Inter, Segoe UI</FontFamily>
+    <FontFamily x:Key="Spieltitel">Anton, Impact, Segoe UI</FontFamily>
     <SolidColorBrush x:Key="Flaeche" Color="#06FFFFFF"/>
     <SolidColorBrush x:Key="Flaeche2" Color="#0DFFFFFF"/>
     <SolidColorBrush x:Key="FlaecheHover" Color="#12FFFFFF"/>
@@ -19,20 +21,26 @@
     <SolidColorBrush x:Key="Akzent" Color="#007DFF"/>
     <SolidColorBrush x:Key="AkzentHell" Color="#1A8BFF"/>
     <SolidColorBrush x:Key="Warnung" Color="#FFB547"/>
+    <SolidColorBrush x:Key="Erfolg" Color="#39D874"/>
+    <SolidColorBrush x:Key="Fehler" Color="#FF8A8F"/>
+    <!-- Dunkle, fast deckende Flaeche ueber dem Bild (Felder, Kasten der Updates) -->
+    <SolidColorBrush x:Key="Glas" Color="#CC0B0E15"/>
+    <!-- Ordner, 16 x 13 -->
+    <Geometry x:Key="OrdnerForm">M1,2.5 L6,2.5 L7.6,4.2 L15,4.2 L15,12.5 L1,12.5 Z</Geometry>
 
     <!-- Hauptknopf: rund, vollblau, eine Hauptaktion pro Ansicht -->
     <Style x:Key="Hauptknopf" TargetType="Button">
       <Setter Property="Foreground" Value="White"/>
       <Setter Property="Background" Value="{StaticResource Akzent}"/>
-      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontSize" Value="15"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Padding" Value="28,0"/>
-      <Setter Property="Height" Value="48"/>
+      <Setter Property="Padding" Value="24,0"/>
+      <Setter Property="Height" Value="44"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Rahmen" Background="{TemplateBinding Background}" CornerRadius="24" Padding="{TemplateBinding Padding}">
+            <Border x:Name="Rahmen" Background="{TemplateBinding Background}" CornerRadius="22" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -49,26 +57,102 @@
       </Setter>
     </Style>
 
-    <!-- Zweiter Knopf: rund, leise, mit Rand -->
-    <Style x:Key="Nebenknopf" TargetType="Button">
-      <Setter Property="Foreground" Value="{StaticResource Gedaempft}"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="FontSize" Value="15"/>
+    <!-- Der grosse Knopf „Verbinden“: blau mit Schein, alle paar Sekunden laeuft ein Lichtstreifen darueber (Glanz, aus
+         Fenster.cs animiert). Tag "spielen": Pfeil davor; "laeuft": grau mit gruenem Punkt („Spiel läuft“); sonst nur Text. -->
+    <Style x:Key="Spielknopf" TargetType="Button">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Background" Value="{StaticResource Akzent}"/>
+      <Setter Property="FontSize" Value="19"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Padding" Value="20,0"/>
-      <Setter Property="Height" Value="48"/>
+      <Setter Property="Height" Value="64"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Rahmen" Background="{TemplateBinding Background}" BorderBrush="#1AFFFFFF" BorderThickness="1"
-                    CornerRadius="24" Padding="{TemplateBinding Padding}">
+            <Grid>
+              <Border x:Name="Schein" CornerRadius="32" Background="{StaticResource Akzent}" Margin="10,8,10,0">
+                <Border.Effect>
+                  <BlurEffect Radius="34"/>
+                </Border.Effect>
+              </Border>
+              <Grid>
+                <Grid.Clip>
+                  <RectangleGeometry Rect="0,0,400,64" RadiusX="32" RadiusY="32"/>
+                </Grid.Clip>
+                <Border x:Name="Rahmen" Background="{TemplateBinding Background}" CornerRadius="32"/>
+                <Rectangle x:Name="Glanz" Width="130" HorizontalAlignment="Left" IsHitTestVisible="False">
+                  <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                      <GradientStop Color="#00FFFFFF" Offset="0"/>
+                      <GradientStop Color="#59FFFFFF" Offset="0.5"/>
+                      <GradientStop Color="#00FFFFFF" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Rectangle.Fill>
+                  <Rectangle.RenderTransform>
+                    <TransformGroup>
+                      <SkewTransform AngleX="-20"/>
+                      <TranslateTransform X="-200"/>
+                    </TransformGroup>
+                  </Rectangle.RenderTransform>
+                </Rectangle>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Path x:Name="Symbol" Data="M0,0 L12,7 L0,14 Z" Fill="{TemplateBinding Foreground}" VerticalAlignment="Center"
+                        Margin="0,1,14,0" Visibility="Collapsed"/>
+                  <Ellipse x:Name="Punkt" Width="9" Height="9" Fill="{StaticResource Erfolg}" VerticalAlignment="Center" Margin="0,1,12,0"
+                           Visibility="Collapsed"/>
+                  <ContentPresenter VerticalAlignment="Center"/>
+                </StackPanel>
+              </Grid>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="Tag" Value="spielen">
+                <Setter TargetName="Symbol" Property="Visibility" Value="Visible"/>
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Rahmen" Property="Background" Value="{StaticResource AkzentHell}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Rahmen" Property="Opacity" Value="0.45"/>
+                <Setter TargetName="Schein" Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="Glanz" Property="Visibility" Value="Collapsed"/>
+                <Setter Property="Cursor" Value="Arrow"/>
+              </Trigger>
+              <Trigger Property="Tag" Value="laeuft">
+                <Setter TargetName="Rahmen" Property="Background" Value="#1AFFFFFF"/>
+                <Setter TargetName="Rahmen" Property="Opacity" Value="1"/>
+                <Setter TargetName="Rahmen" Property="BorderBrush" Value="{StaticResource Rand}"/>
+                <Setter TargetName="Rahmen" Property="BorderThickness" Value="1"/>
+                <Setter TargetName="Schein" Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="Glanz" Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="Symbol" Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="Punkt" Property="Visibility" Value="Visible"/>
+                <Setter Property="Foreground" Value="{StaticResource Text}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Zweiter Knopf: rund, leise, mit Rand -->
+    <Style x:Key="Nebenknopf" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="16,0"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Rahmen" Background="{TemplateBinding Background}" BorderBrush="#1FFFFFFF" BorderThickness="1"
+                    CornerRadius="20" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Foreground" Value="{StaticResource Text}"/>
-                <Setter TargetName="Rahmen" Property="Background" Value="{StaticResource Flaeche}"/>
+                <Setter TargetName="Rahmen" Property="Background" Value="{StaticResource FlaecheHover}"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Rahmen" Property="Opacity" Value="0.4"/>
@@ -80,22 +164,28 @@
       </Setter>
     </Style>
 
+    <!-- Knoepfe oben rechts: Symbol aus Segoe MDL2 Assets -->
     <Style x:Key="Fensterknopf" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource Gedaempft}"/>
-      <Setter Property="Width" Value="46"/>
+      <Setter Property="Width" Value="38"/>
       <Setter Property="Height" Value="36"/>
       <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontSize" Value="11"/>
       <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Rahmen" Background="Transparent">
+            <Border x:Name="Rahmen" Background="Transparent" CornerRadius="10">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Rahmen" Property="Background" Value="{StaticResource FlaecheHover}"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Trigger>
+              <Trigger Property="Tag" Value="an">
+                <Setter TargetName="Rahmen" Property="Background" Value="#1FFFFFFF"/>
                 <Setter Property="Foreground" Value="White"/>
               </Trigger>
             </ControlTemplate.Triggers>
@@ -104,20 +194,24 @@
       </Setter>
     </Style>
 
-    <!-- Zeile, die man anklicken kann (Updates): beim Ueberfahren etwas heller -->
+    <!-- Zeile, die man anklicken kann (Updates, Pfad im Fuss): beim Ueberfahren etwas heller -->
     <Style x:Key="Zeilenknopf" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource Text}"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Padding" Value="10,8"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Rahmen" Background="Transparent" CornerRadius="16" Padding="12,10">
+            <Border x:Name="Rahmen" Background="Transparent" CornerRadius="12" Padding="{TemplateBinding Padding}">
               <ContentPresenter/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Rahmen" Property="Background" Value="{StaticResource Flaeche2}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Rahmen" Property="Opacity" Value="0.4"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -131,9 +225,9 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
-            <Border x:Name="Kasten" Width="22" Height="22" CornerRadius="7" Background="{StaticResource Flaeche2}"
+            <Border x:Name="Kasten" Width="20" Height="20" CornerRadius="6" Background="{StaticResource Flaeche2}"
                     BorderBrush="#1FFFFFFF" BorderThickness="1">
-              <TextBlock x:Name="Haken" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"
+              <TextBlock x:Name="Haken" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="White"
                          HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -152,10 +246,43 @@
       </Setter>
     </Style>
 
-    <!-- Einfacher Link im Text („Was wird geladen?“, „Mehr anzeigen“) -->
+    <!-- Schalter in den Einstellungen (Serverpasswort, 4GB-Patch): links Beschriftung, rechts der Schalter, an ist blau -->
+    <Style x:Key="Schalter" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Background="Transparent">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <ContentPresenter VerticalAlignment="Center" Margin="0,0,14,0"/>
+              <Border x:Name="Spur" Grid.Column="1" Width="40" Height="24" CornerRadius="12" Background="#1FFFFFFF" VerticalAlignment="Center">
+                <Ellipse x:Name="Knauf" Width="18" Height="18" Fill="White" HorizontalAlignment="Left" Margin="3,0"/>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Spur" Property="Background" Value="{StaticResource Akzent}"/>
+                <Setter TargetName="Knauf" Property="HorizontalAlignment" Value="Right"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4"/>
+                <Setter Property="Cursor" Value="Arrow"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Einfacher Link im Text („Details“, „Was wird geladen?“) -->
     <Style x:Key="Verweis" TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource AkzentHell}"/>
       <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="Medium"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -174,53 +301,48 @@
       </Setter>
     </Style>
 
-    <!-- Kaestchen mit Beschriftung daneben (Serverpasswort) -->
-    <Style x:Key="HakenMitText" TargetType="CheckBox">
-      <Setter Property="Cursor" Value="Hand"/>
+    <!-- Leiser Link (Fuss, Zeile unter dem Knopf): grau, beim Ueberfahren weiss -->
+    <Style x:Key="LeiserVerweis" TargetType="Button" BasedOn="{StaticResource Verweis}">
       <Setter Property="Foreground" Value="{StaticResource Gedaempft}"/>
-      <Setter Property="FontSize" Value="13"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="CheckBox">
-            <StackPanel Orientation="Horizontal" Background="Transparent">
-              <Border x:Name="Kasten" Width="18" Height="18" CornerRadius="6" Background="{StaticResource Flaeche2}"
-                      BorderBrush="#1FFFFFFF" BorderThickness="1" VerticalAlignment="Center">
-                <TextBlock x:Name="Haken" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="White"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
-              </Border>
-              <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
-            </StackPanel>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="Kasten" Property="Background" Value="{StaticResource Akzent}"/>
-                <Setter TargetName="Kasten" Property="BorderBrush" Value="{StaticResource Akzent}"/>
-                <Setter TargetName="Haken" Property="Visibility" Value="Visible"/>
-              </Trigger>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Foreground" Value="{StaticResource Text}"/>
-              </Trigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Opacity" Value="0.4"/>
-              </Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Foreground" Value="{StaticResource Text}"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
 
     <!-- Eingabefeld: im Fokus nur etwas heller, nie blau -->
     <Style x:Key="Feld" TargetType="Border">
-      <Setter Property="Background" Value="{StaticResource Flaeche2}"/>
+      <Setter Property="Background" Value="{StaticResource Glas}"/>
       <Setter Property="BorderBrush" Value="{StaticResource Rand}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="16"/>
-      <Setter Property="Height" Value="48"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Height" Value="44"/>
       <Style.Triggers>
         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-          <Setter Property="Background" Value="{StaticResource FlaecheHover}"/>
-          <Setter Property="BorderBrush" Value="#33FFFFFF"/>
+          <Setter Property="BorderBrush" Value="#40FFFFFF"/>
         </Trigger>
       </Style.Triggers>
+    </Style>
+
+    <!-- Symbol links im Feld -->
+    <Style x:Key="FeldSymbol" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{StaticResource Leise}"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="14,0,0,0"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+    </Style>
+
+    <!-- Platzhalter im leeren Feld; Fenster.cs blendet ihn aus, sobald etwas drinsteht -->
+    <Style x:Key="Platzhalter" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Leise}"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="40,0,12,0"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
     </Style>
 
     <Style TargetType="ScrollBar">
@@ -286,456 +408,541 @@
         </Trigger>
       </Style.Triggers>
     </Style>
+
+    <!-- Zeile im Protokoll („Details“) -->
+    <DataTemplate x:Key="ProtokollZeile">
+      <Grid Margin="18,3,18,3">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="46"/>
+          <ColumnDefinition Width="22"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="{Binding Zeit}" Foreground="{StaticResource Leise}" FontSize="12" Margin="0,2,0,0"/>
+        <TextBlock Grid.Column="1" Text="{Binding Symbol}" Foreground="{Binding SymbolFarbe}" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="0,3,0,0"/>
+        <TextBlock Grid.Column="2" TextWrapping="Wrap" FontSize="13" Foreground="{Binding TextFarbe}">
+          <Run Text="{Binding Vor, Mode=OneWay}"/><Hyperlink NavigateUri="{Binding Url}"><Run Text="{Binding Url, Mode=OneWay}"/></Hyperlink><Run Text="{Binding Nach, Mode=OneWay}"/>
+        </TextBlock>
+      </Grid>
+    </DataTemplate>
   </Window.Resources>
 
   <Border BorderBrush="{StaticResource Rand}" BorderThickness="1">
-    <Grid>
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="*"/>
-        <RowDefinition Height="Auto"/>
-      </Grid.RowDefinitions>
+    <Grid ClipToBounds="True">
 
-      <!-- Kopf: Bild aus dem Spiel ueber die volle Breite (Adressen im Manifest unter "bilder", geladen von der Website),
-           oben abgedunkelt fuer Name und Fensterknoepfe, unten laeuft es in den Hintergrund aus. Darauf der Titel. -->
-      <Grid x:Name="Kopf" Height="236" ClipToBounds="True" Background="#0B0E15">
-        <Image x:Name="Titelbild" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0"/>
-        <Rectangle>
-          <Rectangle.Fill>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-              <GradientStop Color="#B808090E" Offset="0"/>
-              <GradientStop Color="#2608090E" Offset="0.38"/>
-              <GradientStop Color="#9908090E" Offset="0.72"/>
-              <GradientStop Color="#FF08090E" Offset="1"/>
-            </LinearGradientBrush>
-          </Rectangle.Fill>
-        </Rectangle>
+      <!-- Hintergrund: Bild aus dem Spiel ueber das ganze Fenster (Adressen im Manifest unter "bilder", geladen von der
+           Website), links und unten abgedunkelt fuer den Text. Fenster.cs fuehrt eine langsame Kamerafahrt darueber. -->
+      <Grid ClipToBounds="True" Background="#0B0E15">
+        <Image x:Name="Titelbild" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0"
+               RenderTransformOrigin="0.5,0.5">
+          <Image.RenderTransform>
+            <TransformGroup>
+              <ScaleTransform x:Name="BildZoom" ScaleX="1.06" ScaleY="1.06"/>
+              <TranslateTransform x:Name="BildFahrt"/>
+            </TransformGroup>
+          </Image.RenderTransform>
+        </Image>
         <Rectangle>
           <Rectangle.Fill>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-              <GradientStop Color="#9908090E" Offset="0"/>
-              <GradientStop Color="#0008090E" Offset="0.65"/>
+              <GradientStop Color="#EB08090E" Offset="0"/>
+              <GradientStop Color="#B308090E" Offset="0.45"/>
+              <GradientStop Color="#5908090E" Offset="0.75"/>
+              <GradientStop Color="#9908090E" Offset="1"/>
             </LinearGradientBrush>
           </Rectangle.Fill>
         </Rectangle>
-        <Grid Margin="28,16,0,0" VerticalAlignment="Top">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Border Width="36" Height="36" CornerRadius="12" Background="{StaticResource Akzent}">
-              <TextBlock Text="S" FontFamily="{DynamicResource Anzeige}" FontSize="19" FontWeight="Bold" Foreground="White"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="German Samplife" FontFamily="{DynamicResource Anzeige}" FontSize="17" FontWeight="SemiBold"/>
-              <TextBlock x:Name="VersionText" Text="Launcher" Foreground="#C2C7D0" FontSize="12"/>
-            </StackPanel>
+        <Rectangle>
+          <Rectangle.Fill>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+              <GradientStop Color="#8C08090E" Offset="0"/>
+              <GradientStop Color="#0008090E" Offset="0.25"/>
+              <GradientStop Color="#0008090E" Offset="0.6"/>
+              <GradientStop Color="#F208090E" Offset="1"/>
+            </LinearGradientBrush>
+          </Rectangle.Fill>
+        </Rectangle>
+      </Grid>
+
+      <!-- Kopf: Name und Version, rechts Einstellungen und Fensterknoepfe. Ziehen verschiebt das Fenster. -->
+      <Grid x:Name="Kopf" Height="56" VerticalAlignment="Top" Background="Transparent">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+          <Border Width="32" Height="32" CornerRadius="10" Background="{StaticResource Akzent}">
+            <TextBlock Text="S" FontFamily="{DynamicResource Anzeige}" FontSize="17" FontWeight="Bold" Foreground="White"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
+            <TextBlock Text="German Samplife" FontFamily="{DynamicResource Anzeige}" FontSize="14" FontWeight="SemiBold"/>
+            <TextBlock x:Name="VersionText" Text="Launcher" Foreground="{StaticResource Leise}" FontSize="12"/>
           </StackPanel>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-16,0,0">
-            <Button x:Name="KnopfMinimieren" Style="{StaticResource Fensterknopf}" Content="&#xE921;" ToolTip="Minimieren"/>
-            <Button x:Name="KnopfSchliessenX" Style="{StaticResource Fensterknopf}" Content="&#xE8BB;" ToolTip="Schließen"/>
-          </StackPanel>
-        </Grid>
-        <StackPanel VerticalAlignment="Bottom" Margin="28,0,28,18">
-          <TextBlock x:Name="Titel" Text="Bereit machen" FontFamily="{DynamicResource Anzeige}" FontSize="34" FontWeight="Bold"/>
-          <TextBlock x:Name="Untertitel" Foreground="#C2C7D0" FontSize="15" Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="960" HorizontalAlignment="Left"
-                     Text="Der Launcher hält dein GTA auf dem Stand des Servers und verbindet dich direkt."/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+          <Button x:Name="KnopfEinstellungen" Style="{StaticResource Fensterknopf}" Content="&#xE713;" FontSize="15" ToolTip="Einstellungen"
+                  Margin="0,0,2,0"/>
+          <Button x:Name="KnopfMinimieren" Style="{StaticResource Fensterknopf}" Content="&#xE921;" ToolTip="Minimieren" Margin="0,0,2,0"/>
+          <Button x:Name="KnopfSchliessenX" Style="{StaticResource Fensterknopf}" Content="&#xE8BB;" ToolTip="Schließen"/>
         </StackPanel>
       </Grid>
 
-      <Grid Grid.Row="1" Margin="28,8,28,0">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="28"/>
-          <ColumnDefinition Width="330"/>
-        </Grid.ColumnDefinitions>
+      <!-- Links: grosser Titel, ein Satz zum Stand, dann Name, Passwort und „Verbinden“ -->
+      <StackPanel x:Name="Haupt" Width="400" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="36,90,0,0">
+        <StackPanel x:Name="TitelBlock">
+          <StackPanel.RenderTransform>
+            <TranslateTransform x:Name="TitelFahrt"/>
+          </StackPanel.RenderTransform>
+          <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" MaxWidth="420">
+            <TextBlock x:Name="Titel" Text="WILLKOMMEN" FontFamily="{DynamicResource Spieltitel}" FontSize="58" Foreground="White"
+                       LineHeight="52" LineStackingStrategy="BlockLineHeight"/>
+          </Viewbox>
+          <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" MaxWidth="420">
+            <TextBlock x:Name="TitelZwei" Text="IN LOS SANTOS" FontFamily="{DynamicResource Spieltitel}" FontSize="58"
+                       Foreground="{StaticResource Akzent}" LineHeight="52" LineStackingStrategy="BlockLineHeight"/>
+          </Viewbox>
+        </StackPanel>
+        <TextBlock x:Name="Untertitel" Foreground="{StaticResource Gedaempft}" FontSize="14" Margin="2,12,0,0" TextWrapping="Wrap"
+                   MaxHeight="58" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                   Text="Einmal das GTA-Verzeichnis bestätigen, dann geht es los."/>
 
-        <!-- Links: oben Name, Passwort und Spielen; nach der Trennlinie alles zur Installation -->
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-
-          <!-- Hinweis, z. B. ohne Server-Liste mit dem gesicherten Stand -->
-          <Border x:Name="Hinweis" Grid.Row="0" Margin="0,0,0,14" CornerRadius="16" Padding="14,10" Background="{StaticResource Flaeche}"
-                  BorderThickness="1" BorderBrush="#4DFFB547" Visibility="Collapsed">
-            <TextBlock x:Name="HinweisText" Foreground="{StaticResource Warnung}" FontSize="13" TextWrapping="Wrap"/>
-          </Border>
-
-          <!-- Schnellstart: Name, Passwort des Accounts, Spielen -->
-          <Grid Grid.Row="1">
+        <!-- Hinweis, z. B. ohne Server-Liste mit dem gesicherten Stand; rechts auf Wunsch ein Knopf („Erneut versuchen“) -->
+        <Border x:Name="Hinweis" Margin="0,14,0,0" CornerRadius="14" Padding="14,9,12,9" Background="{StaticResource Glas}"
+                BorderThickness="1" BorderBrush="#59FFB547" Visibility="Collapsed">
+          <Grid>
             <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="12"/>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="12"/>
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <TextBlock Text="Dein Name im Spiel" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
-            <Border Grid.Row="1" Style="{StaticResource Feld}" Margin="0,6,0,0">
-              <TextBox x:Name="Name" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}" MaxLength="20"
-                       CaretBrush="White" VerticalContentAlignment="Center" Padding="14,0" FontSize="15"/>
-            </Border>
-            <TextBlock Grid.Column="2" Text="Dein Passwort" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
-            <Border Grid.Column="2" Grid.Row="1" Style="{StaticResource Feld}" Margin="0,6,0,0"
-                    ToolTip="Freiwillig. Mit deinem Passwort meldet dich der Launcher an, und der Login im Spiel entfällt. Es wird nicht gespeichert.">
-              <PasswordBox x:Name="Kontopasswort" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
-                           CaretBrush="White" VerticalContentAlignment="Center" Padding="14,0" FontSize="15"/>
-            </Border>
-            <Button x:Name="KnopfSpielen" Grid.Column="4" Grid.Row="1" Style="{StaticResource Hauptknopf}" Content="Spielen" MinWidth="170"
-                    Margin="0,6,0,0" IsEnabled="False"/>
-            <Grid Grid.Row="2" Grid.ColumnSpan="5" Margin="0,10,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <StackPanel Orientation="Horizontal">
-                <CheckBox x:Name="ServerpasswortHaken" Style="{StaticResource HakenMitText}" Content="Serverpasswort"/>
-                <!-- 4GB-Patch (src/Laa.cs): freiwillig, der Launcher setzt das Bit in der gta_sa.exe nur, wenn es fehlt -->
-                <CheckBox x:Name="LaaHaken" Style="{StaticResource HakenMitText}" Content="4GB-Patch" Margin="18,0,0,0"
-                          ToolTip="Gegen Abstürze bei hoher Auflösung (1440p, 4K): GTA darf dann 4 statt 2 GB Speicher nutzen. Standardmäßig an. Der Launcher setzt den Patch nur, wenn er in deiner gta_sa.exe fehlt, und sichert sie vorher. Haken raus nimmt ihn wieder zurück."/>
-              </StackPanel>
-              <TextBlock x:Name="NameStatus" Grid.Column="1" Foreground="{StaticResource Leise}" FontSize="13" Margin="16,0,0,0"
-                         VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Right"
-                         Text="Passwort freiwillig: Damit entfällt der Login im Spiel."/>
-            </Grid>
-            <!-- Nur nach Klick auf „Serverpasswort“ (oder wenn der Server eins verlangt). Wird nicht gespeichert. -->
-            <Grid x:Name="BereichPasswort" Grid.Row="3" Grid.ColumnSpan="5" Margin="0,10,0,0" Visibility="Collapsed">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="12"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="12"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <Border Style="{StaticResource Feld}">
-                <PasswordBox x:Name="Passwort" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
-                             CaretBrush="White" VerticalContentAlignment="Center" Padding="14,0" FontSize="15"/>
-              </Border>
-              <TextBlock Grid.Column="2" Grid.ColumnSpan="3" Foreground="{StaticResource Leise}" FontSize="13" VerticalAlignment="Center"
-                         TextWrapping="Wrap" Text="Solange der Server geschlossen ist. Das Passwort bekommst du vom Team."/>
-            </Grid>
+            <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="{StaticResource Warnung}" Margin="0,2,10,0"/>
+            <TextBlock x:Name="HinweisText" Grid.Column="1" Foreground="{StaticResource Warnung}" FontSize="13" TextWrapping="Wrap"
+                       MaxHeight="54" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+            <Button x:Name="KnopfHinweis" Grid.Column="2" Style="{StaticResource Verweis}" Foreground="{StaticResource Text}" FontWeight="SemiBold"
+                    Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"/>
           </Grid>
+        </Border>
 
-          <!-- Trennlinie: darunter alles, was der Launcher fuer das Spiel einrichtet -->
-          <Border Grid.Row="2" Height="1" Background="{StaticResource Rand}" Margin="0,20,0,18"/>
+        <!-- Fremde ASI Loader und Konflikte: eine Zeile, Einzelheiten und „Ausschalten“ in den Einstellungen -->
+        <Border x:Name="FremdZeile" Margin="0,14,0,0" CornerRadius="14" Padding="14,9,12,9" Background="{StaticResource Glas}"
+                BorderThickness="1" BorderBrush="#59FFB547" Visibility="Collapsed">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="{StaticResource Warnung}" Margin="0,2,10,0"/>
+            <TextBlock x:Name="FremdKurz" Grid.Column="1" Foreground="{StaticResource Warnung}" FontSize="13" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+            <Button x:Name="KnopfFremdAnsehen" Grid.Column="2" Style="{StaticResource Verweis}" Foreground="{StaticResource Text}" FontWeight="SemiBold"
+                    Content="Ansehen" Margin="12,0,0,0" VerticalAlignment="Center"/>
+          </Grid>
+        </Border>
 
-          <!-- GTA-Verzeichnis -->
-          <StackPanel Grid.Row="3">
-            <TextBlock x:Name="PfadTitel" Text="GTA-Verzeichnis" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
-
-            <!-- Automatische Suche: Ergebnis muss der Spieler bestaetigen -->
-            <StackPanel x:Name="BereichSuche" Margin="0,6,0,0" Visibility="Collapsed">
-              <TextBlock x:Name="SucheText" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap"/>
-              <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="132" Margin="0,8,0,0">
-                <ItemsControl x:Name="Funde">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Border Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="16"
-                              Padding="16,8,8,8" Margin="0,0,0,6">
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                          </Grid.ColumnDefinitions>
-                          <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Pfad}" FontSize="15" FontWeight="Medium" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Text="{Binding Detail}" Foreground="{StaticResource Gedaempft}" FontSize="13" Margin="0,2,0,0"/>
-                          </StackPanel>
-                          <Button Grid.Column="1" Style="{StaticResource Hauptknopf}" Content="Ja, verwenden" Height="38" FontSize="14"
-                                  Padding="18,0" Margin="14,0,0,0" Tag="{Binding Pfad}"/>
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
-              <Button x:Name="KnopfAnderer" Style="{StaticResource Nebenknopf}" Content="Anderen Ordner wählen …" Height="38" FontSize="14"
-                      HorizontalAlignment="Left" Margin="0,2,0,0"/>
-            </StackPanel>
-
-            <StackPanel x:Name="BereichPfad">
-              <Grid Margin="0,6,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Border Style="{StaticResource Feld}">
-                  <TextBox x:Name="Pfad" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
-                           CaretBrush="White" VerticalContentAlignment="Center" Padding="14,0" FontSize="15"/>
-                </Border>
-                <Button x:Name="KnopfDurchsuchen" Grid.Column="1" Style="{StaticResource Nebenknopf}" Content="Durchsuchen …" Margin="8,0,0,0"/>
-                <Button x:Name="KnopfSuchen" Grid.Column="2" Style="{StaticResource Nebenknopf}" Content="Suchen" Margin="8,0,0,0"/>
-              </Grid>
-              <StackPanel Orientation="Horizontal" Margin="4,7,0,0">
-                <TextBlock x:Name="PfadSymbol" FontFamily="Segoe MDL2 Assets" FontSize="12" VerticalAlignment="Center" Margin="0,1,8,0"/>
-                <TextBlock x:Name="PfadStatus" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" MaxWidth="640"/>
-              </StackPanel>
-              <!-- Nur sichtbar, wenn die SA-MP-Version nicht erkannt wurde -->
-              <StackPanel x:Name="BereichVersion" Margin="0,12,0,0" Visibility="Collapsed">
-                <TextBlock x:Name="VersionTitel" Text="Mit welcher SA-MP-Version spielst du?" FontSize="15" FontWeight="Medium"/>
-                <TextBlock x:Name="VersionPflicht" Foreground="{StaticResource Text}" FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                <TextBlock x:Name="VersionHinweis" Foreground="{StaticResource Gedaempft}" FontSize="13" Margin="0,3,0,9" TextWrapping="Wrap"/>
-                <StackPanel x:Name="Versionen" Orientation="Horizontal"/>
-              </StackPanel>
-              <!-- Fremde ASI Loader und Dateien aus "konflikte" der Liste: nur Hinweis, Ausschalten auf Wunsch -->
-              <Border x:Name="BereichFremd" Margin="0,12,0,0" CornerRadius="16" Padding="14,10,10,10" Background="{StaticResource Flaeche}"
-                      BorderThickness="1" BorderBrush="#4DFFB547" Visibility="Collapsed">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                  </Grid.ColumnDefinitions>
-                  <StackPanel>
-                    <TextBlock x:Name="FremdTitel" Foreground="{StaticResource Warnung}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                    <ItemsControl x:Name="FremdListe">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <TextBlock Text="{Binding Text}" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
-                  <Button x:Name="KnopfAbschalten" Grid.Column="1" Style="{StaticResource Nebenknopf}" Content="Ausschalten" Height="36" FontSize="13"
-                          Padding="16,0" Margin="14,0,0,0" VerticalAlignment="Top"
-                          ToolTip="Benennt die Dateien um (Endung .samplife-aus), löscht nichts. „Deinstallieren“ schaltet sie wieder ein."/>
-                </Grid>
-              </Border>
-            </StackPanel>
-          </StackPanel>
-
-          <!-- Waehrend Pruefen, Laden und Start: was gerade passiert, die letzten drei Zeilen -->
-          <StackPanel x:Name="BereichProtokoll" Grid.Row="4" Margin="0,16,0,0" Visibility="Collapsed">
-            <Grid>
-              <TextBlock Text="Was gerade passiert" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
-              <TextBlock x:Name="Prozent" HorizontalAlignment="Right" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
-            </Grid>
-            <Border Height="6" CornerRadius="3" Background="{StaticResource Flaeche2}" Margin="0,8,0,0">
-              <Border x:Name="Balken" HorizontalAlignment="Left" Width="0" CornerRadius="3" Background="{StaticResource Akzent}"/>
-            </Border>
-            <Border Margin="0,10,0,0" Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}" BorderThickness="1"
-                    CornerRadius="16" Padding="0,8">
-              <ItemsControl x:Name="ProtokollKurz">
+        <!-- Erster Start oder Verzeichnis fehlt: Suche, Funde zum Bestaetigen oder einen Ordner waehlen -->
+        <Border x:Name="BereichSuche" Margin="0,20,0,0" CornerRadius="18" Padding="14" Background="{StaticResource Glas}"
+                BorderBrush="{StaticResource Rand}" BorderThickness="1" Visibility="Collapsed">
+          <StackPanel>
+            <TextBlock x:Name="PfadTitel" Text="GTA-Verzeichnis" FontSize="15" FontWeight="SemiBold"/>
+            <TextBlock x:Name="SucheText" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" Margin="0,3,0,0"/>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="128" Margin="0,8,0,0">
+              <ItemsControl x:Name="Funde">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Grid Margin="18,3,18,3">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="46"/>
-                        <ColumnDefinition Width="22"/>
-                        <ColumnDefinition Width="*"/>
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Text="{Binding Zeit}" Foreground="{StaticResource Leise}" FontSize="12" Margin="0,2,0,0"/>
-                      <TextBlock Grid.Column="1" Text="{Binding Symbol}" Foreground="{Binding SymbolFarbe}" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="0,3,0,0"/>
-                      <TextBlock Grid.Column="2" TextWrapping="Wrap" FontSize="13" Foreground="{Binding TextFarbe}">
-                        <Run Text="{Binding Vor, Mode=OneWay}"/><Hyperlink NavigateUri="{Binding Url}"><Run Text="{Binding Url, Mode=OneWay}"/></Hyperlink><Run Text="{Binding Nach, Mode=OneWay}"/>
-                      </TextBlock>
-                    </Grid>
+                    <Border Background="{StaticResource Flaeche2}" CornerRadius="14" Padding="12,8,8,8" Margin="0,0,0,6">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="*"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Data="{StaticResource OrdnerForm}" Stroke="{StaticResource Gedaempft}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                              VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Pfad}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                     ToolTip="{Binding Pfad}"/>
+                          <TextBlock Text="{Binding Detail}" Foreground="{StaticResource Leise}" FontSize="12" Margin="0,1,0,0"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+                        <Button Grid.Column="2" Style="{StaticResource Hauptknopf}" Content="Ja, verwenden" Height="36" FontSize="13"
+                                Padding="16,0" Margin="12,0,0,0" Tag="{Binding Pfad}"/>
+                      </Grid>
+                    </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-            </Border>
-            <Button x:Name="KnopfMehr" Style="{StaticResource Verweis}" Content="Mehr anzeigen" HorizontalAlignment="Left" Margin="2,8,0,0"/>
+            </ScrollViewer>
+            <Button x:Name="KnopfAnderer" Style="{StaticResource Verweis}" Foreground="{StaticResource Text}" Content="Anderen Ordner wählen …"
+                    HorizontalAlignment="Left" Margin="2,4,0,0"/>
           </StackPanel>
+        </Border>
 
-          <!-- Was der Launcher laedt: hinter einem Link, damit die Seite ruhig bleibt -->
-          <Button x:Name="KnopfDateien" Grid.Row="5" Style="{StaticResource Verweis}" Content="Was wird geladen?" HorizontalAlignment="Left"
-                  Margin="2,14,0,0"/>
-
-          <Border x:Name="BereichAuswahl" Grid.Row="6" Margin="0,10,0,0" Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}"
-                  BorderThickness="1" CornerRadius="24" Visibility="Collapsed">
+        <!-- Bereit: Name, Passwort des Accounts, Verbinden und die Zeile darunter -->
+        <StackPanel x:Name="BereichStart">
+          <Grid Margin="0,20,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="10"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Feld}" ToolTip="Dein Name im Spiel, so wie du auf dem Server heißt">
+              <Grid>
+                <TextBlock Style="{StaticResource FeldSymbol}" Text="&#xE77B;"/>
+                <TextBlock x:Name="NamePlatzhalter" Style="{StaticResource Platzhalter}" Text="Name im Spiel"/>
+                <TextBox x:Name="Name" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}" MaxLength="20"
+                         CaretBrush="White" VerticalContentAlignment="Center" Padding="36,0,10,0" FontSize="14"/>
+              </Grid>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource Feld}"
+                    ToolTip="Freiwillig. Mit deinem Passwort meldet dich der Launcher an, und der Login im Spiel entfällt.">
+              <Grid>
+                <TextBlock Style="{StaticResource FeldSymbol}" Text="&#xE72E;"/>
+                <TextBlock x:Name="KontoPlatzhalter" Style="{StaticResource Platzhalter}" Text="Passwort (freiwillig)"/>
+                <PasswordBox x:Name="Kontopasswort" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                             CaretBrush="White" VerticalContentAlignment="Center" Padding="36,0,10,0" FontSize="14"/>
+              </Grid>
+            </Border>
+          </Grid>
+          <!-- Nur mit „Serverpasswort“ in den Einstellungen (oder wenn der Server eins verlangt) -->
+          <Border x:Name="BereichPasswort" Style="{StaticResource Feld}" Margin="0,10,0,0" Visibility="Collapsed"
+                  ToolTip="Solange der Server geschlossen ist. Das Passwort bekommst du vom Team.">
             <Grid>
-                <StackPanel x:Name="ListeLaedt" VerticalAlignment="Center" Margin="24,0">
-                  <TextBlock x:Name="ListeStatus" Foreground="{StaticResource Gedaempft}" FontSize="14" TextWrapping="Wrap" TextAlignment="Center"/>
-                  <Button x:Name="KnopfErneut" Style="{StaticResource Nebenknopf}" Content="Erneut versuchen" HorizontalAlignment="Center"
-                          Height="40" Margin="0,12,0,0" Visibility="Collapsed"/>
-                </StackPanel>
-                <ScrollViewer x:Name="ListeRollen" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Padding="0,6">
-                  <ItemsControl x:Name="Liste">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate>
-                        <Grid Margin="18,9,18,9">
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                          </Grid.ColumnDefinitions>
-                          <CheckBox IsChecked="{Binding Gewaehlt, Mode=TwoWay}" IsEnabled="{Binding Waehlbar}" VerticalAlignment="Top"
-                                    Margin="0,1,14,0" ToolTip="{Binding HakenHinweis}"/>
-                          <StackPanel Grid.Column="1" Opacity="{Binding Deckkraft}">
-                            <TextBlock FontSize="15" FontWeight="Medium">
-                              <Run Text="{Binding Name, Mode=OneWay}"/><Run Text="{Binding Art, Mode=OneWay}" Foreground="{StaticResource Leise}" FontSize="13" FontWeight="Normal"/>
-                            </TextBlock>
-                            <TextBlock Text="{Binding Beschreibung}" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                            <TextBlock FontSize="12" Foreground="{StaticResource Leise}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
-                              <Run Text="{Binding QuelleVor, Mode=OneWay}"/><Hyperlink NavigateUri="{Binding Quelle}"><Run Text="{Binding Quelle, Mode=OneWay}"/></Hyperlink><Run Text="{Binding QuelleNach, Mode=OneWay}"/>
-                            </TextBlock>
-                          </StackPanel>
-                          <TextBlock Grid.Column="2" Text="{Binding Info}" Foreground="{Binding InfoFarbe}" FontSize="13" Margin="16,2,0,0"
-                                     TextAlignment="Right" TextWrapping="Wrap" MaxWidth="190"/>
-                        </Grid>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </ScrollViewer>
+              <TextBlock Style="{StaticResource FeldSymbol}" Text="&#xE8D7;"/>
+              <TextBlock x:Name="ServerPlatzhalter" Style="{StaticResource Platzhalter}" Text="Serverpasswort (vom Team)"/>
+              <PasswordBox x:Name="Passwort" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                           CaretBrush="White" VerticalContentAlignment="Center" Padding="36,0,10,0" FontSize="14"/>
             </Grid>
           </Border>
-        </Grid>
 
-        <!-- Rechts: die neuesten Updates aus der Community -->
-        <Border Grid.Column="2" Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="24" Padding="10,20,10,12">
+          <!-- Der Knopf; waehrend der Launcher arbeitet, steht an seiner Stelle der Fortschritt -->
+          <Grid Margin="0,12,0,0" Height="64">
+            <Button x:Name="KnopfSpielen" Style="{StaticResource Spielknopf}" Content="Verbinden" Tag="spielen" IsEnabled="False"/>
+            <Grid x:Name="Fortschritt" Visibility="Collapsed">
+              <Grid.Clip>
+                <RectangleGeometry Rect="0,0,400,64" RadiusX="32" RadiusY="32"/>
+              </Grid.Clip>
+              <Border Background="{StaticResource Glas}" BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="32"/>
+              <Grid x:Name="BalkenSpur">
+                <Border x:Name="Balken" HorizontalAlignment="Left" Width="0">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="24,24" MappingMode="Absolute" SpreadMethod="Repeat">
+                      <LinearGradientBrush.Transform>
+                        <TranslateTransform x:Name="Streifen"/>
+                      </LinearGradientBrush.Transform>
+                      <GradientStop Color="#1A8BFF" Offset="0"/>
+                      <GradientStop Color="#1A8BFF" Offset="0.5"/>
+                      <GradientStop Color="#007DFF" Offset="0.5"/>
+                      <GradientStop Color="#007DFF" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+              </Grid>
+              <Grid Margin="24,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="FortschrittText" Text="Einen Moment …" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="Prozent" Grid.Column="1" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" Margin="12,0,0,0"/>
+              </Grid>
+            </Grid>
+          </Grid>
+
+          <!-- Unter dem Knopf: Spieler auf dem Server, waehrend der Arbeit Groesse, Details und Abbrechen -->
+          <Grid Margin="4,12,0,0" MinHeight="20">
+            <StackPanel x:Name="ZeileServer" Orientation="Horizontal">
+              <Ellipse x:Name="ServerPunkt" Width="8" Height="8" Fill="{StaticResource Leise}" VerticalAlignment="Center" Margin="0,1,9,0"/>
+              <TextBlock x:Name="ServerStatus" Foreground="{StaticResource Gedaempft}" FontSize="13" VerticalAlignment="Center"
+                         Text="Frage den Server ab …"/>
+            </StackPanel>
+            <StackPanel x:Name="ZeileFortschritt" Orientation="Horizontal" Visibility="Collapsed">
+              <TextBlock x:Name="FortschrittDetail" Foreground="{StaticResource Gedaempft}" FontSize="13" VerticalAlignment="Center"
+                         MaxWidth="250" TextTrimming="CharacterEllipsis"/>
+              <Button x:Name="KnopfMehr" Style="{StaticResource Verweis}" Foreground="{StaticResource Text}" Content="Details"
+                      Margin="14,0,0,0" VerticalAlignment="Center"/>
+              <Button x:Name="KnopfAbbrechen" Style="{StaticResource LeiserVerweis}" Content="Abbrechen" Margin="14,0,0,0"
+                      VerticalAlignment="Center" Visibility="Collapsed"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock x:Name="NameStatus" Foreground="{StaticResource Fehler}" FontSize="13" Margin="4,6,0,0" TextWrapping="Wrap"
+                     Visibility="Collapsed"/>
+        </StackPanel>
+      </StackPanel>
+
+      <!-- Rechts: die neuesten Updates aus der Community -->
+      <Border Width="270" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,90,20,0" Background="{StaticResource Glas}"
+              BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="20" Padding="8,14,8,8">
+        <StackPanel>
+          <TextBlock Text="Neu auf dem Server" FontFamily="{DynamicResource Anzeige}" FontSize="16" FontWeight="SemiBold" Margin="10,0,10,6"/>
+          <TextBlock x:Name="NeuStatus" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="10,2,10,8"
+                     Text="Lade die neuesten Updates …"/>
+          <ItemsControl x:Name="NeuListe">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Style="{StaticResource Zeilenknopf}" Tag="{Binding Url}" Margin="0,0,0,2" ToolTip="{Binding Kurz}">
+                  <StackPanel>
+                    <TextBlock Text="{Binding DatumText}" Foreground="{StaticResource Leise}" FontSize="12"/>
+                    <TextBlock Text="{Binding Titel}" FontSize="13.5" FontWeight="Medium" TextWrapping="Wrap" Margin="0,2,0,0"
+                               MaxHeight="38" TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button x:Name="KnopfAlleUpdates" Style="{StaticResource Verweis}" Content="Alle Updates in der Community" HorizontalAlignment="Center"
+                  Margin="0,6,0,4"/>
+        </StackPanel>
+      </Border>
+
+      <!-- Fuss: GTA-Verzeichnis (Klick oeffnet die Einstellungen), rechts „Problem melden“ -->
+      <Border Height="46" VerticalAlignment="Bottom" Background="#9908090E" BorderBrush="{StaticResource Trenner}" BorderThickness="0,1,0,0">
+        <Grid Margin="26,0,20,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Button x:Name="KnopfFussPfad" Style="{StaticResource Zeilenknopf}" Padding="10,6" HorizontalAlignment="Left" ToolTip="GTA-Verzeichnis ändern">
+            <StackPanel Orientation="Horizontal">
+              <Path Data="{StaticResource OrdnerForm}" Stroke="{StaticResource Gedaempft}" StrokeThickness="1.3" StrokeLineJoin="Round"
+                    VerticalAlignment="Center"/>
+              <TextBlock x:Name="FussPfad" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="560" TextTrimming="CharacterEllipsis"
+                         Text="Kein GTA-Verzeichnis gewählt"/>
+              <TextBlock x:Name="FussSymbol" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="10,1,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button x:Name="KnopfProblem" Grid.Column="1" Style="{StaticResource LeiserVerweis}" Content="Problem melden" VerticalAlignment="Center"
+                  Visibility="Collapsed"
+                  ToolTip="Schickt dem Team die Programme und Logs vom letzten Spiel, wenn Sprach-Chat oder Browser-Oberflächen nicht gehen."/>
+        </Grid>
+      </Border>
+
+      <!-- Einstellungen: Tafel von rechts ueber dem Launcher; Klick daneben, das X oder Escape schliessen -->
+      <Grid x:Name="EinstellungenFenster" Visibility="Collapsed">
+        <Rectangle x:Name="EinstellungenSchleier" Fill="#73000000"/>
+        <Border x:Name="EinstellungenTafel" Width="380" HorizontalAlignment="Right" Background="#0B0E15" BorderBrush="{StaticResource Rand}"
+                BorderThickness="1,0,0,0">
+          <Border.RenderTransform>
+            <TranslateTransform x:Name="EinstellungenFahrt"/>
+          </Border.RenderTransform>
           <Grid>
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
-              <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock Text="Neu auf dem Server" FontFamily="{DynamicResource Anzeige}" FontSize="20" FontWeight="SemiBold" Margin="12,0,12,8"/>
-            <Grid Grid.Row="1">
-              <TextBlock x:Name="NeuStatus" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="12,6,12,0"
-                         Text="Lade die neuesten Updates …"/>
-              <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <ItemsControl x:Name="NeuListe">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Style="{StaticResource Zeilenknopf}" Tag="{Binding Url}" Margin="0,0,0,2">
-                        <StackPanel>
-                          <TextBlock Text="{Binding DatumText}" Foreground="{StaticResource Leise}" FontSize="12"/>
-                          <TextBlock Text="{Binding Titel}" FontSize="15" FontWeight="Medium" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                          <TextBlock Text="{Binding Kurz}" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" Margin="0,3,0,0"/>
-                        </StackPanel>
-                      </Button>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
+            <Grid Margin="22,16,12,6">
+              <TextBlock Text="Einstellungen" FontFamily="{DynamicResource Anzeige}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              <Button x:Name="KnopfEinstellungenZu" Style="{StaticResource Fensterknopf}" Content="&#xE8BB;" HorizontalAlignment="Right" ToolTip="Schließen"/>
             </Grid>
-            <Button x:Name="KnopfAlleUpdates" Grid.Row="2" Style="{StaticResource Nebenknopf}" Content="Alle Updates in der Community"
-                    Height="40" FontSize="14" Margin="2,10,2,0"/>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="22,4,18,18">
+              <StackPanel>
+                <!-- GTA-Verzeichnis -->
+                <TextBlock Text="GTA-Verzeichnis" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
+                <StackPanel x:Name="BereichPfad">
+                  <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource Feld}" Height="40" Background="{StaticResource Flaeche2}">
+                      <TextBox x:Name="Pfad" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                               CaretBrush="White" VerticalContentAlignment="Center" Padding="12,0" FontSize="13"/>
+                    </Border>
+                    <Button x:Name="KnopfDurchsuchen" Grid.Column="1" Style="{StaticResource Nebenknopf}" Content="Ändern …" Margin="6,0,0,0"
+                            Padding="14,0" ToolTip="Ordner wählen, in dem gta_sa.exe liegt"/>
+                    <Button x:Name="KnopfSuchen" Grid.Column="2" Style="{StaticResource Nebenknopf}" Content="Suchen" Margin="6,0,0,0" Padding="14,0"
+                            ToolTip="Auf diesem Rechner nach GTA San Andreas suchen"/>
+                  </Grid>
+                  <Grid Margin="2,7,0,0">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="PfadSymbol" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="0,2,8,0"/>
+                    <TextBlock x:Name="PfadStatus" Grid.Column="1" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap"/>
+                  </Grid>
+                  <!-- Nur sichtbar, wenn die SA-MP-Version nicht erkannt wurde -->
+                  <StackPanel x:Name="BereichVersion" Margin="0,12,0,0" Visibility="Collapsed">
+                    <TextBlock x:Name="VersionTitel" Text="Mit welcher SA-MP-Version spielst du?" FontSize="14" FontWeight="Medium" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="VersionPflicht" Foreground="{StaticResource Text}" FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="VersionHinweis" Foreground="{StaticResource Gedaempft}" FontSize="13" Margin="0,3,0,9" TextWrapping="Wrap"/>
+                    <StackPanel x:Name="Versionen" Orientation="Horizontal"/>
+                  </StackPanel>
+                  <!-- Fremde ASI Loader und Dateien aus "konflikte" der Liste: Hinweis, Ausschalten auf Wunsch -->
+                  <Border x:Name="BereichFremd" Margin="0,12,0,0" CornerRadius="14" Padding="14,10,12,12" Background="{StaticResource Flaeche}"
+                          BorderThickness="1" BorderBrush="#4DFFB547" Visibility="Collapsed">
+                    <StackPanel>
+                      <TextBlock x:Name="FremdTitel" Foreground="{StaticResource Warnung}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                      <ItemsControl x:Name="FremdListe">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <TextBlock Text="{Binding Text}" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <Button x:Name="KnopfAbschalten" Style="{StaticResource Nebenknopf}" Content="Ausschalten" Height="34" Padding="16,0"
+                              HorizontalAlignment="Left" Margin="0,10,0,0"
+                              ToolTip="Benennt die Dateien um (Endung .samplife-aus), löscht nichts. „Deinstallieren“ schaltet sie wieder ein."/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+
+                <!-- Schalter -->
+                <Border BorderBrush="{StaticResource Trenner}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,12,0,12">
+                  <CheckBox x:Name="ServerpasswortHaken" Style="{StaticResource Schalter}">
+                    <StackPanel>
+                      <TextBlock Text="Serverpasswort" FontSize="14"/>
+                      <TextBlock Text="Nur, wenn der Server eins verlangt" Foreground="{StaticResource Leise}" FontSize="12" Margin="0,1,0,0"/>
+                    </StackPanel>
+                  </CheckBox>
+                </Border>
+                <!-- 4GB-Patch (src/Laa.cs): freiwillig, der Launcher setzt das Bit in der gta_sa.exe nur, wenn es fehlt -->
+                <Border BorderBrush="{StaticResource Trenner}" BorderThickness="0,1,0,0" Padding="0,12,0,12">
+                  <CheckBox x:Name="LaaHaken" Style="{StaticResource Schalter}"
+                            ToolTip="Gegen Abstürze bei hoher Auflösung (1440p, 4K): GTA darf dann 4 statt 2 GB Speicher nutzen. Standardmäßig an. Der Launcher setzt den Patch nur, wenn er in deiner gta_sa.exe fehlt, und sichert sie vorher. Ausschalten nimmt ihn wieder zurück.">
+                    <StackPanel>
+                      <TextBlock Text="4GB-Patch" FontSize="14"/>
+                      <TextBlock Text="Hilft bei 1440p und 4K gegen Abstürze" Foreground="{StaticResource Leise}" FontSize="12" Margin="0,1,0,0"/>
+                    </StackPanel>
+                  </CheckBox>
+                </Border>
+
+                <!-- Was der Launcher laedt -->
+                <Border BorderBrush="{StaticResource Trenner}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                  <Button x:Name="KnopfDateien" Style="{StaticResource Verweis}" Content="Was wird geladen?" HorizontalAlignment="Left" FontSize="14"/>
+                </Border>
+                <Border x:Name="BereichAuswahl" Margin="0,10,0,0" Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}"
+                        BorderThickness="1" CornerRadius="16" Visibility="Collapsed">
+                  <Grid>
+                    <StackPanel x:Name="ListeLaedt" VerticalAlignment="Center" Margin="16,14">
+                      <TextBlock x:Name="ListeStatus" Foreground="{StaticResource Gedaempft}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"/>
+                      <Button x:Name="KnopfErneut" Style="{StaticResource Nebenknopf}" Content="Erneut versuchen" HorizontalAlignment="Center"
+                              Height="36" Margin="0,10,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+                    <ScrollViewer x:Name="ListeRollen" VerticalScrollBarVisibility="Auto" Visibility="Collapsed" Padding="0,4" MaxHeight="250">
+                      <ItemsControl x:Name="Liste">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Grid Margin="12,8,12,8">
+                              <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                              </Grid.ColumnDefinitions>
+                              <CheckBox IsChecked="{Binding Gewaehlt, Mode=TwoWay}" IsEnabled="{Binding Waehlbar}" VerticalAlignment="Top"
+                                        Margin="0,1,12,0" ToolTip="{Binding HakenHinweis}"/>
+                              <StackPanel Grid.Column="1" Opacity="{Binding Deckkraft}">
+                                <TextBlock FontSize="14" FontWeight="Medium" TextWrapping="Wrap">
+                                  <Run Text="{Binding Name, Mode=OneWay}"/><Run Text="{Binding Art, Mode=OneWay}" Foreground="{StaticResource Leise}" FontSize="12" FontWeight="Normal"/>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Info}" Foreground="{Binding InfoFarbe}" FontSize="12" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Beschreibung}" Foreground="{StaticResource Gedaempft}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                <TextBlock FontSize="11" Foreground="{StaticResource Leise}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
+                                  <Run Text="{Binding QuelleVor, Mode=OneWay}"/><Hyperlink NavigateUri="{Binding Quelle}"><Run Text="{Binding Quelle, Mode=OneWay}"/></Hyperlink><Run Text="{Binding QuelleNach, Mode=OneWay}"/>
+                                </TextBlock>
+                              </StackPanel>
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </ScrollViewer>
+                  </Grid>
+                </Border>
+
+                <!-- Seltene Aktionen -->
+                <UniformGrid Columns="2" Margin="0,18,0,0">
+                  <Button x:Name="KnopfGruendlich" Style="{StaticResource Nebenknopf}" Content="Gründlich prüfen" Margin="0,0,4,8"
+                          ToolTip="Rechnet die Prüfsumme jeder Datei nach, statt nur Größe und Änderungszeit zu vergleichen."/>
+                  <Button x:Name="KnopfProtokoll" Style="{StaticResource Nebenknopf}" Content="Protokoll öffnen" Margin="4,0,0,8" Visibility="Collapsed"
+                          ToolTip="Öffnet das Protokoll des letzten Durchgangs im GTA-Verzeichnis."/>
+                  <Button x:Name="KnopfDeinstallieren" Style="{StaticResource Nebenknopf}" Content="Deinstallieren" Foreground="{StaticResource Fehler}"
+                          Margin="0,0,4,8"
+                          ToolTip="Entfernt alles, was der Launcher eingerichtet hat, und holt ersetzte Dateien in der Fassung von vorher zurück."/>
+                </UniformGrid>
+                <TextBlock x:Name="Fusszeile" Foreground="{StaticResource Leise}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                           Text="Der Launcher schreibt nur ins GTA-Verzeichnis und sichert vorher, was er ersetzt. Deine eigenen Mods fasst er nicht an."/>
+              </StackPanel>
+            </ScrollViewer>
           </Grid>
         </Border>
       </Grid>
 
-      <!-- Fuss -->
-      <Grid Grid.Row="2" Margin="28,18,28,22">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <TextBlock x:Name="Fusszeile" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,20,0"
-                   Text="Der Launcher schreibt nur ins GTA-Verzeichnis und sichert vorher, was er ersetzt. Deine eigenen Mods fasst er nicht an."/>
-        <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button x:Name="KnopfProblem" Style="{StaticResource Nebenknopf}" Content="Problem melden" Height="40" FontSize="14" Margin="8,0,0,0" Visibility="Collapsed"
-                  ToolTip="Schickt dem Team die Programme und Logs vom letzten Spiel, wenn Sprach-Chat oder Browser-Oberflächen nicht gehen."/>
-          <Button x:Name="KnopfDeinstallieren" Style="{StaticResource Nebenknopf}" Content="Deinstallieren" Height="40" FontSize="14" Margin="8,0,0,0"
-                  ToolTip="Entfernt alles, was der Launcher eingerichtet hat, und holt ersetzte Dateien in der Fassung von vorher zurück."/>
-          <Button x:Name="KnopfGruendlich" Style="{StaticResource Nebenknopf}" Content="Gründlich prüfen" Height="40" FontSize="14" Margin="8,0,0,0"
-                  ToolTip="Rechnet die Prüfsumme jeder Datei nach, statt nur Größe und Änderungszeit zu vergleichen."/>
-          <Button x:Name="KnopfProtokoll" Style="{StaticResource Nebenknopf}" Content="Protokoll öffnen" Height="40" FontSize="14" Margin="8,0,0,0" Visibility="Collapsed"/>
-          <Button x:Name="KnopfAbbrechen" Style="{StaticResource Nebenknopf}" Content="Abbrechen" Height="40" FontSize="14" Margin="8,0,0,0" Visibility="Collapsed"/>
-        </StackPanel>
-      </Grid>
-
       <!-- Absturzbericht: SA-MP hat seit dem letzten Start eine neue crashinfo.txt geschrieben (src/Absturzbericht.cs);
            dasselbe Fenster fragt nach einer Diagnose, wenn SampVoice die Grafik von GTA nicht gefunden hat (src/Diagnose.cs) -->
-      <Grid x:Name="AbsturzFenster" Grid.RowSpan="3" Background="#A6000000" Visibility="Collapsed">
-        <Border Width="620" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
+      <Grid x:Name="AbsturzFenster" Background="#A6000000" Visibility="Collapsed">
+        <Border Width="600" MaxHeight="488" CornerRadius="26" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
                 VerticalAlignment="Center">
-          <StackPanel Margin="28,26,28,24">
-            <Border x:Name="AbsturzKreis" Width="56" Height="56" CornerRadius="28" Background="#26FFB547" HorizontalAlignment="Left">
-              <TextBlock x:Name="AbsturzSymbol" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{StaticResource Warnung}"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <TextBlock x:Name="AbsturzTitel" Text="Dein Spiel ist abgestürzt" FontFamily="{DynamicResource Anzeige}" FontSize="26"
-                       FontWeight="Bold" Margin="0,16,0,0"/>
-            <TextBlock x:Name="AbsturzText" Foreground="{StaticResource Gedaempft}" FontSize="15" TextWrapping="Wrap" Margin="0,6,0,0"/>
-            <StackPanel x:Name="AbsturzEingabe" Margin="0,18,0,0">
-              <TextBlock x:Name="AbsturzFrage" Text="Was hast du gerade gemacht? (freiwillig)" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
-              <Border Style="{StaticResource Feld}" Height="104" Margin="0,6,0,0">
-                <TextBox x:Name="AbsturzKommentar" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
-                         CaretBrush="White" Padding="12,10" FontSize="14" TextWrapping="Wrap" AcceptsReturn="True" MaxLength="1000"
-                         VerticalScrollBarVisibility="Auto"/>
-              </Border>
-              <TextBlock x:Name="AbsturzHinweis" Foreground="{StaticResource Leise}" FontSize="13" TextWrapping="Wrap" Margin="0,10,0,0"/>
-              <!-- Genau den Text zeigen, der gesendet wuerde (Editor), bevor der Spieler auf Senden klickt -->
-              <Button x:Name="KnopfAbsturzAnsehen" Style="{StaticResource Verweis}" Content="Ansehen, was gesendet wird" HorizontalAlignment="Left"
-                      Margin="0,8,0,0"/>
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="26,22,26,22">
+              <StackPanel Orientation="Horizontal">
+                <Border x:Name="AbsturzKreis" Width="36" Height="36" CornerRadius="18" Background="#26FFB547" VerticalAlignment="Center">
+                  <TextBlock x:Name="AbsturzSymbol" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource Warnung}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock x:Name="AbsturzTitel" Text="Dein Spiel ist abgestürzt" FontFamily="{DynamicResource Anzeige}" FontSize="22"
+                           FontWeight="Bold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+              </StackPanel>
+              <TextBlock x:Name="AbsturzText" Foreground="{StaticResource Gedaempft}" FontSize="14" TextWrapping="Wrap" Margin="0,10,0,0"/>
+              <StackPanel x:Name="AbsturzEingabe" Margin="0,14,0,0">
+                <TextBlock x:Name="AbsturzFrage" Text="Was hast du gerade gemacht? (freiwillig)" Foreground="{StaticResource Gedaempft}" FontSize="13"/>
+                <Border Style="{StaticResource Feld}" Height="80" Margin="0,6,0,0" Background="{StaticResource Flaeche2}">
+                  <TextBox x:Name="AbsturzKommentar" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Text}"
+                           CaretBrush="White" Padding="12,10" FontSize="14" TextWrapping="Wrap" AcceptsReturn="True" MaxLength="1000"
+                           VerticalScrollBarVisibility="Auto"/>
+                </Border>
+                <TextBlock x:Name="AbsturzHinweis" Foreground="{StaticResource Leise}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                <!-- Genau den Text zeigen, der gesendet wuerde (Editor), bevor der Spieler auf Senden klickt -->
+                <Button x:Name="KnopfAbsturzAnsehen" Style="{StaticResource Verweis}" Content="Ansehen, was gesendet wird" HorizontalAlignment="Left"
+                        Margin="0,6,0,0"/>
+              </StackPanel>
+              <TextBlock x:Name="AbsturzStatus" FontSize="14" TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed"/>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button x:Name="KnopfAbsturzNein" Style="{StaticResource Nebenknopf}" Content="Nicht senden" Height="44" FontSize="14"
+                        Padding="20,0" Margin="0,0,10,0"/>
+                <Button x:Name="KnopfAbsturzSenden" Style="{StaticResource Hauptknopf}" Content="Bericht senden" MinWidth="160"/>
+              </StackPanel>
             </StackPanel>
-            <TextBlock x:Name="AbsturzStatus" FontSize="14" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-              <Button x:Name="KnopfAbsturzNein" Style="{StaticResource Nebenknopf}" Content="Nicht senden" Height="48" FontSize="15"
-                      Padding="22,0" Margin="0,0,10,0"/>
-              <Button x:Name="KnopfAbsturzSenden" Style="{StaticResource Hauptknopf}" Content="Bericht senden" MinWidth="170"/>
-            </StackPanel>
-          </StackPanel>
+          </ScrollViewer>
         </Border>
       </Grid>
 
       <!-- Andere SA-MP-Version im GTA-Verzeichnis: fragen, ob der Launcher die passende einrichten soll (Ablauf.Planen) -->
-      <Grid x:Name="SampFenster" Grid.RowSpan="3" Background="#A6000000" Visibility="Collapsed">
-        <Border Width="620" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
+      <Grid x:Name="SampFenster" Background="#A6000000" Visibility="Collapsed">
+        <Border Width="560" CornerRadius="26" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1"
                 VerticalAlignment="Center">
-          <StackPanel Margin="28,26,28,24">
-            <Border Width="56" Height="56" CornerRadius="28" Background="#26FFB547" HorizontalAlignment="Left">
-              <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{StaticResource Warnung}"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <TextBlock Text="Andere SA-MP-Version gefunden" FontFamily="{DynamicResource Anzeige}" FontSize="26"
-                       FontWeight="Bold" Margin="0,16,0,0"/>
-            <TextBlock x:Name="SampText" Foreground="{StaticResource Gedaempft}" FontSize="15" TextWrapping="Wrap" Margin="0,6,0,0"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
-              <Button x:Name="KnopfSampAbbrechen" Style="{StaticResource Nebenknopf}" Content="Abbrechen" Height="48" FontSize="15"
-                      Padding="22,0" Margin="0,0,10,0"/>
-              <Button x:Name="KnopfSampEinrichten" Style="{StaticResource Hauptknopf}" Content="Einrichten" MinWidth="170"/>
+          <StackPanel Margin="26,22,26,22">
+            <StackPanel Orientation="Horizontal">
+              <Border Width="36" Height="36" CornerRadius="18" Background="#26FFB547" VerticalAlignment="Center">
+                <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource Warnung}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <TextBlock Text="Andere SA-MP-Version gefunden" FontFamily="{DynamicResource Anzeige}" FontSize="22"
+                         FontWeight="Bold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock x:Name="SampText" Foreground="{StaticResource Gedaempft}" FontSize="14" TextWrapping="Wrap" Margin="0,10,0,0"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+              <Button x:Name="KnopfSampAbbrechen" Style="{StaticResource Nebenknopf}" Content="Abbrechen" Height="44" FontSize="14"
+                      Padding="20,0" Margin="0,0,10,0"/>
+              <Button x:Name="KnopfSampEinrichten" Style="{StaticResource Hauptknopf}" Content="Einrichten" MinWidth="160"/>
             </StackPanel>
           </StackPanel>
         </Border>
       </Grid>
 
-      <!-- Alles, was gerade passiert, in einem Fenster ueber dem Launcher („Mehr anzeigen“) -->
-      <Grid x:Name="ProtokollFenster" Grid.RowSpan="3" Background="#A6000000" Visibility="Collapsed">
-        <Border Width="780" Height="540" CornerRadius="30" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1">
-          <Grid Margin="28,24,28,24">
+      <!-- Alles, was gerade passiert, in einem Fenster ueber dem Launcher („Details“) -->
+      <Grid x:Name="ProtokollFenster" Background="#A6000000" Visibility="Collapsed">
+        <Border Width="740" Height="440" CornerRadius="26" Background="#0B0E15" BorderBrush="{StaticResource Rand}" BorderThickness="1">
+          <Grid Margin="24,20,24,20">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock Text="Was gerade passiert" FontFamily="{DynamicResource Anzeige}" FontSize="22" FontWeight="SemiBold"/>
-            <Border Grid.Row="1" Margin="0,14,0,0" Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="16">
+            <TextBlock Text="Was gerade passiert" FontFamily="{DynamicResource Anzeige}" FontSize="20" FontWeight="SemiBold"/>
+            <Border Grid.Row="1" Margin="0,12,0,0" Background="{StaticResource Flaeche}" BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="16">
               <ScrollViewer x:Name="ProtokollRollen" VerticalScrollBarVisibility="Auto" Padding="0,10">
-                <ItemsControl x:Name="Protokoll">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Grid Margin="18,3,18,3">
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="46"/>
-                          <ColumnDefinition Width="22"/>
-                          <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding Zeit}" Foreground="{StaticResource Leise}" FontSize="12" Margin="0,2,0,0"/>
-                        <TextBlock Grid.Column="1" Text="{Binding Symbol}" Foreground="{Binding SymbolFarbe}" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="0,3,0,0"/>
-                        <TextBlock Grid.Column="2" TextWrapping="Wrap" FontSize="13" Foreground="{Binding TextFarbe}">
-                          <Run Text="{Binding Vor, Mode=OneWay}"/><Hyperlink NavigateUri="{Binding Url}"><Run Text="{Binding Url, Mode=OneWay}"/></Hyperlink><Run Text="{Binding Nach, Mode=OneWay}"/>
-                        </TextBlock>
-                      </Grid>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <ItemsControl x:Name="Protokoll" ItemTemplate="{StaticResource ProtokollZeile}"/>
               </ScrollViewer>
             </Border>
-            <Button x:Name="KnopfFensterZu" Grid.Row="2" Style="{StaticResource Nebenknopf}" Content="Schließen" Height="40" FontSize="14"
-                    HorizontalAlignment="Right" Margin="0,16,0,0"/>
+            <Button x:Name="KnopfFensterZu" Grid.Row="2" Style="{StaticResource Nebenknopf}" Content="Schließen"
+                    HorizontalAlignment="Right" Margin="0,14,0,0"/>
           </Grid>
         </Border>
       </Grid>

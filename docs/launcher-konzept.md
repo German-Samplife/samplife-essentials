@@ -32,7 +32,7 @@ Gründe:
 2. **Jeder Start:**
    1. Manifest laden. Ist der Launcher selbst veraltet, aktualisiert er sich zuerst (siehe 7.).
    2. Dateien prüfen und anzeigen, was aktuell ist und was fehlt.
-3. **„Spielen“:**
+3. **„Verbinden“** (bis 2.7.9 „Spielen“):
    1. Fehlendes und Veraltetes laden, mit Fortschrittsbalken und dem Feld „Was gerade passiert“.
    2. Den geprüften Stand sichern.
    3. Beim Server anmelden (siehe 5.).

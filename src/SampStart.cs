@@ -98,10 +98,10 @@ namespace SamplifeEssentials
         }
 
         /// <summary>
-        /// Fragt den Server wie die Serverliste von SA-MP (Abfrage "i"), ob er ein Passwort verlangt. null, wenn er nicht
-        /// antwortet.
+        /// Fragt den Server wie die Serverliste von SA-MP (Abfrage "i"): ob er ein Passwort verlangt, wie viele Spieler online
+        /// sind und wie viele Plaetze es gibt. null, wenn er nicht antwortet.
         /// </summary>
-        public static bool? VerlangtPasswort(string adresse, int port)
+        public static ServerAntwort Abfragen(string adresse, int port)
         {
             try
             {
@@ -123,8 +123,14 @@ namespace SamplifeEssentials
                         {
                             var absender = new IPEndPoint(IPAddress.Any, 0);
                             var antwort = udp.Receive(ref absender);
-                            // Antwort: dieselben 11 Bytes, dann 1 Byte "Passwort ja/nein", Spieler, Plaetze, Name ...
-                            if (antwort.Length > 11 && antwort[10] == (byte)'i') return antwort[11] != 0;
+                            // Antwort: dieselben 11 Bytes, dann 1 Byte "Passwort ja/nein", 2 Bytes Spieler, 2 Bytes Plaetze, Name ...
+                            if (antwort.Length >= 16 && antwort[10] == (byte)'i')
+                                return new ServerAntwort
+                                {
+                                    Passwort = antwort[11] != 0,
+                                    Spieler = antwort[12] | (antwort[13] << 8),
+                                    Plaetze = antwort[14] | (antwort[15] << 8)
+                                };
                         }
                         catch (SocketException) { }
                     }
@@ -132,6 +138,14 @@ namespace SamplifeEssentials
             }
             catch (Exception) { }
             return null;
+        }
+
+        /// <summary>Verlangt der Server ein Passwort? null, wenn er nicht antwortet.</summary>
+        public static bool? VerlangtPasswort(string adresse, int port)
+        {
+            var antwort = Abfragen(adresse, port);
+            if (antwort == null) return null;
+            return antwort.Passwort;
         }
 
         static string Ipv4(string adresse)
@@ -247,5 +261,13 @@ namespace SamplifeEssentials
         static extern IntPtr GetModuleHandle(string modul);
         [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)]
         static extern IntPtr GetProcAddress(IntPtr modul, string name);
+    }
+
+    /// <summary>Antwort des Servers auf die Abfrage der Serverliste (SampStart.Abfragen).</summary>
+    public class ServerAntwort
+    {
+        public bool Passwort;
+        public int Spieler;
+        public int Plaetze;
     }
 }

@@ -5,7 +5,8 @@ using System.Reflection;
 namespace SamplifeEssentials
 {
     /// <summary>
-    /// Inter und Inter Display (SIL Open Font License 1.1, LIZENZEN/Inter-OFL-1.1.txt) stecken in der .exe, damit der
+    /// Inter, Inter Display (SIL Open Font License 1.1, LIZENZEN/Inter-OFL-1.1.txt) und Anton fuer den grossen Titel (ebenfalls
+    /// OFL 1.1, LIZENZEN/Anton-OFL-1.1.txt) stecken in der .exe, damit der
     /// Launcher ueberall aussieht wie die Website. WPF laedt Schriften nur aus Dateien oder kompilierten Ressourcen; deshalb
     /// werden sie beim Start nach %LOCALAPPDATA%\German Samplife\Launcher\schriften gelegt, wenn sie dort fehlen.
     /// Inter Display ersetzt Inter Tight der Website: Inter Tight gibt es nur als variable Schrift, und davon zeigt WPF nur
@@ -16,7 +17,7 @@ namespace SamplifeEssentials
         static readonly string[] Dateien =
         {
             "Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf",
-            "InterDisplay-SemiBold.ttf", "InterDisplay-Bold.ttf"
+            "InterDisplay-SemiBold.ttf", "InterDisplay-Bold.ttf", "Anton-Regular.ttf"
         };
 
         /// <summary>Ordner mit den Schriften als Adresse fuer FontFamily, oder null, wenn das nicht geht.</summary>
