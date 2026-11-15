@@ -481,7 +481,8 @@ namespace SamplifeEssentials
             Wurzel.AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler(LinkGeklickt));
             Wurzel.Closing += delegate(object s, CancelEventArgs e)
             {
-                if (modus != Modus.Laeuft) return;
+                // Bildschirmfotos zeigen „lädt gerade“ nur vor und schliessen ohne Rueckfrage
+                if (modus != Modus.Laeuft || optionen.Bildschirmfoto != "") return;
                 var antwort = MessageBox.Show(Wurzel, "Der Launcher lädt gerade. Wirklich abbrechen?", Wurzel.Title,
                     MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (antwort != MessageBoxResult.Yes) { e.Cancel = true; return; }
@@ -728,7 +729,9 @@ namespace SamplifeEssentials
             knopfAbschalten.Visibility = abschaltbar ? Visibility.Visible : Visibility.Collapsed;
             // Im Hauptbereich nur eine Zeile, bei einer einzelnen Datei mit ihrem Namen
             fremdZeile.Visibility = bereichFremd.Visibility;
-            fremdKurz.Text = fremde.Count == 1 && !programme ? fremdTitel.Text + ": " + fremde[0].Pfad : fremdTitel.Text;
+            fremdKurz.Text = fremde.Count == 1 && !programme ? fremdTitel.Text + ": " + fremde[0].Pfad
+                : fremde.Count == 1 || loader == fremde.Count ? fremdTitel.Text
+                : fremde.Count + " Hinweise zu deinem GTA-Verzeichnis";
         }
 
         /// <summary>„Ausschalten“: fremde Loader und Konflikte umbenennen, nach Rueckfrage. Geloescht wird nichts.</summary>

@@ -25,6 +25,8 @@
     <SolidColorBrush x:Key="Fehler" Color="#FF8A8F"/>
     <!-- Dunkle, fast deckende Flaeche ueber dem Bild (Felder, Kasten der Updates) -->
     <SolidColorBrush x:Key="Glas" Color="#CC0B0E15"/>
+    <!-- Ordner, 16 x 13 -->
+    <Geometry x:Key="OrdnerForm">M1,2.5 L6,2.5 L7.6,4.2 L15,4.2 L15,12.5 L1,12.5 Z</Geometry>
 
     <!-- Hauptknopf: rund, vollblau, eine Hauptaktion pro Ansicht -->
     <Style x:Key="Hauptknopf" TargetType="Button">
@@ -94,8 +96,8 @@
                   </Rectangle.RenderTransform>
                 </Rectangle>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock x:Name="Symbol" Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="17" VerticalAlignment="Center"
-                             Margin="0,1,14,0" Visibility="Collapsed"/>
+                  <Path x:Name="Symbol" Data="M0,0 L12,7 L0,14 Z" Fill="{TemplateBinding Foreground}" VerticalAlignment="Center"
+                        Margin="0,1,14,0" Visibility="Collapsed"/>
                   <Ellipse x:Name="Punkt" Width="9" Height="9" Fill="{StaticResource Erfolg}" VerticalAlignment="Center" Margin="0,1,12,0"
                            Visibility="Collapsed"/>
                   <ContentPresenter VerticalAlignment="Center"/>
@@ -482,7 +484,7 @@
       </Grid>
 
       <!-- Links: grosser Titel, ein Satz zum Stand, dann Name, Passwort und „Verbinden“ -->
-      <StackPanel x:Name="Haupt" Width="400" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="36,82,0,0">
+      <StackPanel x:Name="Haupt" Width="400" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="36,90,0,0">
         <StackPanel x:Name="TitelBlock">
           <StackPanel.RenderTransform>
             <TranslateTransform x:Name="TitelFahrt"/>
@@ -551,8 +553,8 @@
                           <ColumnDefinition Width="*"/>
                           <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource Gedaempft}"
-                                   VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Path Data="{StaticResource OrdnerForm}" Stroke="{StaticResource Gedaempft}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                              VerticalAlignment="Center" Margin="0,0,12,0"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                           <TextBlock Text="{Binding Pfad}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
                                      ToolTip="{Binding Pfad}"/>
@@ -666,7 +668,7 @@
       </StackPanel>
 
       <!-- Rechts: die neuesten Updates aus der Community -->
-      <Border Width="270" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,82,20,0" Background="{StaticResource Glas}"
+      <Border Width="270" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,90,20,0" Background="{StaticResource Glas}"
               BorderBrush="{StaticResource Rand}" BorderThickness="1" CornerRadius="20" Padding="8,14,8,8">
         <StackPanel>
           <TextBlock Text="Neu auf dem Server" FontFamily="{DynamicResource Anzeige}" FontSize="16" FontWeight="SemiBold" Margin="10,0,10,6"/>
@@ -699,7 +701,8 @@
           </Grid.ColumnDefinitions>
           <Button x:Name="KnopfFussPfad" Style="{StaticResource Zeilenknopf}" Padding="10,6" HorizontalAlignment="Left" ToolTip="GTA-Verzeichnis ändern">
             <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource Gedaempft}" VerticalAlignment="Center"/>
+              <Path Data="{StaticResource OrdnerForm}" Stroke="{StaticResource Gedaempft}" StrokeThickness="1.3" StrokeLineJoin="Round"
+                    VerticalAlignment="Center"/>
               <TextBlock x:Name="FussPfad" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" MaxWidth="560" TextTrimming="CharacterEllipsis"
                          Text="Kein GTA-Verzeichnis gewählt"/>
               <TextBlock x:Name="FussSymbol" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="10,1,0,0" VerticalAlignment="Center"/>
