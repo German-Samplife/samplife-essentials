@@ -5,7 +5,10 @@ Aufruf (Python 3, ohne Zusatzpakete):
     python posen_bauen.py samplife.ifp quelle.ifp:anim=name [quelle.ifp:anim=name ...]
 
 Jede Angabe nimmt die Animation `anim` aus der IFP-Datei `quelle.ifp` (Format ANP3, wie
-GTA SA) und legt sie unter `name` in den Block `samplife`. Behalten werden nur die
+GTA SA) und legt sie unter `name` in den Block `samplife`. Mit `@ende` hinter dem Namen
+(`quelle.ifp:anim=name@ende`) wird daraus eine starre Pose aus dem letzten Keyframe jedes
+Knochens: Bewegt die Quelle nur einzelne Knochen kurz in ihre Stellung, springen sie in der
+Schleife sonst jede Runde zurueck und die Arme zappeln. Behalten werden nur die
 Knochen des Oberkoerpers, dieselben wie bei CARRY/crry_prtial (Wirbelsaeule, Kopf,
 Arme, Haende); Wurzel, Becken und Beine fallen weg, damit die Beine beim Gehen der
 Laufanimation folgen. Eine starre Pose mit nur einem Keyframe bekommt einen zweiten,
@@ -74,11 +77,21 @@ def zwei_keyframes(typ, roh):
     return erstes + zweites
 
 
-def teilanimation(name, flags, seqs):
+def letzter_keyframe(typ, roh, frames):
+    """Nur der letzte Keyframe, mit Zeit 0."""
+    letztes = roh[FRAME[typ] * (frames - 1):]
+    if typ in (3, 4):
+        return letztes[:8] + struct.pack("<h", 0) + letztes[10:]
+    return letztes[:-4] + struct.pack("<f", 0.0)
+
+
+def teilanimation(name, flags, seqs, starr=False):
     teile, groesse = [], 0
     for sname, typ, frames, bone, roh in seqs:
         if bone not in OBERKOERPER:
             continue
+        if starr and frames > 1:
+            roh, frames = letzter_keyframe(typ, roh, frames), 1
         if frames == 1:
             roh, frames = zwei_keyframes(typ, roh), 2
         teile.append(name24(sname) + struct.pack("<III", typ, frames, bone) + roh)
@@ -99,15 +112,18 @@ def main(argv):
         if not m:
             sys.exit(f"Angabe nicht verstanden: {angabe} (erwartet quelle.ifp:anim=name)")
         pfad, anim, name = m.group(1), m.group(2).lower(), m.group(3)
+        starr = name.endswith("@ende")
+        if starr:
+            name = name[:-len("@ende")]
         if not NAME.match(name) or name in namen:
             sys.exit(f"Name ungueltig oder doppelt: {name}")
         namen.add(name)
         anims = dateien.setdefault(pfad, lesen(pfad))
         if anim not in anims:
             sys.exit(f"{pfad}: keine Animation {anim} (vorhanden: {', '.join(anims)})")
-        roh, knochen = teilanimation(name, *anims[anim])
+        roh, knochen = teilanimation(name, *anims[anim], starr=starr)
         inhalt += roh
-        print(f"{name:24s} aus {pfad}:{anim}, {knochen} Knochen")
+        print(f"{name:24s} aus {pfad}:{anim}, {knochen} Knochen" + (", starr (letzter Keyframe)" if starr else ""))
     inhalt = name24(BLOCK) + struct.pack("<I", len(angaben)) + inhalt
     datei = b"ANP3" + struct.pack("<I", len(inhalt)) + inhalt
     open(ziel, "wb").write(datei)
