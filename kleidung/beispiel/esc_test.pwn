@@ -32,9 +32,19 @@ static bool:gKeineAntwort[MAX_PLAYERS];
 
 public OnFilterScriptInit()
 {
-	cef_subscribe("esc:bereit", "EscBereit");
-	cef_subscribe("esc:gedrueckt", "EscGedrueckt");
+	// Nicht hier abonnieren: Per loadfs nachgeladen kennt open.mp das Script in
+	// OnFilterScriptInit noch nicht, cef_subscribe findet es nicht und tut nichts.
+	SetTimer("EscAbonnieren", 0, false);
 	print("[ESC] Test-Filterscript geladen, /esctest an");
+	return 1;
+}
+
+forward EscAbonnieren();
+public EscAbonnieren()
+{
+	new bereit = cef_subscribe("esc:bereit", "EscBereit");
+	new gedrueckt = cef_subscribe("esc:gedrueckt", "EscGedrueckt");
+	printf("[ESC] abonniert: esc:bereit %d, esc:gedrueckt %d", bereit, gedrueckt);
 	return 1;
 }
 
@@ -107,6 +117,7 @@ public OnPlayerCommandText(playerid, cmdtext[])
 
 	if (!strcmp(cmdtext, "/esctest an", true))
 	{
+		EscAbonnieren();
 		gOffen[playerid] = false;
 		cef_emit_event(playerid, "esc:an");
 		SendClientMessage(playerid, FARBE_INFO, "[ESC] esc:an gesendet, warte auf esc:bereit.");
