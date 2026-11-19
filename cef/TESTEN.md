@@ -73,4 +73,19 @@ Jeweils im Modus `mouse`, wenn nichts anderes steht.
 - [ ] Alter Client (Release `cef-f14fe4f`) mit neuem Server: `/nurmaus` zeigt Version `100` und den Hinweis, die Testseite bekommt volle Eingabe, nichts stürzt ab.
 - [ ] Neuer Client mit altem Server (ohne Patch): Verbindung klappt, bestehende Seiten laufen.
 
+## Speicher versteckter Seiten (`speicher.patch`)
+
+Am besten auf dem Testserver mit dem Gamemode, weil dort Seiten versteckt vorgeladen werden (Handy, Inventar, F3-Menü, Fahrzeugmenü, Funk, Notify). `"log_level": "debug"` in `cef/config.json`, dann steht in `cef_client.log` je Seite `hidden browser released its view` und `browser view created`. Den Speicher von `gta_sa.exe` zeigen der Task-Manager (Details, Spalte „Zugesicherte Größe“) oder Process Explorer („Private Bytes“); VMMap von Sysinternals zeigt zusätzlich den größten freien Block.
+
+- [ ] Nach dem Login: Für jede versteckt vorgeladene Seite steht `hidden browser released its view` im Log oder gar kein `browser view created`. Der Speicher liegt deutlich unter dem alten Client, bei gleicher Auflösung gemessen.
+- [ ] Handy (`/handy` bzw. Taste), Inventar, F3-Menü und Fahrzeugmenü je 20-mal öffnen und schließen: Die Seite erscheint jedes Mal mit Inhalt, ohne altes Bild und ohne schwarzes Rechteck. Der Speicher wächst dabei nicht stetig.
+- [ ] Seite offen lassen, ESC (Pausemenü) und zurück: Die Seite ist sofort wieder da, im Log kein neues `released`/`created`.
+- [ ] Seite offen, Alt+Tab und zurück: wie beim Pausemenü.
+- [ ] Seite schließen lassen, während das Pausemenü offen ist (z. B. Handy offen, ESC, vom Server schließen lassen): Nach dem Pausemenü bleibt sie zu.
+- [ ] Auflösung im Spiel ändern (Device-Reset), einmal mit offener und einmal mit geschlossener Seite: Danach öffnen sich alle Seiten in der neuen Größe, Mausklicks treffen.
+- [ ] Fenstergröße im Fenstermodus ändern, dann eine versteckte Seite öffnen: richtige Größe.
+- [ ] Ein `<select>` auf einer Seite aufklappen, Seite schließen und wieder öffnen: kein Absturz, Liste zu oder richtig gezeichnet.
+- [ ] Notify (Meldungen, HUD, Tacho) läuft durchgehend, auch nach Pausemenü und Alt+Tab.
+- [ ] Zwei Stunden normal spielen: kein Absturz, kein Einfrieren, Speicher stabil.
+
 Gefundene Probleme bitte mit SA-MP-Version, Schritt und `cef_client.log` aus dem GTA-Verzeichnis melden (`"log_level": "debug"` in `cef/config.json` schreibt mehr).
