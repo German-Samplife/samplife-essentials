@@ -1,5 +1,5 @@
 // Filterscript zum Testen der Posen (Teilanimationen) des Plugins (siehe kleidung/README.md).
-// Braucht wie kleidung_test.pwn die samp-cef-Server-Komponente und deren cef.inc. Beim
+// Braucht die samp-cef-Server-Komponente und deren cef.inc. Beim
 // Spieler: samp-cef-Client ab 0x000300 und samplife-kleidung.dll ab 0.6.0 in <GTA>/cef/plugins/.
 //
 // Laden per RCON: /rcon loadfs pose_test, entladen: /rcon unloadfs pose_test (beendet alle Posen).
