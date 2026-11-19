@@ -440,6 +440,8 @@ impl State {
 
             Nachricht::EscOriginal => self.esc.original_oeffnen(),
 
+            Nachricht::EscBeenden => self.esc.beenden(),
+
             Nachricht::LippenAn(id) => self.lippen.an(ver, id),
 
             Nachricht::LippenAus(id) => self.lippen.aus(ver, id),

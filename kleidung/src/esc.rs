@@ -7,7 +7,7 @@
 //! to the server, which opens its page and answers `esc:offen` (or `esc:zu` /
 //! `esc:original`). No answer within `RUECKFALL`: the plugin opens GTA's own menu, so a
 //! hanging server never leaves the player without a menu. `esc:original` opens GTA's menu
-//! on purpose (settings, quit).
+//! on purpose (settings). `esc:beenden` quits the game like SA-MP's `/q`, after the page asked.
 //!
 //! ESC with GTA's menu open, with the SA-MP chat input or a SA-MP dialog open, before
 //! `esc:an` and after the connection ended goes to GTA as before. A samp-cef page with
@@ -35,7 +35,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use client_api::samp::inputs::{Dialog, Input};
+use client_api::samp::inputs::{Dialog, Input, CMDPROC};
 
 const ESC_NEU: usize = 0xB733A8;
 const ESC_ALT: usize = 0xB73138;
@@ -161,6 +161,18 @@ impl Esc {
         self.original += 1;
     }
 
+    /// `esc:beenden`: quit like SA-MP's `/q`; without the command GTA's menu opens (quit from there)
+    pub fn beenden(&mut self) {
+        self.warten_seit = None;
+        self.offen = false;
+        crate::log!("ESC-Menü: Spiel beenden");
+
+        if !std::panic::catch_unwind(|| samp_befehl(&["q", "quit"])).unwrap_or(false) {
+            crate::log!("ESC-Menü: /q nicht gefunden, GTA-Menü zum Beenden");
+            self.original_oeffnen();
+        }
+    }
+
     pub fn getrennt(&mut self) {
         if self.gewollt {
             crate::log!("ESC-Menü aus (Verbindung getrennt)");
@@ -260,6 +272,46 @@ fn ersatz(ziel: usize) -> [u8; 18] {
     b[7..9].copy_from_slice(&[0x0F, 0x84]);
     b[9..13].copy_from_slice(&(KEIN_ESC as u32).wrapping_sub(STELLE as u32 + 13).to_le_bytes());
     b
+}
+
+/// Length of CInput's command list (MAX_CLIENT_CMDS in client_api, not public)
+const BEFEHLE_MAX: usize = 144;
+const BEFEHL_NAME: usize = 33;
+
+/// Runs a SA-MP client command from CInput's list without arguments, as typing `/name` does.
+/// False if SA-MP's input or the command is not there.
+fn samp_befehl(namen: &[&str]) -> bool {
+    let Some(input) = Input::get() else {
+        return false;
+    };
+    let input: *const Input = input;
+
+    // CInput is packed: read every field unaligned through raw pointers
+    unsafe {
+        let anzahl = std::ptr::addr_of!((*input).m_nCommandCount).read_unaligned();
+        let anzahl = (anzahl.max(0) as usize).min(BEFEHLE_MAX);
+        let namen_ptr = std::ptr::addr_of!((*input).m_szCommandName) as *const u8;
+        let procs = std::ptr::addr_of!((*input).m_pCommandProc) as *const CMDPROC;
+
+        for i in 0..anzahl {
+            let roh = std::slice::from_raw_parts(namen_ptr.add(i * BEFEHL_NAME), BEFEHL_NAME);
+            let ende = roh.iter().position(|&b| b == 0).unwrap_or(BEFEHL_NAME);
+            let Ok(name) = std::str::from_utf8(&roh[..ende]) else {
+                continue;
+            };
+
+            if !namen.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                continue;
+            }
+
+            if let Some(proc) = procs.add(i).read_unaligned() {
+                proc(c"".as_ptr());
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn menue_aktiv() -> bool {

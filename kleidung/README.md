@@ -202,6 +202,7 @@ Ab **0.10.0** kann der Server ESC übernehmen: Statt des Pausemenüs von GTA öf
 | `esc:offen` | Server → Client | keine. Die Seite des Servers ist offen; Antwort auf `esc:gedrueckt` oder jederzeit. |
 | `esc:zu` | Server → Client | keine. Die Seite ist zu; Antwort auf `esc:gedrueckt` oder jederzeit. |
 | `esc:original` | Server → Client | keine. Das Plugin öffnet das Menü von GTA (Einstellungen, Spiel beenden); nur dort pausiert das Spiel. |
+| `esc:beenden` | Server → Client | keine. Das Plugin beendet das Spiel wie `/q` im Chat: Es ruft den Befehl `q` (oder `quit`) aus der Befehlsliste von SA-MP (`CInput`) auf. Fehlt er, öffnet es stattdessen das Menü von GTA. Die Seite fragt vorher nach. |
 
 - **Jedes `esc:gedrueckt` braucht eine Antwort** (`esc:offen`, `esc:zu` oder `esc:original`). Kommt nach 1,5 Sekunden keine, öffnet das Plugin das Menü von GTA. Ein hängender Server lässt den Spieler so nie ohne Menü. Bis zur Antwort lösen weitere ESC nichts aus.
 - **Nicht abgefangen** wird ESC, solange das Menü von GTA offen ist (ESC schließt es wie immer), die Chat-Eingabe oder ein Dialog von SA-MP offen ist, vor `esc:an` und nach dem Trennen vom CEF-Server.

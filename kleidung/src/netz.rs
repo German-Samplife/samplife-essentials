@@ -25,6 +25,7 @@
 //! | `esc:gedrueckt` | client -> server | none; ESC was pressed, GTA's menu stayed closed |
 //! | `esc:offen` / `esc:zu` | server -> client | none; answer to `esc:gedrueckt` or any change: the page is open / closed |
 //! | `esc:original` | server -> client | none; open GTA's own menu |
+//! | `esc:beenden` | server -> client | none; quit the game like SA-MP's `/q` (the player confirmed it on the page) |
 //!
 //! The callbacks run on samp-cef's thread; they only queue. The game thread takes the
 //! queue in logic.rs.
@@ -64,6 +65,7 @@ pub enum Nachricht {
     EscAn(bool),
     EscAntwort(bool),
     EscOriginal,
+    EscBeenden,
     Getrennt,
 }
 
@@ -268,12 +270,13 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
 
         (PREFIX_ESC, name) if tokens.next().is_some() => Err(format!("{name}: keine Argumente erwartet")),
 
-        (PREFIX_ESC, "an" | "aus" | "offen" | "zu" | "original") => {
+        (PREFIX_ESC, "an" | "aus" | "offen" | "zu" | "original" | "beenden") => {
             push(match name {
                 "an" => Nachricht::EscAn(true),
                 "aus" => Nachricht::EscAn(false),
                 "offen" => Nachricht::EscAntwort(true),
                 "zu" => Nachricht::EscAntwort(false),
+                "beenden" => Nachricht::EscBeenden,
                 _ => Nachricht::EscOriginal,
             });
             Ok(())
