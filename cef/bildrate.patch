@@ -1,0 +1,183 @@
+diff --git a/client/src/browser/client.rs b/client/src/browser/client.rs
+index 486097a..fe97a5c 100644
+--- a/client/src/browser/client.rs
++++ b/client/src/browser/client.rs
+@@ -110,6 +110,19 @@ impl DrawData {
+     }
+ }
+ 
++/// Limit from cef.set_max_fps: 0 or less = none, otherwise 1 to 240 frames per second.
++fn max_fps_limit(fps: i32) -> i32 {
++    if fps <= 0 { 0 } else { fps.min(240) }
++}
++
++fn capped_frame_rate(game_fps: i32, max_fps: i32) -> i32 {
++    if max_fps > 0 {
++        game_fps.min(max_fps)
++    } else {
++        game_fps
++    }
++}
++
+ fn rect_fits(rect: &cef_rect_t, width: usize, height: usize) -> bool {
+     let (Ok(x), Ok(y), Ok(rect_width), Ok(rect_height)) = (
+         usize::try_from(rect.x),
+@@ -144,6 +157,8 @@ pub struct WebClient {
+     callbacks: CallbackList,
+     object_list: Mutex<HashSet<i32>>,
+     windowless_frame_rate: AtomicI32,
++    // upper limit the page set with cef.set_max_fps, 0 = none (the game's frame rate)
++    max_fps: AtomicI32,
+ }
+ 
+ #[derive(Clone)]
+@@ -262,6 +277,31 @@ impl Client for WebClientRef {
+                 return true;
+             }
+ 
++            // cef.set_max_fps(n): the page wants at most n frames per second, 0 lifts the
++            // limit. Applied with the next frame rate update from the render thread.
++            "set_max_fps" => {
++                let args = msg.argument_list();
++
++                let fps = match args.get_type(0) {
++                    ValueType::Integer => Some(args.integer(0)),
++                    ValueType::Double => Some(args.double(0).round() as i32),
++                    _ => None,
++                };
++
++                match fps {
++                    Some(fps) => {
++                        let fps = max_fps_limit(fps);
++                        self.0.max_fps.store(fps, Ordering::Relaxed);
++                        tracing::debug!(browser = self.0.id, fps, "cef.set_max_fps");
++                    }
++                    None => {
++                        tracing::warn!(browser = self.0.id, "cef.set_max_fps: no number")
++                    }
++                }
++
++                return true;
++            }
++
+             "editing" => {
+                 let args = msg.argument_list();
+ 
+@@ -581,6 +621,7 @@ impl WebClient {
+             event_tx,
+             id,
+             windowless_frame_rate: AtomicI32::new(0),
++            max_fps: AtomicI32::new(0),
+         };
+ 
+         Arc::new(client)
+@@ -607,6 +648,7 @@ impl WebClient {
+             event_tx,
+             id,
+             windowless_frame_rate: AtomicI32::new(0),
++            max_fps: AtomicI32::new(0),
+         };
+ 
+         Arc::new(client)
+@@ -901,6 +943,11 @@ impl WebClient {
+         self.hidden.load(Ordering::Relaxed)
+     }
+ 
++    /// The game's frame rate, lowered to the limit the page set with cef.set_max_fps.
++    pub fn frame_rate_for(&self, game_fps: i32) -> i32 {
++        capped_frame_rate(game_fps, self.max_fps.load(Ordering::Relaxed))
++    }
++
+     pub fn set_windowless_frame_rate(&self, fps: i32) {
+         if self.windowless_frame_rate.load(Ordering::Relaxed) == fps {
+             return;
+@@ -928,3 +975,23 @@ impl WebClient {
+         self.listen_keys.store(listen, Ordering::SeqCst);
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn max_fps_limit_keeps_sensible_values() {
++        assert_eq!(max_fps_limit(0), 0);
++        assert_eq!(max_fps_limit(-5), 0);
++        assert_eq!(max_fps_limit(30), 30);
++        assert_eq!(max_fps_limit(1000), 240);
++    }
++
++    #[test]
++    fn capped_frame_rate_lowers_only_with_a_limit() {
++        assert_eq!(capped_frame_rate(144, 0), 144);
++        assert_eq!(capped_frame_rate(144, 30), 30);
++        assert_eq!(capped_frame_rate(20, 30), 20);
++    }
++}
+diff --git a/client/src/browser/manager.rs b/client/src/browser/manager.rs
+index f883624..fba1df3 100644
+--- a/client/src/browser/manager.rs
++++ b/client/src/browser/manager.rs
+@@ -946,7 +946,7 @@ impl Manager {
+     pub fn update_fps(&mut self, fps: u64) {
+         let fps_small = windowless_frame_rate(fps);
+         for client in self.clients.values() {
+-            client.set_windowless_frame_rate(fps_small);
++            client.set_windowless_frame_rate(client.frame_rate_for(fps_small));
+         }
+     }
+ 
+diff --git a/renderer/src/main.rs b/renderer/src/main.rs
+index 2c946c0..e19a9f3 100644
+--- a/renderer/src/main.rs
++++ b/renderer/src/main.rs
+@@ -74,6 +74,24 @@ impl V8Handler for Handler {
+                 return true;
+             }
+ 
++            "set_max_fps" => {
++                let msg = ProcessMessage::create("set_max_fps");
++                let list = msg.argument_list();
++
++                if args.len() != 1 {
++                    return true;
++                }
++
++                convert_to_list(&args, &list);
++
++                self.frame
++                    .browser()
++                    .main_frame()
++                    .send_process_message(ProcessId::Browser, msg);
++
++                return true;
++            }
++
+             "hide" => {
+                 let msg = ProcessMessage::create("hide");
+                 let list = msg.argument_list();
+@@ -202,6 +220,7 @@ impl RenderProcessHandler for Application {
+         let version = V8Value::new_string("0.2.0");
+         let func_focus = V8Value::new_function("set_focus", Some(handler.clone()));
+         let func_input_mode = V8Value::new_function("set_input_mode", Some(handler.clone()));
++        let func_max_fps = V8Value::new_function("set_max_fps", Some(handler.clone()));
+         let func_on = V8Value::new_function("on", Some(handler.clone()));
+         let func_off = V8Value::new_function("off", Some(handler.clone()));
+         let func_hide = V8Value::new_function("hide", Some(handler.clone()));
+@@ -210,6 +229,7 @@ impl RenderProcessHandler for Application {
+         let key_str = CefString::new("version");
+         let key_focus = CefString::new("set_focus");
+         let key_input_mode = CefString::new("set_input_mode");
++        let key_max_fps = CefString::new("set_max_fps");
+         let key_on = CefString::new("on");
+         let key_off = CefString::new("off");
+         let key_emit = CefString::new("emit");
+@@ -218,6 +238,7 @@ impl RenderProcessHandler for Application {
+         cef_obj.set_value_by_key(&key_str, &version);
+         cef_obj.set_value_by_key(&key_focus, &func_focus);
+         cef_obj.set_value_by_key(&key_input_mode, &func_input_mode);
++        cef_obj.set_value_by_key(&key_max_fps, &func_max_fps);
+         cef_obj.set_value_by_key(&key_hide, &func_hide);
+         cef_obj.set_value_by_key(&key_on, &func_on);
+         cef_obj.set_value_by_key(&key_off, &func_off);

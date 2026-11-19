@@ -133,6 +133,27 @@ Server, Gamemode und Protokoll ändern sich nicht, `CEF_PLUGIN_VERSION` bleibt `
 | `client/src/browser/view.rs` | `set_display_size`, `release`, `has_container`, `is_active` |
 | `client/src/browser/manager.rs` | `sync_view` für jede Seite am Anfang von `draw`, `temporary_hide` mit dem neuen `internal_hide` |
 
+## Bildrate je Seite
+
+Im Original zeichnet jede sichtbare Seite so oft wie das Spiel (`Manager::update_fps` setzt alle Browser auf die gemessene Bildrate, mindestens 15). Bei 144 FPS rechnet Chromium eine Anzeige also 144-mal je Sekunde, und der Client kopiert jedes Bild in die Textur von GTA, auch wenn sich nur eine Zahl im HUD ändert. [`bildrate.patch`](bildrate.patch) lässt eine Seite eine Obergrenze setzen, nur im Client:
+
+```js
+cef.set_max_fps(30); // höchstens 30 Bilder je Sekunde, 0 hebt die Grenze auf
+```
+
+- Werte über 240 gelten als 240, 0 und weniger als „keine Grenze“.
+- Die Grenze gilt ab der nächsten Messung der Bildrate (alle 10 Bilder) und nur nach unten: Läuft das Spiel langsamer, zeichnet die Seite so oft wie das Spiel.
+- Die Grenze gehört zum Browser und bleibt beim Neuladen der Seite bestehen, bis die Seite sie ändert.
+- Seiten prüfen vorher `typeof cef.set_max_fps === "function"`; ältere Clients kennen die Funktion nicht. `cef.version` bleibt `0.2.0`, `CEF_PLUGIN_VERSION` bleibt `0x000400`, Server und Protokoll ändern sich nicht.
+
+German Samplife setzt 30 für die Meldungsseite `/cef/notify` (HUD, Tacho, Meldungen, Funkliste und Funk-Klicks).
+
+| Datei | Änderung |
+|---|---|
+| `renderer/src/main.rs` | Funktion `cef.set_max_fps`, Nachricht `set_max_fps` an den Browser-Prozess |
+| `client/src/browser/client.rs` | `max_fps` je Browser, Nachricht `set_max_fps`, `frame_rate_for`, `max_fps_limit`, `capped_frame_rate` mit Tests |
+| `client/src/browser/manager.rs` | `update_fps` setzt je Browser `frame_rate_for(…)` |
+
 ## Abwärtskompatibilität
 
 - **Alter Client, neuer Server:** Der Server merkt sich die Version aus `RequestJoin`. Clients unter `0x000200` bekommen statt `SetInputMode` das alte `FocusBrowser`: NONE wird nicht fokussiert, FULL und MOUSE_ONLY werden fokussiert (also volle Eingabe wie bisher). Wer das anders will, fragt vorher `cef_get_client_version` ab. Ein alter Client würde ein unbekanntes Paket ohnehin nur als `OPEN_CONNECTION` lesen und im verbundenen Zustand verwerfen.
@@ -165,7 +186,7 @@ Server, Gamemode und Protokoll ändern sich nicht, `CEF_PLUGIN_VERSION` bleibt `
 
 Das übernimmt GitHub mit [`.github/workflows/cef.yml`](../.github/workflows/cef.yml):
 
-1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, `maustasten.patch`, `speicher.patch` und `cxxbridge-pfad.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
+1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, `maustasten.patch`, `speicher.patch`, `bildrate.patch` und `cxxbridge-pfad.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
 2. DirectX SDK (Juni 2010, nur `Lib/x86`) und die CEF-Distribution aus `cef-distribution.json` holen (CEF 150, Prüfsumme wird geprüft).
 3. Mit Rust stable `cargo build --release --target i686-pc-windows-msvc` bauen, dazu die Tests von `cef-messages` und `cef-server-core`.
 4. Prüfen, dass die Dateien 32 Bit sind und die Änderung enthalten.
@@ -203,7 +224,7 @@ scripts/build-openmp-component.sh --openmp-root ../open.mp
 # Ergebnis: target/openmp-component-build/cef.so, dazu server/cef.inc ins Gamemode-Include
 ```
 
-Ab Rust 1.100 legt Cargo die Ausgaben von Build-Skripten unter `build/<Paket>/<Hash>/out` ab statt unter `build/<Paket>-<Hash>/out`. Das Original-Skript `openmp-component/component/copy_cxxbridge_header.cmake` sucht nur das alte Muster und bricht mit „Could not find generated cxxbridge header“ ab. [`cxxbridge-pfad.patch`](cxxbridge-pfad.patch) sucht zuerst das neue, dann das alte Muster; der Workflow wendet ihn nach `speicher.patch` an.
+Ab Rust 1.100 legt Cargo die Ausgaben von Build-Skripten unter `build/<Paket>/<Hash>/out` ab statt unter `build/<Paket>-<Hash>/out`. Das Original-Skript `openmp-component/component/copy_cxxbridge_header.cmake` sucht nur das alte Muster und bricht mit „Could not find generated cxxbridge header“ ab. [`cxxbridge-pfad.patch`](cxxbridge-pfad.patch) sucht zuerst das neue, dann das alte Muster; der Workflow wendet ihn nach `bildrate.patch` an.
 
 Die Server-Seite benutzt `samp-client-api` nicht. Cargo braucht den Ordner `../samp-client-api` trotzdem, weil `Cargo.toml` ihn als `[patch]` für den ganzen Workspace nennt; ohne ihn bricht jeder `cargo build` ab.
 

@@ -88,4 +88,13 @@ Am besten auf dem Testserver mit dem Gamemode, weil dort Seiten versteckt vorgel
 - [ ] Notify (Meldungen, HUD, Tacho) läuft durchgehend, auch nach Pausemenü und Alt+Tab.
 - [ ] Zwei Stunden normal spielen: kein Absturz, kein Einfrieren, Speicher stabil.
 
+## Bildrate je Seite (`bildrate.patch`)
+
+Mit `"log_level": "debug"` steht nach dem Login `cef.set_max_fps` mit `fps=30` für die Meldungsseite im `cef_client.log`.
+
+- [ ] HUD, Tacho und Meldungen laufen flüssig genug; Animationen (Meldung einblenden, Tacho-Nadel) ruckeln nicht sichtbar.
+- [ ] Mit FPS-Anzeige (z. B. 144 FPS im Spiel): Die Prozessorlast von `cef-renderer.exe` liegt im Task-Manager deutlich unter dem alten Client, bei gleicher Szene.
+- [ ] Andere Seiten (Handy, Inventar, Bankautomat) laufen weiter mit der Bildrate des Spiels.
+- [ ] Neue Seiten mit altem Client: keine Fehlermeldung, die Seite läuft wie bisher.
+
 Gefundene Probleme bitte mit SA-MP-Version, Schritt und `cef_client.log` aus dem GTA-Verzeichnis melden (`"log_level": "debug"` in `cef/config.json` schreibt mehr).
