@@ -112,6 +112,27 @@ Der Client meldet sich mit `CEF_PLUGIN_VERSION` = `0x000400` (vorher `0x000300`)
 
 Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. Auf deutschen Windows-Systemen wurden ä, ö, ü, ß, „ “ und – dadurch zu kyrillischen Buchstaben. Der Patch liest sie als Windows-1252 (`client/src/app.rs`, `win_event`). Zeichen, die Eingabemethoden als Unicode schicken, bleiben unverändert.
 
+## Speicher versteckter Seiten
+
+Im Original behält eine versteckte Seite alles, was sie zum Zeichnen braucht: die Textur in Fenstergröße (RenderWare-Raster) und die Kopie des letzten Bildes (`view_buffer`). `cef_hide_browser` leert nur die Pixel und hält CEF mit `was_hidden` an. Bei 2560 × 1440 sind das je Seite rund 30 MB im Adressraum von `gta_sa.exe`, bei 3840 × 2160 rund 66 MB, auch für Seiten, die nur versteckt vorgeladen sind. [`speicher.patch`](speicher.patch) gibt beides frei, solange die Seite versteckt ist, nur im Client:
+
+- **Versteckt vom Server, der Seite oder einem Plugin** (`cef_hide_browser`, `cef.hide`, Plugin-API): Im nächsten Bild gibt der Client Textur und Bildkopie zurück. CEF bekommt die Größe weiter, die Seite läuft und nimmt Ereignisse an wie bisher.
+- **Wieder gezeigt:** Im nächsten Bild legt der Client die Textur neu an, leer (durchsichtig), und fordert ein volles Bild an. Wie bisher ist die Seite für einen kurzen Moment leer, bis CEF gezeichnet hat; ein altes Bild blitzt nicht auf.
+- **Nur kurz versteckt** (Pausemenü, Alt+Tab, Verlust des Direct3D-Device): Die Textur bleibt, damit nicht bei jedem ESC große Blöcke angelegt und freigegeben werden.
+- **Neue Seiten** bekommen erst eine Textur, wenn sie sichtbar sind. Versteckt vorgeladene Seiten (`cef_create_browser(…, hidden = true)`) belegen also von Anfang an keinen Speicher für Pixel.
+- Anlegen und Freigeben passiert nur im Render-Thread (`WebClient::sync_view`, jedes Bild aus `Manager::draw`), nie im Thread von CEF.
+- Solange eine Seite versteckt ist, verwirft `on_paint` ihre Bilder, sonst würde die Bildkopie wieder wachsen.
+- Nebenbei behoben: Versteckte der Server eine Seite, während das Pausemenü offen war, zeigte sie sich nach dem Pausemenü wieder (`restore_hide_status` stellte den Stand von vor dem Pausemenü her). Jetzt gilt der Stand, den Server oder Seite zuletzt gesetzt haben (`user_hidden`).
+- Seiten auf Objekten (`cef_create_ext_browser`) bleiben wie bisher.
+
+Server, Gamemode und Protokoll ändern sich nicht, `CEF_PLUGIN_VERSION` bleibt `0x000400`.
+
+| Datei | Änderung |
+|---|---|
+| `client/src/browser/client.rs` | `user_hidden` statt `prev_hidden_flag`, `sync_view`, `DrawData::release_frame`/`upload_all`, `on_paint` verwirft Bilder versteckter Seiten, neue Seiten und `on_reset_device` ohne sofortige Textur, `resize` ohne Textur nur mit Größe |
+| `client/src/browser/view.rs` | `set_display_size`, `release`, `has_container`, `is_active` |
+| `client/src/browser/manager.rs` | `sync_view` für jede Seite am Anfang von `draw`, `temporary_hide` mit dem neuen `internal_hide` |
+
 ## Abwärtskompatibilität
 
 - **Alter Client, neuer Server:** Der Server merkt sich die Version aus `RequestJoin`. Clients unter `0x000200` bekommen statt `SetInputMode` das alte `FocusBrowser`: NONE wird nicht fokussiert, FULL und MOUSE_ONLY werden fokussiert (also volle Eingabe wie bisher). Wer das anders will, fragt vorher `cef_get_client_version` ab. Ein alter Client würde ein unbekanntes Paket ohnehin nur als `OPEN_CONNECTION` lesen und im verbundenen Zustand verwerfen.
@@ -144,7 +165,7 @@ Das Original liest getippte Zeichen (`WM_CHAR`) als kyrillisches Windows-1251. A
 
 Das übernimmt GitHub mit [`.github/workflows/cef.yml`](../.github/workflows/cef.yml):
 
-1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch` und `maustasten.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
+1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, `maustasten.patch`, `speicher.patch` und `cxxbridge-pfad.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
 2. DirectX SDK (Juni 2010, nur `Lib/x86`) und die CEF-Distribution aus `cef-distribution.json` holen (CEF 150, Prüfsumme wird geprüft).
 3. Mit Rust stable `cargo build --release --target i686-pc-windows-msvc` bauen, dazu die Tests von `cef-messages` und `cef-server-core`.
 4. Prüfen, dass die Dateien 32 Bit sind und die Änderung enthalten.
@@ -166,6 +187,8 @@ git init samp-cef && cd samp-cef
 git fetch --depth 1 https://github.com/zottce/samp-cef.git f14fe4fa7f0d036edf445ba02b4bddd4cccac377
 git checkout FETCH_HEAD
 git apply /pfad/zu/samplife-essentials/cef/nur-maus.patch
+# nötig ab Rust 1.100 (neuer Ort der Build-Skript-Ausgaben, siehe unten)
+git apply /pfad/zu/samplife-essentials/cef/cxxbridge-pfad.patch
 cd ..
 git init samp-client-api && cd samp-client-api
 git fetch --depth 1 https://github.com/zottce/samp-client-api.git d497ffad4903d9cc3f02869c744c3c3d96217cbb
@@ -179,6 +202,8 @@ git -C ../open.mp submodule update --init --recursive SDK lib/pawn
 scripts/build-openmp-component.sh --openmp-root ../open.mp
 # Ergebnis: target/openmp-component-build/cef.so, dazu server/cef.inc ins Gamemode-Include
 ```
+
+Ab Rust 1.100 legt Cargo die Ausgaben von Build-Skripten unter `build/<Paket>/<Hash>/out` ab statt unter `build/<Paket>-<Hash>/out`. Das Original-Skript `openmp-component/component/copy_cxxbridge_header.cmake` sucht nur das alte Muster und bricht mit „Could not find generated cxxbridge header“ ab. [`cxxbridge-pfad.patch`](cxxbridge-pfad.patch) sucht zuerst das neue, dann das alte Muster; der Workflow wendet ihn nach `speicher.patch` an.
 
 Die Server-Seite benutzt `samp-client-api` nicht. Cargo braucht den Ordner `../samp-client-api` trotzdem, weil `Cargo.toml` ihn als `[patch]` für den ganzen Workspace nennt; ohne ihn bricht jeder `cargo build` ab.
 

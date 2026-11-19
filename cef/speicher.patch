@@ -1,0 +1,295 @@
+diff --git a/client/src/browser/client.rs b/client/src/browser/client.rs
+index 7e99c03..486097a 100644
+--- a/client/src/browser/client.rs
++++ b/client/src/browser/client.rs
+@@ -70,6 +70,44 @@ impl DrawData {
+             changed: false,
+         }
+     }
++
++    /// Gives the copy of the last frame back while the browser is hidden.
++    /// The next paint after showing it again is a full one (new buffer size).
++    fn release_frame(&mut self) {
++        self.view_buffer = Vec::new();
++        self.width = 0;
++        self.height = 0;
++        self.rects.rects = Vec::new();
++        self.rects.count = 0;
++        self.changed = false;
++    }
++
++    /// After a new texture: upload the whole frame we still have, the texture
++    /// starts out empty. Without a matching frame the next paint fills it.
++    fn upload_all(&mut self, width: usize, height: usize) {
++        let has_frame = self.width == width
++            && self.height == height
++            && width
++                .checked_mul(height)
++                .and_then(|pixels| pixels.checked_mul(4))
++                .is_some_and(|len| len > 0 && self.view_buffer.len() >= len);
++
++        if has_frame {
++            self.rects.rects.clear();
++            self.rects.rects.push(cef_rect_t {
++                x: 0,
++                y: 0,
++                width: width as i32,
++                height: height as i32,
++            });
++            self.rects.count = 1;
++            self.changed = true;
++        }
++
++        if self.popup_show && !self.popup_buffer.is_empty() {
++            self.popup_changed = true;
++        }
++    }
+ }
+ 
+ fn rect_fits(rect: &cef_rect_t, width: usize, height: usize) -> bool {
+@@ -91,8 +129,11 @@ fn rect_fits(rect: &cef_rect_t, width: usize, height: usize) -> bool {
+ pub struct WebClient {
+     id: u32, // static
+     is_extern: bool,
++    // currently hidden: by the server/page or for a moment (pause menu, Alt+Tab, lost device)
+     hidden: AtomicBool,
+-    prev_hidden_flag: AtomicBool,
++    // hidden by the server, the page or a plugin (cef_hide_browser, cef.hide);
++    // only then the texture and the frame buffer are released (sync_view)
++    user_hidden: AtomicBool,
+     closing: AtomicBool,
+     listen_keys: AtomicBool,
+     pub view: Mutex<View>,
+@@ -125,7 +166,9 @@ impl LifespanHandler for WebClientRef {
+ 
+         tracing::debug!(browser = self.0.id, hidden, "CEF browser instance created");
+ 
+-        self.0.hide(hidden);
++        // apply the current state to the new browser host, without changing
++        // what the server or the page wanted
++        self.0.internal_hide(hidden);
+     }
+ 
+     fn on_before_close(&self, _: Browser) {
+@@ -372,7 +415,12 @@ impl RenderHandler for WebClientRef {
+         &self, _: Browser, paint_type: PaintElement, mut dirty_rects: DirtyRects, buffer: &[u8],
+         width: usize, height: usize,
+     ) {
+-        if self.0.closing.load(Ordering::SeqCst) || self.0.view.lock().is_empty() {
++        // A hidden browser keeps no frame: it would grow the buffer again that
++        // sync_view released. Showing it again requests a full paint.
++        if self.0.closing.load(Ordering::SeqCst)
++            || self.0.hidden.load(Ordering::SeqCst)
++            || self.0.view.lock().is_empty()
++        {
+             return;
+         }
+ 
+@@ -513,12 +561,14 @@ impl WebClient {
+             "client viewport detected"
+         );
+ 
++        // only the size: sync_view creates the texture in the render thread
++        // once the browser is visible, a hidden preloaded one gets none
+         let mut view = View::new();
+-        view.make_display(rect[0], rect[1]);
++        view.set_display_size(rect[0], rect[1]);
+ 
+         let client = WebClient {
+             hidden: AtomicBool::new(false),
+-            prev_hidden_flag: AtomicBool::new(false),
++            user_hidden: AtomicBool::new(false),
+             closing: AtomicBool::new(false),
+             listen_keys: AtomicBool::new(false),
+             view: Mutex::new(view),
+@@ -544,7 +594,7 @@ impl WebClient {
+ 
+         let client = WebClient {
+             hidden: AtomicBool::new(false),
+-            prev_hidden_flag: AtomicBool::new(false),
++            user_hidden: AtomicBool::new(false),
+             closing: AtomicBool::new(false),
+             listen_keys: AtomicBool::new(false),
+             view: Mutex::new(view),
+@@ -570,7 +620,7 @@ impl WebClient {
+ 
+     #[inline]
+     pub fn on_lost_device(&self) {
+-        self.internal_hide(true, true); // hide browser but do not save value
++        self.internal_hide(true); // hide for now, user_hidden stays as it is
+ 
+         {
+             let mut texture = self.view.lock();
+@@ -588,8 +638,10 @@ impl WebClient {
+             } else {
+                 let rect = crate::utils::client_rect();
+ 
++                // only the size: sync_view creates the texture in the next frame
++                // if the browser is visible, a hidden one stays without
+                 view.make_active();
+-                view.make_display(rect[0], rect[1]);
++                view.set_display_size(rect[0], rect[1]);
+ 
+                 self.notify_was_resized();
+             }
+@@ -601,7 +653,12 @@ impl WebClient {
+     #[inline]
+     pub fn resize(&self, width: usize, height: usize) {
+         let mut view = self.view.lock();
+-        view.resize(self.is_extern(), width, height);
++        if self.is_extern() || view.has_container() {
++            view.resize(self.is_extern(), width, height);
++        } else {
++            // released or not created yet: sync_view creates it in the new size
++            view.set_display_size(width, height);
++        }
+         self.notify_was_resized();
+     }
+ 
+@@ -684,16 +741,16 @@ impl WebClient {
+         browser.as_ref().cloned()
+     }
+ 
++    /// Hidden or shown by the server, the page or a plugin.
+     pub fn hide(&self, hide: bool) {
+-        self.internal_hide(hide, false);
++        self.user_hidden.store(hide, Ordering::SeqCst);
++        self.internal_hide(hide);
+     }
+ 
+-    pub fn internal_hide(&self, hide: bool, update_prev: bool) {
+-        if update_prev {
+-            let cur = self.hidden.load(Ordering::SeqCst);
+-            self.prev_hidden_flag.store(cur, Ordering::SeqCst);
+-        }
+-
++    /// Hides or shows the browser without changing what the server or the
++    /// page wanted (pause menu, Alt+Tab, lost device), restore_hide_status
++    /// goes back to that.
++    pub fn internal_hide(&self, hide: bool) {
+         self.hidden.store(hide, Ordering::SeqCst);
+ 
+         if let Some(host) = self.browser().map(|browser| browser.host()) {
+@@ -714,7 +771,61 @@ impl WebClient {
+     }
+ 
+     pub fn restore_hide_status(&self) {
+-        self.internal_hide(self.prev_hidden_flag.load(Ordering::SeqCst), false);
++        self.internal_hide(self.user_hidden.load(Ordering::SeqCst));
++    }
++
++    /// Every frame from the render thread (Manager::draw), the only place that
++    /// creates or releases the texture of an overlay browser:
++    /// - hidden by the server or the page: texture and frame buffer go back,
++    ///   a hidden page costs no memory in gta_sa.exe for its pixels;
++    /// - visible without a texture (created, shown again, device reset): a new
++    ///   texture in the current size, starting empty, filled by the next paint;
++    /// - hidden for a moment (pause menu, Alt+Tab): nothing changes, so these
++    ///   do not create and release large blocks every time.
++    pub fn sync_view(&self) {
++        if self.is_extern() || self.closing.load(Ordering::SeqCst) {
++            return;
++        }
++
++        let hidden = self.hidden.load(Ordering::SeqCst);
++        let user_hidden = self.user_hidden.load(Ordering::SeqCst);
++        let mut view = self.view.lock();
++
++        if hidden && user_hidden {
++            let had_texture = view.has_container();
++            if had_texture {
++                view.release();
++            }
++
++            let mut draw_data = self.draw_data.lock();
++            let had_frame = draw_data.view_buffer.capacity() > 0;
++            if had_frame {
++                draw_data.release_frame();
++            }
++
++            if had_texture || had_frame {
++                tracing::debug!(
++                    browser = self.id,
++                    had_texture,
++                    had_frame,
++                    "hidden browser released its view"
++                );
++            }
++        } else if !hidden && view.is_active() && !view.has_container() {
++            let size = view.rect();
++            let (width, height) = (size.width as usize, size.height as usize);
++
++            view.make_display(width, height);
++            view.clear();
++            self.draw_data.lock().upload_all(width, height);
++            drop(view);
++
++            if let Some(host) = self.browser().map(|browser| browser.host()) {
++                host.invalidate(PaintElement::View);
++            }
++
++            tracing::debug!(browser = self.id, width, height, "browser view created");
++        }
+     }
+ 
+     pub fn set_audio_muted(&self, muted: bool) {
+diff --git a/client/src/browser/manager.rs b/client/src/browser/manager.rs
+index 59a611b..f883624 100644
+--- a/client/src/browser/manager.rs
++++ b/client/src/browser/manager.rs
+@@ -338,6 +338,11 @@ impl Manager {
+ 
+     #[inline]
+     pub fn draw(&self) {
++        // render thread: release textures of hidden browsers, create them for visible ones
++        for client in self.clients.values() {
++            client.sync_view();
++        }
++
+         for client in self.clients.values().filter(|client| !client.is_hidden()) {
+             client.update_view();
+         }
+@@ -998,7 +1003,7 @@ impl Manager {
+     fn temporary_hide(&self, hide: bool) {
+         for client in self.clients.values() {
+             if hide {
+-                client.internal_hide(true, true);
++                client.internal_hide(true);
+             } else {
+                 client.restore_hide_status();
+ 
+diff --git a/client/src/browser/view.rs b/client/src/browser/view.rs
+index 47c2f9e..3ef39a2 100644
+--- a/client/src/browser/view.rs
++++ b/client/src/browser/view.rs
+@@ -236,6 +236,30 @@ impl View {
+         self.active = true;
+     }
+ 
++    /// Size of an overlay browser without a texture yet (WebClient::sync_view
++    /// creates it). CEF lays the page out in this size.
++    pub fn set_display_size(&mut self, width: usize, height: usize) {
++        if !self.active {
++            return;
++        }
++
++        self.set_size(std::cmp::max(1, width), std::cmp::max(1, height));
++    }
++
++    /// Releases the texture of a hidden browser and keeps size and state, so
++    /// make_display creates it again in the same size.
++    pub fn release(&mut self) {
++        self.destroy_previous();
++    }
++
++    pub fn has_container(&self) -> bool {
++        self.container.is_some()
++    }
++
++    pub fn is_active(&self) -> bool {
++        self.active
++    }
++
+     #[inline]
+     pub fn draw(&mut self) {
+         if let Some(rw) = self.container.as_mut() {
