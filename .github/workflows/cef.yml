@@ -1,5 +1,5 @@
 # Baut den samp-cef-Client mit dem Eingabemodus "nur Maus", Server-Ereignissen für Client-Plugins, Maustaste 4/5
-# für die Seiten und ohne Speicher für versteckte Seiten (siehe cef/README.md).
+# für die Seiten, ohne Speicher für versteckte Seiten und mit Bildrate je Seite (siehe cef/README.md).
 # Bei Änderungen an cef/ wird nur gebaut und geprüft; ein Tag wie cef-f14fe4f-sl1 legt das Release an.
 name: CEF
 
@@ -54,6 +54,7 @@ jobs:
           git -C quelle apply --verbose ../cef/plugin-ereignisse.patch
           git -C quelle apply --verbose ../cef/maustasten.patch
           git -C quelle apply --verbose ../cef/speicher.patch
+          git -C quelle apply --verbose ../cef/bildrate.patch
           git -C quelle apply --verbose ../cef/cxxbridge-pfad.patch
           git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
           git -C quelle diff --stat
@@ -149,6 +150,7 @@ jobs:
           if (-not (Select-String -Path "$ziel/cef-renderer.exe" -Pattern "set_input_mode" -SimpleMatch -Quiet)) { throw "cef-renderer.exe kennt cef.set_input_mode nicht" }
           if (-not (Select-String -Path "$ziel/cef_client.dll" -Pattern "cef_server_emitter" -SimpleMatch -Quiet)) { throw "cef_client.dll gibt Server-Ereignisse nicht an Plugins weiter" }
           if (-not (Select-String -Path "$ziel/cef_client.dll" -Pattern "hidden browser released its view" -SimpleMatch -Quiet)) { throw "cef_client.dll gibt den Speicher versteckter Seiten nicht frei" }
+          if (-not (Select-String -Path "$ziel/cef-renderer.exe" -Pattern "set_max_fps" -SimpleMatch -Quiet)) { throw "cef-renderer.exe kennt cef.set_max_fps nicht" }
 
       - name: Paket zusammenstellen
         shell: pwsh
@@ -194,11 +196,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          samp-cef Client für SA-MP 0.3.7 R1/R3 mit dem Eingabemodus "nur Maus" (CEF_INPUT_MOUSE_ONLY) Server-Ereignissen für Client-Plugins, Maustaste 4/5 als Tasten für die Seiten (Client-Version 0x000400) und ohne Speicher für versteckte Seiten.
+          samp-cef Client für SA-MP 0.3.7 R1/R3 mit dem Eingabemodus "nur Maus" (CEF_INPUT_MOUSE_ONLY) Server-Ereignissen für Client-Plugins, Maustaste 4/5 als Tasten für die Seiten (Client-Version 0x000400), ohne Speicher für versteckte Seiten und mit ``cef.set_max_fps`` für die Seiten.
 
-          Gebaut von GitHub aus https://github.com/zottce/samp-cef/commit/$env:SAMP_CEF_COMMIT (GPL-3.0) mit ``cef/nur-maus.patch``, ``cef/plugin-ereignisse.patch``, ``cef/maustasten.patch`` und ``cef/speicher.patch`` und https://github.com/zottce/samp-client-api/commit/$env:CLIENT_API_COMMIT mit ``cef/client-api-cursor.patch`` aus diesem Tag. Der Quelltext des Pakets ist genau das. CEF ist die offizielle windows32-Distribution aus ``cef-distribution.json`` (BSD).
+          Gebaut von GitHub aus https://github.com/zottce/samp-cef/commit/$env:SAMP_CEF_COMMIT (GPL-3.0) mit ``cef/nur-maus.patch``, ``cef/plugin-ereignisse.patch``, ``cef/maustasten.patch``, ``cef/speicher.patch``, ``cef/bildrate.patch`` und ``cef/cxxbridge-pfad.patch`` und https://github.com/zottce/samp-client-api/commit/$env:CLIENT_API_COMMIT mit ``cef/client-api-cursor.patch`` aus diesem Tag. Der Quelltext des Pakets ist genau das. CEF ist die offizielle windows32-Distribution aus ``cef-distribution.json`` (BSD).
 
-          Funktioniert mit jedem samp-cef-Server ab f14fe4f; den Nur-Maus-Modus gibt es nur mit der Server-Seite aus demselben Patch (siehe cef/README.md). Die Plugin-Ereignisse, die Maustasten und das Freigeben versteckter Seiten brauchen keine neue Server-Seite.
+          Funktioniert mit jedem samp-cef-Server ab f14fe4f; den Nur-Maus-Modus gibt es nur mit der Server-Seite aus demselben Patch (siehe cef/README.md). Die Plugin-Ereignisse, die Maustasten, das Freigeben versteckter Seiten und die Bildrate je Seite brauchen keine neue Server-Seite.
 
           Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
           "@
@@ -234,6 +236,7 @@ jobs:
           git -C quelle apply --verbose ../cef/plugin-ereignisse.patch
           git -C quelle apply --verbose ../cef/maustasten.patch
           git -C quelle apply --verbose ../cef/speicher.patch
+          git -C quelle apply --verbose ../cef/bildrate.patch
           git -C quelle apply --verbose ../cef/cxxbridge-pfad.patch
           git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
 
