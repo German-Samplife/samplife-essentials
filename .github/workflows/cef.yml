@@ -1,6 +1,8 @@
 # Baut den samp-cef-Client mit dem Eingabemodus "nur Maus", Server-Ereignissen für Client-Plugins, Maustaste 4/5
 # für die Seiten, ohne Speicher für versteckte Seiten und mit Bildrate je Seite (siehe cef/README.md).
-# Bei Änderungen an cef/ wird nur gebaut und geprüft; ein Tag wie cef-f14fe4f-sl1 legt das Release an.
+# Bei Änderungen an cef/ wird nur gebaut und geprüft; ein Tag wie cef-f14fe4f-sl1 legt das Release an. Ohne eigenen
+# Tag-Push geht es auch von Hand: Actions → CEF → Run workflow auf main mit release_tag (z. B. cef-f14fe4f-sl6). Dann legt
+# der Lauf Tag und Release selbst an, auf genau dem Commit, den er gebaut hat.
 name: CEF
 
 on:
@@ -13,6 +15,11 @@ on:
     tags:
       - "cef-*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release anlegen mit diesem Tag, z. B. cef-f14fe4f-sl6 (nur auf main; leer: nur bauen und prüfen)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -29,6 +36,27 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      # RELEASE_TAG: Name des Releases, leer bei reinen Prüfläufen. Beim Tag-Push der Tag selbst, beim Start von Hand
+      # release_tag, aber nur auf main, im Schema cef-<Commit>-sl<Nummer> und nur, wenn es den Tag noch nicht gibt.
+      - name: Release-Tag bestimmen
+        shell: pwsh
+        env:
+          EINGABE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = ""
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+          } elseif ($env:EINGABE_TAG) {
+            $tag = $env:EINGABE_TAG.Trim()
+            if ("${{ github.ref }}" -ne "refs/heads/main") { throw "Ein Release von Hand nur auf main, nicht auf ${{ github.ref }}" }
+            if ($tag -notmatch '^cef-[0-9a-f]{7}-sl[0-9]+$') { throw "Tag '$tag' passt nicht zum Schema cef-<Commit>-sl<Nummer>" }
+            $vorhanden = git ls-remote --tags origin "refs/tags/$tag"
+            if ($vorhanden) { throw "Den Tag $tag gibt es schon" }
+          }
+          "RELEASE_TAG=$tag" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          if ($tag) { "Release: $tag auf ${{ github.sha }}" } else { "Nur bauen und prüfen, kein Release" }
 
       - name: Quelltext holen und anpassen
         shell: pwsh
@@ -157,8 +185,8 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
-          if ("${{ github.ref_type }}" -eq "tag") {
-            $name = "${{ github.ref_name }}"
+          if ($env:RELEASE_TAG) {
+            $name = $env:RELEASE_TAG
           } else {
             $name = "nur-maus-" + "${{ github.sha }}".Substring(0, 7)
           }
@@ -190,7 +218,7 @@ jobs:
           path: release/
 
       - name: Release anlegen
-        if: startsWith(github.ref, 'refs/tags/cef-')
+        if: env.RELEASE_TAG != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -204,7 +232,8 @@ jobs:
 
           Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
           "@
-          gh release create "${{ github.ref_name }}" "release/$env:ZIP_NAME" release/SHA256SUMS.txt --title "samp-cef Client nur Maus (${{ github.ref_name }})" --notes $text --latest=false
+          # --target legt den Tag beim Start von Hand auf genau diesem Commit an; beim Tag-Push gibt es ihn schon
+          gh release create "$env:RELEASE_TAG" "release/$env:ZIP_NAME" release/SHA256SUMS.txt --target "${{ github.sha }}" --title "samp-cef Client nur Maus ($env:RELEASE_TAG)" --notes $text --latest=false
 
   server-pruefen:
     # Nur zur Kontrolle, ob die Server-Seite des Patches baut (Legacy-Plugin und

@@ -196,6 +196,8 @@ Ein Push auf einen Branch, der `cef/` ändert, baut und prüft nur. Das Paket `s
 
 Ein Tag wie `cef-f14fe4f-sl1` legt ein Release mit `samp-cef-client-<tag>.zip` und `SHA256SUMS.txt` an. Prüfsumme und Größe für das Manifest stehen im Release-Text.
 
+Ohne eigenen Tag-Push geht es auch von Hand: **Actions → CEF → Run workflow** auf `main` mit `release_tag` (z. B. `cef-f14fe4f-sl6`). Der Lauf prüft das Schema `cef-<Commit>-sl<Nummer>` und dass es den Tag noch nicht gibt, baut wie sonst und legt dann Tag und Release auf genau dem gebauten Commit an. Auf anderen Branches als `main` bricht er mit Eingabe ab. Ohne Eingabe baut und prüft er nur.
+
 Der Job `server-pruefen` baut zur Kontrolle auch das Legacy-Plugin und die open.mp-Komponente für Linux x86 (open.mp vom aktuellen Stand, wie im Original-Workflow). Die Dateien hängen als Artefakt `samp-cef-server-linux-nur-zum-testen` am Lauf.
 
 ## Server-Seite selbst bauen
