@@ -14,7 +14,7 @@ Ab 0.10.0 öffnet **ESC** auf Wunsch des Servers dessen Menü statt des Pausemen
 
 Ab 0.9.0 kann der Server einzelne Teile **färben**, z. B. ein gelbes T-Shirt für die Vagos oder ein lila T-Shirt für die Ballas, auch wo GTA keine solche Textur hat. Ab 0.9.1 nur noch Oberteil und Hose (siehe [Farben](#farben)).
 
-Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
+Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Der Gamemode von German Samplife (samplife2026) nutzt die Kleidung und die Farben; getestet wird mit ihm.
 
 ## Voraussetzungen
 
@@ -223,7 +223,7 @@ Gelesen mit einem Disassembler aus `gta_sa.exe` 1.0 US und abgeglichen mit gta-r
 
 **DLL bleibt geladen.** Weil GTA ab `esc:an` in die DLL springt, hält das Plugin sich dann bis zum Ende des Spiels fest (`GetModuleHandleExW` mit `GET_MODULE_HANDLE_EX_FLAG_PIN`). samp-cef entlädt seine Plugins beim Beenden, und GTA würde sonst in freigegebenen Speicher springen.
 
-Testen: [`beispiel/esc_test.pwn`](beispiel/esc_test.pwn), laden mit `/rcon loadfs esc_test`, dann `/esctest an`. Das Script spielt eine Seite nur im Chat: ESC schaltet offen und zu im Wechsel. `/esctest antwort` schaltet auf „keine Antwort“ (nach 1,5 Sekunden kommt das Menü von GTA) und zurück, `/esctest original` öffnet das Menü von GTA, `/esctest aus` gibt ESC an GTA zurück. Es abonniert nur `esc:bereit` und `esc:gedrueckt` und läuft deshalb auch neben dem Gamemode.
+Testen: im Spiel mit dem Pausenmenü des Gamemodes von German Samplife (samplife2026, Schalter `/pausemenue`).
 
 `/kleidunginfo` zeigt eine Zeile „ESC-Menü“: an oder aus (mit Grund), ob die Seite gerade offen ist und wie oft ESC abgefangen wurde, der Rückfall kam und das Menü von GTA geöffnet wurde.
 
@@ -248,36 +248,7 @@ Ereignisse, die mit `lippen:` beginnen, nimmt das Plugin an; sie gehen nicht an 
 
 ## Test mit dem Server
 
-[`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn) ist ein Filterscript, das das Protokoll mit fünf festen Outfits spricht (4 und 5 mit Farben) und mit `/farbe` einzelne Teile färbt. Es braucht die samp-cef-Server-Komponente und deren `cef.inc`.
-
-1. Zwei Tester installieren mit dem Essentials-Installer (samp-cef-Client ab `0x000300` und `samplife-kleidung.dll` in `GTA/cef/plugins/`) und verbinden.
-2. Filterscript laden: `/rcon loadfs kleidung_test`. Es fragt alle verbundenen Clients; bei jedem mit Plugin erscheint „[Kleidung] Plugin <Version> gemeldet“. Fehlt die Zeile: `/kleidung frage`, dann `/kleidung info`. Steht dort „Plugin fehlt“, siehe Fehlersuche unten.
-3. Beide bekommen Skin 0: dauerhaft über einen Befehl des Gamemodes (bei German Samplife `/setskin [ID] 0`), nur bis zum nächsten Spawn mit `/kleidung skin`. Dann Tester A `/kleidung 1` und Tester B `/kleidung 2`.
-4. Prüfen:
-   1. Jeder sieht sich und den anderen im eigenen Outfit (A schwarzes Unterhemd, Afro, Tarnhose; B roter Anzug, Cowboyhut).
-   2. A wechselt auf `/kleidung 3` (Hoodie, Jogginghose, Cap, Tattoo am linken Oberarm): Beide sehen den Wechsel sofort, B bleibt unverändert.
-   3. Respawn, weit weg und zurück (Streaming), Fahrzeug, Skin kurz wechseln und zurück auf 0: Jeder behält sein Outfit.
-   4. Im Fahrzeug, als Fahrer und als Beifahrer: Outfit wechseln (`/kleidung 2`). Beide sehen den Wechsel sofort, die Figur bleibt sitzen, und das Fahrzeug lässt sich weiter fahren.
-   5. Ein dritter Spieler verbindet später: Er sieht A und B sofort richtig.
-   6. A gibt `/kleidung aus` ein: Alle sehen A als Standard-CJ. Verlässt A den Server und bekommt ein anderer seine ID, trägt der den Standard-CJ und nicht das Outfit von A.
-   7. Auf einem Server ohne Kleidung (oder ohne Filterscript) bleibt CJ unverändert.
-5. `/kleidunginfo` bei beiden ausführen und `samplife-kleidung.log` aus dem GTA-Ordner einsammeln.
-6. Zum Schluss `/rcon unloadfs kleidung_test`.
-
-### Farben testen (ab 0.9.2)
-
-Mit demselben Filterscript, ohne den Gamemode (auf einem Server mit Gamemode stattdessen [`beispiel/farbe_live_test.pwn`](beispiel/farbe_live_test.pwn), das kein Ereignis abonniert). `/farbe [ID] [Stelle] [textur/modell] [RRGGBB]` setzt beim Spieler mit dieser ID an dieser Stelle das Teil mit Farbe, nur an Stelle 0 (Oberteil) und 2 (Hose). `/farbe [ID] [Stelle] [textur/modell] aus` setzt ein Teil ohne Farbe, an jeder Stelle außer den Tattoos. Der Rest des Outfits bleibt; hat der Spieler noch keins, beginnt es beim Standard-CJ. `/kleidung 4` (gelb) und `/kleidung 5` (lila, schwarze Hose) sind fertige Outfits mit Farben. Clients mit Plugin vor 0.9.2 bekommen alles ohne Farben.
-
-1. Zwei Tester A (ID a) und B (ID b) mit Plugin ab 0.9.2, beide Skin 0 (siehe oben). Bei beiden steht „Plugin 0.9.2 gemeldet“.
-2. `/farbe a 0 tshirtwhite/tshirt BE00FF`: A trägt ein lila T-Shirt mit Falten und Schatten. **Arme, Hände und Hals bleiben in Hautfarbe**, ein Tattoo am Arm bleibt sichtbar.
-3. `/farbe b 0 tshirtwhite/tshirt FFDC00`: B trägt dasselbe T-Shirt in Gelb. **A bleibt lila**, bei A und bei B auf dem Bildschirm.
-4. `/farbe a 2 worktrgrey/worktr 000000`: schwarze Hose, dunkel, aber Falten noch zu sehen. `/farbe b 2 shortsgrey/shorts FFDC00`: gelbe Shorts, die Beine bleiben Haut. Keiner färbt den anderen mit, Schuhe und Kopf bleiben, wie sie sind.
-5. `/farbe a 16 bandred/bandana aus`: A trägt ein rotes Kopftuch; Oberteil und Hose behalten ihre Farbe, nichts verschwindet.
-6. `/farbe a 0 tshirtwhite/tshirt aus`: A trägt wieder das weiße T-Shirt, B bleibt gelb.
-7. Weit weg und zurück, Respawn, ins Fahrzeug und wieder raus: Beide behalten ihre Farben. Ein dritter Spieler, der später verbindet, sieht beide richtig.
-8. `/kleidunginfo` bei beiden: Zeile „Farben“ ohne „nicht“-Fehler. Im Log steht je Teil „gefärbt“ mit Textur, Pixelzahl, Format und „nur die Kleidung“, und je Umbau die Zeilen „Materialien“ und „Kleidung über der Haut“.
-9. Gegenprobe: Ein Outfit mit Farbe an Stelle 16 (z. B. mit dem Gamemode) wird angenommen; das Kopftuch ist ungefärbt zu sehen, im Log steht „Farben an Stelle [16] nicht angewendet“.
-10. Gegenprobe mit einem Plugin vor 0.9.2: Der Tester sieht dieselben Teile ohne Farben, nichts wird verworfen.
+Getestet wird mit dem Gamemode von German Samplife (samplife2026), der Outfits und Farben über dieselben Ereignisse schickt. Dazu `/kleidunginfo` bei allen Testern ausführen und `samplife-kleidung.log` aus dem GTA-Ordner einsammeln. Für Posen gibt es weiter [`beispiel/pose_test.pwn`](beispiel/pose_test.pwn).
 
 ## `/kleidunginfo`
 
@@ -400,9 +371,7 @@ Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/
 | `anim/samplife.ifp` | die Posen (Block `samplife`), wird in die DLL gebaut |
 | `anim/posen_bauen.py` | baut `anim/samplife.ifp` aus IFP-Dateien, nur Oberkörper |
 | `src/log.rs` | Logdatei |
-| `beispiel/kleidung_test.pwn` | Filterscript für den Test mit dem Server |
 | `beispiel/pose_test.pwn` | Filterscript für den Test der Posen |
-| `beispiel/esc_test.pwn` | Filterscript für den Test des ESC-Menüs |
 
 ## Lizenz
 

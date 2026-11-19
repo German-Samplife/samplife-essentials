@@ -268,7 +268,7 @@ GitHub baut das Paket mit [`.github/workflows/cef.yml`](.github/workflows/cef.ym
 
 ## CJ-Kleidung
 
-Im Ordner [`kleidung/`](kleidung/README.md) liegt das samp-cef-Plugin `samplife-kleidung.dll` für `GTA/cef/plugins/`. Es zieht jede Figur mit Skin 0 (CJ) so an, wie der Server es für ihren Spieler über samp-cef schickt (`kleidung:spieler`), die eigene und die der anderen Spieler, so wie im Singleplayer. Dafür braucht es den samp-cef-Client mit [`cef/plugin-ereignisse.patch`](cef/README.md#server-ereignisse-für-client-plugins) (Client-Version `0x000300`). GitHub baut die Datei mit [`.github/workflows/kleidung.yml`](.github/workflows/kleidung.yml) bisher nur als Artefakt, ohne Release; im Manifest steht sie erst, wenn der Gamemode die Kleidung nutzt. Protokoll, Installation, Testablauf mit dem Filterscript [`kleidung/beispiel/kleidung_test.pwn`](kleidung/beispiel/kleidung_test.pwn) und Quellen stehen in [`kleidung/README.md`](kleidung/README.md).
+Im Ordner [`kleidung/`](kleidung/README.md) liegt das samp-cef-Plugin `samplife-kleidung.dll` für `GTA/cef/plugins/`. Es zieht jede Figur mit Skin 0 (CJ) so an, wie der Server es für ihren Spieler über samp-cef schickt (`kleidung:spieler`), die eigene und die der anderen Spieler, so wie im Singleplayer. Dafür braucht es den samp-cef-Client mit [`cef/plugin-ereignisse.patch`](cef/README.md#server-ereignisse-für-client-plugins) (Client-Version `0x000300`). GitHub baut die Datei mit [`.github/workflows/kleidung.yml`](.github/workflows/kleidung.yml) bisher nur als Artefakt, ohne Release; im Manifest steht sie erst, wenn der Gamemode die Kleidung nutzt. Protokoll, Installation, Test und Quellen stehen in [`kleidung/README.md`](kleidung/README.md).
 
 ## Schriften
 
