@@ -1,0 +1,23 @@
+diff --git a/openmp-component/component/copy_cxxbridge_header.cmake b/openmp-component/component/copy_cxxbridge_header.cmake
+index c1ac509..8ce7213 100644
+--- a/openmp-component/component/copy_cxxbridge_header.cmake
++++ b/openmp-component/component/copy_cxxbridge_header.cmake
+@@ -1,7 +1,17 @@
++# Cargo from Rust 1.100 puts build script output under build/<package>/<hash>/out,
++# older versions under build/<package>-<hash>/out. Prefer the new layout: after
++# a toolchain update the old directories can still be there, but are stale.
+ file(GLOB CXXBRIDGE_HEADERS
+-	"${RUST_LIB_DIR}/build/cef-openmp-*/out/cxxbridge/include/cef-openmp/src/lib.rs.h"
++	"${RUST_LIB_DIR}/build/cef-openmp/*/out/cxxbridge/include/cef-openmp/src/lib.rs.h"
+ )
+ 
++list(LENGTH CXXBRIDGE_HEADERS CXXBRIDGE_HEADER_COUNT)
++if(CXXBRIDGE_HEADER_COUNT EQUAL 0)
++	file(GLOB CXXBRIDGE_HEADERS
++		"${RUST_LIB_DIR}/build/cef-openmp-*/out/cxxbridge/include/cef-openmp/src/lib.rs.h"
++	)
++endif()
++
+ list(LENGTH CXXBRIDGE_HEADERS CXXBRIDGE_HEADER_COUNT)
+ if(CXXBRIDGE_HEADER_COUNT EQUAL 0)
+ 	message(FATAL_ERROR "Could not find generated cxxbridge header under ${RUST_LIB_DIR}/build")

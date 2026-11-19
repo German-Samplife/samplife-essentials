@@ -165,7 +165,7 @@ Server, Gamemode und Protokoll ändern sich nicht, `CEF_PLUGIN_VERSION` bleibt `
 
 Das übernimmt GitHub mit [`.github/workflows/cef.yml`](../.github/workflows/cef.yml):
 
-1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, `maustasten.patch` und `speicher.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
+1. samp-cef auf Commit `f14fe4f…` nach `quelle/` und samp-client-api auf `d497ffa…` nach `samp-client-api/` holen und die Patches anwenden (`nur-maus.patch`, danach `plugin-ereignisse.patch`, `maustasten.patch`, `speicher.patch` und `cxxbridge-pfad.patch`, und `client-api-cursor.patch`). `Cargo.toml` aus dem Patch zeigt mit `[patch."https://github.com/zottce/samp-client-api.git"]` auf `../samp-client-api`.
 2. DirectX SDK (Juni 2010, nur `Lib/x86`) und die CEF-Distribution aus `cef-distribution.json` holen (CEF 150, Prüfsumme wird geprüft).
 3. Mit Rust stable `cargo build --release --target i686-pc-windows-msvc` bauen, dazu die Tests von `cef-messages` und `cef-server-core`.
 4. Prüfen, dass die Dateien 32 Bit sind und die Änderung enthalten.
@@ -187,6 +187,8 @@ git init samp-cef && cd samp-cef
 git fetch --depth 1 https://github.com/zottce/samp-cef.git f14fe4fa7f0d036edf445ba02b4bddd4cccac377
 git checkout FETCH_HEAD
 git apply /pfad/zu/samplife-essentials/cef/nur-maus.patch
+# nötig ab Rust 1.100 (neuer Ort der Build-Skript-Ausgaben, siehe unten)
+git apply /pfad/zu/samplife-essentials/cef/cxxbridge-pfad.patch
 cd ..
 git init samp-client-api && cd samp-client-api
 git fetch --depth 1 https://github.com/zottce/samp-client-api.git d497ffad4903d9cc3f02869c744c3c3d96217cbb
@@ -200,6 +202,8 @@ git -C ../open.mp submodule update --init --recursive SDK lib/pawn
 scripts/build-openmp-component.sh --openmp-root ../open.mp
 # Ergebnis: target/openmp-component-build/cef.so, dazu server/cef.inc ins Gamemode-Include
 ```
+
+Ab Rust 1.100 legt Cargo die Ausgaben von Build-Skripten unter `build/<Paket>/<Hash>/out` ab statt unter `build/<Paket>-<Hash>/out`. Das Original-Skript `openmp-component/component/copy_cxxbridge_header.cmake` sucht nur das alte Muster und bricht mit „Could not find generated cxxbridge header“ ab. [`cxxbridge-pfad.patch`](cxxbridge-pfad.patch) sucht zuerst das neue, dann das alte Muster; der Workflow wendet ihn nach `speicher.patch` an.
 
 Die Server-Seite benutzt `samp-client-api` nicht. Cargo braucht den Ordner `../samp-client-api` trotzdem, weil `Cargo.toml` ihn als `[patch]` für den ganzen Workspace nennt; ohne ihn bricht jeder `cargo build` ab.
 

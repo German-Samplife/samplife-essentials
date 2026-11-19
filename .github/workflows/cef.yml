@@ -54,6 +54,7 @@ jobs:
           git -C quelle apply --verbose ../cef/plugin-ereignisse.patch
           git -C quelle apply --verbose ../cef/maustasten.patch
           git -C quelle apply --verbose ../cef/speicher.patch
+          git -C quelle apply --verbose ../cef/cxxbridge-pfad.patch
           git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
           git -C quelle diff --stat
           git -C samp-client-api diff --stat
@@ -233,6 +234,7 @@ jobs:
           git -C quelle apply --verbose ../cef/plugin-ereignisse.patch
           git -C quelle apply --verbose ../cef/maustasten.patch
           git -C quelle apply --verbose ../cef/speicher.patch
+          git -C quelle apply --verbose ../cef/cxxbridge-pfad.patch
           git -C samp-client-api apply --verbose ../cef/client-api-cursor.patch
 
       - name: Rust (stable, i686-unknown-linux-gnu)
