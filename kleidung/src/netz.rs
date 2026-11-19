@@ -3,7 +3,7 @@
 //! samp-cef loads every DLL in `GTA/cef/plugins/` and, with our patch, hands it
 //! every event the server sends with `cef_emit_event` (`cef_server_event`) and a
 //! function to send events to the server (`cef_server_emitter`). Events starting with
-//! `kleidung:`, `anim:`, `lippen:` or `driveby:` are ours and don't go on to the browsers.
+//! `kleidung:`, `anim:`, `lippen:`, `driveby:` or `esc:` are ours and don't go on to the browsers.
 //!
 //! | Event | Direction | Arguments |
 //! |---|---|---|
@@ -20,6 +20,11 @@
 //! | `lippen:mikro` | server -> client | `1` a talk key of the local player is held, `0` released (mikro.rs) |
 //! | `lippen:pegel` | client -> server | `1` speech at the microphone while the key is held, `0` quiet again |
 //! | `driveby:waffen` | server -> client | weapon ids a passenger leans out with while aiming (driveby.rs), none = off |
+//! | `esc:an` / `esc:aus` | server -> client | none; ESC goes to the server instead of GTA's menu (esc.rs), or back |
+//! | `esc:bereit` | client -> server | `1` ESC goes to the server now, `0` not possible (see the log); answer to `esc:an` |
+//! | `esc:gedrueckt` | client -> server | none; ESC was pressed, GTA's menu stayed closed |
+//! | `esc:offen` / `esc:zu` | server -> client | none; answer to `esc:gedrueckt` or any change: the page is open / closed |
+//! | `esc:original` | server -> client | none; open GTA's own menu |
 //!
 //! The callbacks run on samp-cef's thread; they only queue. The game thread takes the
 //! queue in logic.rs.
@@ -40,9 +45,10 @@ const PREFIX: &str = "kleidung:";
 const PREFIX_ANIM: &str = "anim:";
 const PREFIX_LIPPEN: &str = "lippen:";
 const PREFIX_DRIVEBY: &str = "driveby:";
+const PREFIX_ESC: &str = "esc:";
 
 /// every prefix we take; an event with another prefix goes on to the browsers
-const PREFIXE: [&str; 4] = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN, PREFIX_DRIVEBY];
+const PREFIXE: [&str; 5] = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN, PREFIX_DRIVEBY, PREFIX_ESC];
 
 pub enum Nachricht {
     Spieler(u16, Box<(Teile, Farben)>),
@@ -55,6 +61,9 @@ pub enum Nachricht {
     LippenAus(u16),
     LippenMikro(bool),
     DrivebyWaffen(Vec<u32>),
+    EscAn(bool),
+    EscAntwort(bool),
+    EscOriginal,
     Getrennt,
 }
 
@@ -126,6 +135,16 @@ fn hallo() {
 /// mikro.rs: speech at the microphone starts (`true`) or stops; false if not sent.
 pub fn lippen_pegel(an: bool) -> bool {
     emit("lippen:pegel", if an { "1" } else { "0" })
+}
+
+/// esc.rs: answer to `esc:an`
+pub fn esc_bereit(ok: bool) -> bool {
+    emit("esc:bereit", if ok { "1" } else { "0" })
+}
+
+/// esc.rs: ESC was pressed and kept from GTA's menu; false if not sent
+pub fn esc_gedrueckt() -> bool {
+    verbunden() && emit("esc:gedrueckt", "")
 }
 
 pub fn connect() {
@@ -247,6 +266,19 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
 
         (PREFIX_DRIVEBY, "waffen") => crate::driveby::parse_waffen(tokens).map(|waffen| push(Nachricht::DrivebyWaffen(waffen))),
 
+        (PREFIX_ESC, name) if tokens.next().is_some() => Err(format!("{name}: keine Argumente erwartet")),
+
+        (PREFIX_ESC, "an" | "aus" | "offen" | "zu" | "original") => {
+            push(match name {
+                "an" => Nachricht::EscAn(true),
+                "aus" => Nachricht::EscAn(false),
+                "offen" => Nachricht::EscAntwort(true),
+                "zu" => Nachricht::EscAntwort(false),
+                _ => Nachricht::EscOriginal,
+            });
+            Ok(())
+        }
+
         _ => Err("unbekanntes Ereignis".to_owned()),
     };
 
@@ -269,6 +301,9 @@ mod tests {
         assert_eq!(aufteilen("anim:ziehen"), Some((PREFIX_ANIM, "ziehen")));
         assert_eq!(aufteilen("lippen:an"), Some((PREFIX_LIPPEN, "an")));
         assert_eq!(aufteilen("driveby:waffen"), Some((PREFIX_DRIVEBY, "waffen")));
+        assert_eq!(aufteilen("esc:offen"), Some((PREFIX_ESC, "offen")));
+        // the server's page uses its own name; its events go on to the browsers
+        assert_eq!(aufteilen("pausemenue:zu"), None);
         assert_eq!(aufteilen("handy:zu"), None);
     }
 }

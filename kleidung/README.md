@@ -10,6 +10,8 @@ Ab 0.9.5 spielt es beim **Ziehen einer Schusswaffe** die Teilanimation `waffe_ra
 
 Ab 0.9.6 lehnt sich ein Beifahrer **beim Zielen aus dem Fenster** und setzt sich beim Loslassen wieder hin (siehe [Drive-by beim Zielen](#drive-by-beim-zielen)).
 
+Ab 0.10.0 öffnet **ESC** auf Wunsch des Servers dessen Menü statt des Pausemenüs von GTA, und das Spiel läuft weiter (siehe [ESC-Menü](#esc-menü)).
+
 Ab 0.9.0 kann der Server einzelne Teile **färben**, z. B. ein gelbes T-Shirt für die Vagos oder ein lila T-Shirt für die Ballas, auch wo GTA keine solche Textur hat. Ab 0.9.1 nur noch Oberteil und Hose (siehe [Farben](#farben)).
 
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Im Gamemode ist die Kleidung noch nicht; getestet wird mit dem Filterscript [`beispiel/kleidung_test.pwn`](beispiel/kleidung_test.pwn).
@@ -187,6 +189,43 @@ Aufrufer in `CLocalPlayer::Process`: R1 `0x782E`/`0x7865`, R3 `0x784B`/`0x7882`.
 
 `/kleidunginfo` zeigt eine Zeile „Drive-by“: an oder aus, erlaubte Waffen, wie oft rausgelehnt und wieder rein, woran es zuletzt hing (z. B. „kein Beifahrer“, „zielt nicht“) und womit man schießt.
 
+## ESC-Menü
+
+Ab **0.10.0** kann der Server ESC übernehmen: Statt des Pausemenüs von GTA öffnet er eine eigene Seite, und das Spiel pausiert nicht. Das Plugin fängt nur den Tastendruck ab und sagt dem Server Bescheid; was die Seite zeigt, entscheidet der Server.
+
+| Ereignis | Richtung | Argumente |
+|---|---|---|
+| `esc:an` | Server → Client | keine. ESC geht ab jetzt an den Server. Nach `kleidung:hallo` an Clients ab `0.10.0`. |
+| `esc:aus` | Server → Client | keine. ESC öffnet wieder das Menü von GTA. |
+| `esc:bereit` | Client → Server | Antwort auf `esc:an`: `1` ESC geht an den Server, `0` geht nicht (Grund im Log, z. B. fremder Code an der Stelle). |
+| `esc:gedrueckt` | Client → Server | keine. ESC wurde gedrückt, das Menü von GTA blieb zu. |
+| `esc:offen` | Server → Client | keine. Die Seite des Servers ist offen; Antwort auf `esc:gedrueckt` oder jederzeit. |
+| `esc:zu` | Server → Client | keine. Die Seite ist zu; Antwort auf `esc:gedrueckt` oder jederzeit. |
+| `esc:original` | Server → Client | keine. Das Plugin öffnet das Menü von GTA (Einstellungen, Spiel beenden); nur dort pausiert das Spiel. |
+
+- **Jedes `esc:gedrueckt` braucht eine Antwort** (`esc:offen`, `esc:zu` oder `esc:original`). Kommt nach 1,5 Sekunden keine, öffnet das Plugin das Menü von GTA. Ein hängender Server lässt den Spieler so nie ohne Menü. Bis zur Antwort lösen weitere ESC nichts aus.
+- **Nicht abgefangen** wird ESC, solange das Menü von GTA offen ist (ESC schließt es wie immer), die Chat-Eingabe oder ein Dialog von SA-MP offen ist, vor `esc:an` und nach dem Trennen vom CEF-Server.
+- **Seiten mit Eingabe:** Hat eine samp-cef-Seite die Eingabe (voll oder nur Maus), bekommt sie ESC, und GTA sieht die Taste gar nicht (`cef/nur-maus.patch`, `win_event`). Die Seite des Servers schließt sich also selbst mit ESC und meldet das dem Server, der `esc:zu` schickt.
+- Ohne `esc:an` passiert nichts, ESC funktioniert wie in GTA.
+
+**Wie.** `CMenuManager::CheckForMenuClosing` (`0x576B70`) öffnet und schließt das Menü von GTA. An `0x576B9F` steht die Abfrage `CPad::IsEscJustPressed()` eingebettet: `cmp [NewKeyState.esc], bx; je 0x576BC7; cmp [OldKeyState.esc], bx; jne 0x576BC7` (`66 39 1D A8 33 B7 00 74 1F 66 39 1D 38 31 B7 00 75 16`, `ebx` ist 0). Das Plugin schreibt über diese 18 Bytes `call esc_pruefen; test al, al; je 0x576BC7` und fünf `nop`. `esc_pruefen` gibt den Tastendruck an GTA weiter, außer wenn das Plugin ihn abfängt. Ab `0x576BC7` prüft GTA die beiden Merker „trotzdem öffnen“ und „trotzdem schließen“; deshalb öffnet `m_bActivateMenuNextFrame` das Menü auch ohne ESC, und genau so öffnet das Plugin es bei `esc:original` und beim Rückfall. Nur über den Originalbytes; `esc:aus` und das Trennen legen sie zurück.
+
+| GTA SA 1.0 US | |
+|---|---|
+| `CPad::NewKeyState.esc` (16 Bit) | `0xB733A8` (`0xB73190` + `0x218`) |
+| `CPad::OldKeyState.esc` (16 Bit) | `0xB73138` (`0xB72F20` + `0x218`) |
+| `FrontEndMenuManager` | `0xBA6748` |
+| `m_bActivateMenuNextFrame` | `+0x33` |
+| `m_bMenuActive` | `+0x5C` |
+
+Gelesen mit einem Disassembler aus `gta_sa.exe` 1.0 US und abgeglichen mit gta-reversed (`Frontend/MenuManager_Input.cpp`, `Pad.h`).
+
+**DLL bleibt geladen.** Weil GTA ab `esc:an` in die DLL springt, hält das Plugin sich dann bis zum Ende des Spiels fest (`GetModuleHandleExW` mit `GET_MODULE_HANDLE_EX_FLAG_PIN`). samp-cef entlädt seine Plugins beim Beenden, und GTA würde sonst in freigegebenen Speicher springen.
+
+Testen: [`beispiel/esc_test.pwn`](beispiel/esc_test.pwn), laden mit `/rcon loadfs esc_test`, dann `/esctest an`. Das Script spielt eine Seite nur im Chat: ESC schaltet offen und zu im Wechsel. `/esctest antwort` schaltet auf „keine Antwort“ (nach 1,5 Sekunden kommt das Menü von GTA) und zurück, `/esctest original` öffnet das Menü von GTA, `/esctest aus` gibt ESC an GTA zurück. Es abonniert nur `esc:bereit` und `esc:gedrueckt` und läuft deshalb auch neben dem Gamemode.
+
+`/kleidunginfo` zeigt eine Zeile „ESC-Menü“: an oder aus (mit Grund), ob die Seite gerade offen ist und wie oft ESC abgefangen wurde, der Rückfall kam und das Menü von GTA geöffnet wurde.
+
 ## Lippen beim Sprechen
 
 Spricht ein Spieler im Sprach-Chat (Nähe, Telefon, Funk, Sender), bewegt sich das Gesicht seiner Figur. Der Server entscheidet: Sprech- oder Funktaste gedrückt **und** das Plugin des Sprechers hört Stimme am Mikrofon. Taste allein reicht nicht, Stimme ohne Taste auch nicht.
@@ -356,11 +395,13 @@ Lokal geht es mit Rust stable und dem Ziel `i686-pc-windows-msvc` (in `kleidung/
 | `src/lippen.rs` | Lippen: `factalk` je sprechendem Spieler starten, wiederholen, ausblenden |
 | `src/mikro.rs` | Pegel des eigenen Mikrofons über waveIn, Stimme erkennen, `lippen:pegel` |
 | `src/driveby.rs` | Drive-by beim Zielen: rauslehnen, solange die rechte Maustaste gedrückt ist, über die Funktionen in `samp.dll` |
+| `src/esc.rs` | ESC-Menü: ESC-Abfrage von GTA umleiten, `esc:gedrueckt`, Rückfall auf das Menü von GTA |
 | `anim/samplife.ifp` | die Posen (Block `samplife`), wird in die DLL gebaut |
 | `anim/posen_bauen.py` | baut `anim/samplife.ifp` aus IFP-Dateien, nur Oberkörper |
 | `src/log.rs` | Logdatei |
 | `beispiel/kleidung_test.pwn` | Filterscript für den Test mit dem Server |
 | `beispiel/pose_test.pwn` | Filterscript für den Test der Posen |
+| `beispiel/esc_test.pwn` | Filterscript für den Test des ESC-Menüs |
 
 ## Lizenz
 

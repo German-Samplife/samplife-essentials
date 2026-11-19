@@ -17,6 +17,25 @@ use crate::logic;
 
 pub static MODULE: AtomicUsize = AtomicUsize::new(0);
 
+/// Keeps this DLL loaded until GTA ends, also when samp-cef calls FreeLibrary on quit.
+/// Needed as soon as GTA code calls into it (esc.rs). True if pinned.
+pub fn festhalten() -> bool {
+    use winapi::um::libloaderapi::{
+        GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_PIN,
+    };
+
+    let mut module: HMODULE = std::ptr::null_mut();
+    let ok = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+            festhalten as *const u16,
+            &mut module,
+        )
+    };
+
+    ok != 0
+}
+
 pub fn start() {
     std::thread::spawn(|| {
         let _ = std::panic::catch_unwind(run);
