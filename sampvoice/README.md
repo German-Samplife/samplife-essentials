@@ -32,6 +32,38 @@ Ab `sampvoice-3.1-sl5` dazu [`deutsch.patch`](deutsch.patch) und [`logo.png`](lo
 - Mit `SAMP_DE` fehlen im Menü die Einstellungen für das Symbol über den Spielern und das Mikrofon-Symbol (Größe, Position, Verschieben). Beides zeigt dieser Client nicht (siehe oben), die Regler täten nichts.
 - Oben rechts im Menü steht unser Logo statt „SAMP VOICE Version 3.0“: [`logo.png`](logo.png) ersetzt beim Bauen `client/resources/logo.png`, 512 x 128 Pixel wie das Original (Sechseck aus `docs/logo` in samplife2026, daneben „German Samplife“ und „Sprach-Chat“ in Inter).
 
+Ab `sampvoice-3.1-sl6` dazu [`einstellungen-export.patch`](einstellungen-export.patch): Die Einstellungen des Menüs lassen sich auch im Control Panel des Servers (`/icp`, Reiter Audio) bedienen.
+
+- Die neue Datei `client/Export.cpp` exportiert C-Funktionen (`__cdecl`). Das Plugin `samplife-kleidung.dll` sucht sie zur Laufzeit mit `GetProcAddress` (`kleidung/src/stimme.rs`); mit einer älteren `sampvoice.asi` fehlen sie, und das Control Panel verweist weiter auf F11.
+- Alles geht über dieselben Funktionen wie im Menü (`Playback`, `Record`, `BlackList`) und landet in `PluginConfig`. Nach jeder Änderung speichert `Export.cpp` gleich `svconfig.bin`, nicht erst beim Beenden. Ist das Menü dabei offen, zieht es die Werte nach (`PluginMenu::SyncOptions`, dafür jetzt öffentlich).
+- Dazu nur zwei kleine Abfragen: `Playback::IsLoaded()` (BASS läuft) und `Record::IsInit()` (mit dem Sprach-Server verbunden, Geräteliste da).
+- Nur aus dem Faden des Spiels aufrufen, dort laufen auch Menü und Sprach-Client.
+
+| Export | Rückgabe |
+|---|---|
+| `int SamplifeStimmeVersion()` | Stand der Schnittstelle, jetzt `1` |
+| `int SamplifeStimmeLesen(int feld)` | Wert des Feldes, `-1` bei unbekanntem Feld |
+| `int SamplifeStimmeSetzen(int feld, int wert)` | `1` übernommen, `0` geht gerade nicht |
+| `int SamplifeStimmeGeraet(int index, char* puffer, int groesse)` | Name des Eingabegeräts (UTF-8), Länge oder `-1` |
+| `int SamplifeStimmeStummEintrag(int index, char* puffer, int groesse)` | Name in `puffer`, Spieler-ID (`65535` nicht online) oder `-1` |
+| `int SamplifeStimmeStumm(int spieler)` | Spieler (online) stummschalten, `1` steht in der Liste |
+| `int SamplifeStimmeFrei(const char* name)` | Stummschaltung aufheben, `1` stand in der Liste |
+
+| Feld | Bedeutung | Setzen |
+|---|---|---|
+| 0 | Ton an | 0/1 |
+| 1 | Lautstärke | 0 bis 100 |
+| 2 | Lautstärke angleichen | 0/1 |
+| 3 | Filter für hohe Töne (im Menü „Hochpassfilter“, BASS-Tiefpass bei 3400 Hz) | 0/1 |
+| 4 | Mikrofon an | 0/1 |
+| 5 | Mikrofon-Lautstärke | 0 bis 100 |
+| 6 | Eingabegerät (Index, `-1` keins) | Index |
+| 7 | Mikrofontest (man hört sich selbst), wird nicht gespeichert | 0/1 |
+| 8 | Wiedergabe bereit (BASS läuft) | nur lesen |
+| 9 | Aufnahme bereit (mit dem Sprach-Server verbunden) | nur lesen |
+| 10 | Anzahl der Eingabegeräte | nur lesen |
+| 11 | Anzahl der stummgeschalteten Spieler | nur lesen |
+
 Alles andere bleibt wie im Original:
 - Einstellungen im Menü (Ton, Lautstärke, Mikrofon, Gerät, Mikrofontest, Stummschalten einzelner Spieler)
 - Sprechtasten

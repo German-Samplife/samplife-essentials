@@ -48,6 +48,7 @@ jobs:
           git -C quelle apply --verbose ../sampvoice/neuer-compiler.patch
           git -C quelle apply --verbose ../sampvoice/cef-reihenfolge.patch
           git -C quelle apply --verbose ../sampvoice/deutsch.patch
+          git -C quelle apply --verbose ../sampvoice/einstellungen-export.patch
           Copy-Item sampvoice/Directory.Build.targets quelle/client/
           # Logo oben rechts im Menü (F11): unseres statt „SAMP VOICE“, 512 x 128 wie das Original
           Copy-Item sampvoice/logo.png quelle/client/resources/logo.png -Force
@@ -92,6 +93,11 @@ jobs:
           if (Select-String -Path $asi -Pattern "[sv:dbg:ClientInitialize]" -SimpleMatch -Quiet) { throw "sampvoice.asi stammt aus SampVoice 4.x" }
           if (-not (Select-String -Path $asi -Pattern "Mikrofon testen" -SimpleMatch -Quiet)) { throw "sampvoice.asi hat nicht das deutsche Menü" }
           if (Select-String -Path $asi -Pattern "Turn on microphone" -SimpleMatch -Quiet) { throw "sampvoice.asi enthält noch das englische Menü" }
+          # Einstellungen für /icp (einstellungen-export.patch): samplife-kleidung.dll sucht diese Namen mit GetProcAddress
+          $exporte = & $dumpbin.FullName /exports $asi | Out-String
+          foreach ($name in "SamplifeStimmeVersion", "SamplifeStimmeLesen", "SamplifeStimmeSetzen", "SamplifeStimmeGeraet", "SamplifeStimmeStummEintrag", "SamplifeStimmeStumm", "SamplifeStimmeFrei") {
+            if ($exporte -notmatch "\b$name\b") { throw "Export $name fehlt in sampvoice.asi" }
+          }
 
       - name: Paket zusammenstellen
         shell: pwsh
@@ -126,9 +132,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf, kein Mikrofon-Symbol), mit deutschem Menü (F11) und dem Logo von German Samplife.
+          SampVoice 3.1 für SA-MP 0.3.7 R1, ohne Sprecheranzeige (keine Liste am Bildschirmrand, kein Symbol über dem Kopf, kein Mikrofon-Symbol), mit deutschem Menü (F11), dem Logo von German Samplife und den Einstellungen des Menüs als Exporte für /icp.
 
-          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit den Änderungen in ``sampvoice/ohne-sprecheranzeige.patch``, ``sampvoice/cef-reihenfolge.patch``, ``sampvoice/deutsch.patch`` und ``sampvoice/logo.png`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
+          Gebaut von GitHub aus https://github.com/CyberMor/sampvoice/commit/$env:SAMPVOICE_COMMIT (MIT) mit den Änderungen in ``sampvoice/ohne-sprecheranzeige.patch``, ``sampvoice/cef-reihenfolge.patch``, ``sampvoice/deutsch.patch``, ``sampvoice/einstellungen-export.patch`` und ``sampvoice/logo.png`` dieses Tags. ASI Loader und BASS stammen unverändert aus ``sv_client_037_r1_english.zip`` von SampVoice 3.1.
 
           Für das Manifest: SHA-256 ``$env:ZIP_SHA256``, Größe $env:ZIP_GROESSE Bytes.
           "@

@@ -1,0 +1,321 @@
+diff --git a/client/Export.cpp b/client/Export.cpp
+new file mode 100644
+index 0000000..34442ec
+--- /dev/null
++++ b/client/Export.cpp
+@@ -0,0 +1,225 @@
++/*
++    German Samplife: die Einstellungen des Menues (F11) fuer andere Module im Spiel,
++    als exportierte C-Funktionen (samplife-kleidung.dll, kleidung/src/stimme.rs in samplife-essentials).
++
++    Alles geht ueber dieselben Funktionen wie im Menue (Playback, Record, BlackList) und landet in
++    PluginConfig. Nach jeder Aenderung wird svconfig.bin gleich gespeichert, nicht erst beim Beenden.
++
++    Nur aus dem Faden des Spiels aufrufen: Dort laufen auch Menue und Sprach-Client (Plugin::OnRender).
++    Keine Ausnahme verlaesst eine Funktion.
++*/
++
++#include <algorithm>
++#include <cstring>
++#include <string>
++
++#include <util/Path.h>
++
++#include "Header.h"
++#include "BlackList.h"
++#include "Playback.h"
++#include "PluginConfig.h"
++#include "PluginMenu.h"
++#include "Record.h"
++
++#define SL_EXPORT extern "C" __declspec(dllexport)
++
++namespace {
++
++// Stand der Schnittstelle; neue Felder erhoehen ihn
++constexpr int kVersion = 1;
++
++enum Feld : int {
++    // lesen und setzen
++    kTon              = 0,  // 0/1
++    kLautstaerke      = 1,  // 0 bis 100
++    kAngleichen       = 2,  // 0/1, Lautstaerke angleichen (Balancer)
++    kFilter           = 3,  // 0/1, Filter fuer hohe Toene (im Menue "Hochpassfilter")
++    kMikro            = 4,  // 0/1
++    kMikroLautstaerke = 5,  // 0 bis 100
++    kGeraet           = 6,  // Index in der Geraeteliste, -1 keins
++    kTest             = 7,  // 0/1, Mikrofontest: man hoert sich selbst
++    // nur lesen
++    kWiedergabe       = 8,  // 1: BASS laeuft, Ton-Einstellungen wirken
++    kAufnahme         = 9,  // 1: mit dem Sprach-Server verbunden, Mikrofon-Einstellungen wirken
++    kGeraete          = 10, // Anzahl der Eingabegeraete
++    kStumm            = 11, // Anzahl der stummgeschalteten Spieler
++};
++
++void Gespeichert() noexcept
++{
++    try
++    {
++        if (PluginMenu::IsShowed()) PluginMenu::SyncOptions();
++        PluginConfig::Save(Path() / SV::kConfigFileName);
++    }
++    catch (...) {}
++}
++
++int Kopieren(const std::string& text, char* const puffer, const int groesse) noexcept
++{
++    if (puffer == nullptr || groesse <= 0) return -1;
++
++    const auto laenge = (std::min)(text.size(), static_cast<std::size_t>(groesse - 1));
++    std::memcpy(puffer, text.data(), laenge);
++    puffer[laenge] = '\0';
++
++    return static_cast<int>(laenge);
++}
++
++}
++
++SL_EXPORT int __cdecl SamplifeStimmeVersion()
++{
++    return kVersion;
++}
++
++// Wert eines Feldes, -1 bei unbekanntem Feld
++SL_EXPORT int __cdecl SamplifeStimmeLesen(const int feld)
++{
++    try
++    {
++        switch (feld)
++        {
++            case kTon:              return Playback::GetSoundEnable() ? 1 : 0;
++            case kLautstaerke:      return Playback::GetSoundVolume();
++            case kAngleichen:       return Playback::GetSoundBalancer() ? 1 : 0;
++            case kFilter:           return Playback::GetSoundFilter() ? 1 : 0;
++            case kMikro:            return Record::GetMicroEnable() ? 1 : 0;
++            case kMikroLautstaerke: return Record::GetMicroVolume();
++            case kGeraet:           return Record::IsInit() ? Record::GetMicroDevice() : -1;
++            case kTest:             return Record::IsChecking() ? 1 : 0;
++            case kWiedergabe:       return Playback::IsLoaded() ? 1 : 0;
++            case kAufnahme:         return Record::IsInit() ? 1 : 0;
++            case kGeraete:          return Record::IsInit() ? static_cast<int>(Record::GetDeviceNamesList().size()) : 0;
++            case kStumm:            return static_cast<int>(BlackList::RequestBlackList().size());
++        }
++    }
++    catch (...) {}
++
++    return -1;
++}
++
++// Setzt ein Feld wie das Menue. 1: uebernommen, 0: geht gerade nicht (nicht geladen, ungueltiger Wert, nur lesbar)
++SL_EXPORT int __cdecl SamplifeStimmeSetzen(const int feld, const int wert)
++{
++    try
++    {
++        switch (feld)
++        {
++            case kTon:
++            case kLautstaerke:
++            case kAngleichen:
++            case kFilter:
++            {
++                if (!Playback::IsLoaded()) return 0;
++
++                if (feld == kTon) Playback::SetSoundEnable(wert != 0);
++                else if (feld == kLautstaerke) Playback::SetSoundVolume(std::clamp(wert, 0, 100));
++                else if (feld == kAngleichen) Playback::SetSoundBalancer(wert != 0);
++                else Playback::SetSoundFilter(wert != 0);
++            } break;
++            case kMikro:
++            case kMikroLautstaerke:
++            case kGeraet:
++            case kTest:
++            {
++                if (!Record::IsInit()) return 0;
++
++                if (feld == kMikro) Record::SetMicroEnable(wert != 0);
++                else if (feld == kMikroLautstaerke) Record::SetMicroVolume(std::clamp(wert, 0, 100));
++                else if (feld == kGeraet)
++                {
++                    if (wert < 0 || wert >= static_cast<int>(Record::GetDeviceNamesList().size())) return 0;
++                    Record::SetMicroDevice(wert);
++                }
++                else if (wert != 0)
++                {
++                    // wie im Menue nur mit eingeschaltetem Mikrofon
++                    if (!Record::IsChecking() && !Record::StartChecking()) return 0;
++                }
++                else Record::StopChecking();
++            } break;
++            default: return 0;
++        }
++    }
++    catch (...)
++    {
++        return 0;
++    }
++
++    if (feld != kTest) Gespeichert();
++    return 1;
++}
++
++// Name des Eingabegeraets index (UTF-8) in puffer. Laenge oder -1, wenn es den Index nicht gibt
++SL_EXPORT int __cdecl SamplifeStimmeGeraet(const int index, char* const puffer, const int groesse)
++{
++    try
++    {
++        if (!Record::IsInit()) return -1;
++
++        const auto& namen = Record::GetDeviceNamesList();
++        if (index < 0 || index >= static_cast<int>(namen.size())) return -1;
++
++        return Kopieren(namen[index], puffer, groesse);
++    }
++    catch (...) {}
++
++    return -1;
++}
++
++// Eintrag index der Stummschalte-Liste: Name in puffer, Rueckgabe die Spieler-ID (65535: nicht online)
++// oder -1, wenn es den Index nicht gibt
++SL_EXPORT int __cdecl SamplifeStimmeStummEintrag(const int index, char* const puffer, const int groesse)
++{
++    try
++    {
++        if (index < 0) return -1;
++
++        int i { 0 };
++
++        for (const auto& eintrag : BlackList::RequestBlackList())
++        {
++            if (i++ != index) continue;
++            if (Kopieren(eintrag.playerName, puffer, groesse) < 0) return -1;
++            return eintrag.playerId;
++        }
++    }
++    catch (...) {}
++
++    return -1;
++}
++
++// Spieler (ID, online) stummschalten wie im Menue. 1: steht jetzt in der Liste
++SL_EXPORT int __cdecl SamplifeStimmeStumm(const int spieler)
++{
++    try
++    {
++        if (spieler < 0 || spieler >= SV::kNonePlayer) return 0;
++
++        BlackList::LockPlayer(static_cast<WORD>(spieler));
++        return BlackList::IsPlayerBlocked(static_cast<WORD>(spieler)) ? 1 : 0;
++    }
++    catch (...) {}
++
++    return 0;
++}
++
++// Stummschaltung aufheben, nach Namen wie im Menue (auch fuer Spieler, die nicht online sind). 1: stand in der Liste
++SL_EXPORT int __cdecl SamplifeStimmeFrei(const char* const name)
++{
++    try
++    {
++        if (name == nullptr || *name == '\0') return 0;
++
++        const std::string spieler { name };
++        if (!BlackList::IsPlayerBlocked(spieler)) return 0;
++
++        BlackList::UnlockPlayer(spieler);
++        return 1;
++    }
++    catch (...) {}
++
++    return 0;
++}
+diff --git a/client/Playback.cpp b/client/Playback.cpp
+index 5329b89..3eae078 100644
+--- a/client/Playback.cpp
++++ b/client/Playback.cpp
+@@ -80,6 +80,11 @@ void Playback::Tick() noexcept
+     BASS_Apply3D();
+ }
+ 
++bool Playback::IsLoaded() noexcept
++{
++    return Playback::loadStatus;
++}
++
+ bool Playback::GetSoundEnable() noexcept
+ {
+     return PluginConfig::GetSoundEnable();
+diff --git a/client/Playback.h b/client/Playback.h
+index 0f39bb5..6d64d39 100644
+--- a/client/Playback.h
++++ b/client/Playback.h
+@@ -29,6 +29,9 @@ public:
+ 
+     static void Tick() noexcept;
+ 
++    // German Samplife (Export.cpp): BASS laeuft, die Setter wirken
++    static bool IsLoaded() noexcept;
++
+     static bool GetSoundEnable() noexcept;
+     static int GetSoundVolume() noexcept;
+     static bool GetSoundBalancer() noexcept;
+diff --git a/client/PluginMenu.h b/client/PluginMenu.h
+index 106a530..b57484e 100644
+--- a/client/PluginMenu.h
++++ b/client/PluginMenu.h
+@@ -174,10 +174,11 @@ public:
+ 
+     static LRESULT WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) noexcept;
+ 
+-private:
+-
++    // German Samplife: auch aus Export.cpp, wenn ein anderes Modul etwas einstellt, solange das Menue offen ist
+     static void SyncOptions() noexcept;
+ 
++private:
++
+ private:
+ 
+     static bool initStatus;
+diff --git a/client/Record.cpp b/client/Record.cpp
+index 5e86f98..d115c0e 100644
+--- a/client/Record.cpp
++++ b/client/Record.cpp
+@@ -305,6 +305,11 @@ DWORD Record::GetFrame(BYTE* const bufferPtr, const DWORD bufferSize) noexcept
+     return encDataLength > 0 ? static_cast<DWORD>(encDataLength) : NULL;
+ }
+ 
++bool Record::IsInit() noexcept
++{
++    return Record::initStatus;
++}
++
+ bool Record::HasMicro() noexcept
+ {
+     BASS_DEVICEINFO devInfo {};
+diff --git a/client/Record.h b/client/Record.h
+index 15a792f..6e7350d 100644
+--- a/client/Record.h
++++ b/client/Record.h
+@@ -35,6 +35,9 @@ public:
+     static void Tick() noexcept;
+     static bool HasMicro() noexcept;
+ 
++    // German Samplife (Export.cpp): mit dem Sprach-Server verbunden, Geraeteliste und Setter wirken
++    static bool IsInit() noexcept;
++
+     static bool StartRecording() noexcept;
+     static bool IsRecording() noexcept;
+     static void StopRecording() noexcept;
+diff --git a/client/client.vcxproj b/client/client.vcxproj
+index 524aee8..0084868 100644
+--- a/client/client.vcxproj
++++ b/client/client.vcxproj
+@@ -508,6 +508,7 @@
+     <ClCompile Include="Channel.cpp" />
+     <ClCompile Include="ControlPacket.cpp" />
+     <ClCompile Include="Effect.cpp" />
++    <ClCompile Include="Export.cpp" />
+     <ClCompile Include="GlobalStream.cpp" />
+     <ClCompile Include="include\samp\AimStuff.cpp" />
+     <ClCompile Include="include\samp\CActor.cpp" />

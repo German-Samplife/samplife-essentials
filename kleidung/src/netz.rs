@@ -3,7 +3,7 @@
 //! samp-cef loads every DLL in `GTA/cef/plugins/` and, with our patch, hands it
 //! every event the server sends with `cef_emit_event` (`cef_server_event`) and a
 //! function to send events to the server (`cef_server_emitter`). Events starting with
-//! `kleidung:`, `anim:`, `lippen:`, `driveby:` or `esc:` are ours and don't go on to the browsers.
+//! `kleidung:`, `anim:`, `lippen:`, `driveby:`, `esc:` or `stimme:` are ours and don't go on to the browsers.
 //!
 //! | Event | Direction | Arguments |
 //! |---|---|---|
@@ -26,6 +26,11 @@
 //! | `esc:offen` / `esc:zu` | server -> client | none; answer to `esc:gedrueckt` or any change: the page is open / closed |
 //! | `esc:original` | server -> client | none; open GTA's own menu |
 //! | `esc:beenden` | server -> client | none; quit the game like SA-MP's `/q` (the player confirmed it on the page) |
+//! | `stimme:frage` | server -> client | none; answer `stimme:stand` (stimme.rs, settings of SampVoice for /icp) |
+//! | `stimme:setzen` | server -> client | field (`ton`, `lautstaerke`, `angleichen`, `filter`, `mikro`, `mikrolautstaerke`, `geraet`, `test`) and value |
+//! | `stimme:stumm` | server -> client | player id; muted in SampVoice for this player only |
+//! | `stimme:frei` | server -> client | player name; mute lifted |
+//! | `stimme:stand` | client -> server | JSON with all settings, `{"da":0}` without the exports of sampvoice.asi; answer to every `stimme:` event |
 //!
 //! The callbacks run on samp-cef's thread; they only queue. The game thread takes the
 //! queue in logic.rs.
@@ -47,9 +52,10 @@ const PREFIX_ANIM: &str = "anim:";
 const PREFIX_LIPPEN: &str = "lippen:";
 const PREFIX_DRIVEBY: &str = "driveby:";
 const PREFIX_ESC: &str = "esc:";
+const PREFIX_STIMME: &str = "stimme:";
 
 /// every prefix we take; an event with another prefix goes on to the browsers
-const PREFIXE: [&str; 5] = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN, PREFIX_DRIVEBY, PREFIX_ESC];
+const PREFIXE: [&str; 6] = [PREFIX, PREFIX_ANIM, PREFIX_LIPPEN, PREFIX_DRIVEBY, PREFIX_ESC, PREFIX_STIMME];
 
 pub enum Nachricht {
     Spieler(u16, Box<(Teile, Farben)>),
@@ -66,6 +72,10 @@ pub enum Nachricht {
     EscAntwort(bool),
     EscOriginal,
     EscBeenden,
+    StimmeFrage,
+    StimmeSetzen(c_int, c_int),
+    StimmeStumm(u16),
+    StimmeFrei(String),
     Getrennt,
 }
 
@@ -147,6 +157,11 @@ pub fn esc_bereit(ok: bool) -> bool {
 /// esc.rs: ESC was pressed and kept from GTA's menu; false if not sent
 pub fn esc_gedrueckt() -> bool {
     verbunden() && emit("esc:gedrueckt", "")
+}
+
+/// stimme.rs: all settings of SampVoice, answer to every `stimme:` event
+pub fn stimme_stand(json: &str) -> bool {
+    verbunden() && emit("stimme:stand", json)
 }
 
 pub fn connect() {
@@ -282,6 +297,45 @@ pub fn server_event(event: &CStr, arguments: &CStr) -> c_int {
             Ok(())
         }
 
+        (PREFIX_STIMME, "frage") => match tokens.next() {
+            None => {
+                push(Nachricht::StimmeFrage);
+                Ok(())
+            }
+            Some(_) => Err("keine Argumente erwartet".to_owned()),
+        },
+
+        (PREFIX_STIMME, "setzen") => match (tokens.next().and_then(crate::stimme::feld), tokens.next(), tokens.next()) {
+            (None, _, _) => Err("Feld fehlt oder unbekannt".to_owned()),
+            (Some(_), _, Some(_)) => Err("zu viele Argumente".to_owned()),
+            (Some((feld, max)), Some(wert), None) => match wert.parse::<c_int>() {
+                Ok(wert) if (0..=max).contains(&wert) => {
+                    push(Nachricht::StimmeSetzen(feld, wert));
+                    Ok(())
+                }
+                _ => Err(format!("Wert 0 bis {max} erwartet")),
+            },
+            (Some(_), None, None) => Err("Wert fehlt".to_owned()),
+        },
+
+        (PREFIX_STIMME, "stumm") => match (parse_id(tokens.next()), tokens.next()) {
+            (Some(id), None) => {
+                push(Nachricht::StimmeStumm(id));
+                Ok(())
+            }
+            (_, Some(_)) => Err("zu viele Argumente".to_owned()),
+            (None, None) => Err("Spieler-ID fehlt oder ungültig".to_owned()),
+        },
+
+        (PREFIX_STIMME, "frei") => match (tokens.next(), tokens.next()) {
+            (Some(name), None) if crate::stimme::gueltiger_name(name) => {
+                push(Nachricht::StimmeFrei(name.to_owned()));
+                Ok(())
+            }
+            (_, Some(_)) => Err("zu viele Argumente".to_owned()),
+            _ => Err("Spielername fehlt oder ungültig".to_owned()),
+        },
+
         _ => Err("unbekanntes Ereignis".to_owned()),
     };
 
@@ -305,6 +359,9 @@ mod tests {
         assert_eq!(aufteilen("lippen:an"), Some((PREFIX_LIPPEN, "an")));
         assert_eq!(aufteilen("driveby:waffen"), Some((PREFIX_DRIVEBY, "waffen")));
         assert_eq!(aufteilen("esc:offen"), Some((PREFIX_ESC, "offen")));
+        assert_eq!(aufteilen("stimme:setzen"), Some((PREFIX_STIMME, "setzen")));
+        // the control panel's own events go on to the browsers
+        assert_eq!(aufteilen("icp:stimme"), None);
         // the server's page uses its own name; its events go on to the browsers
         assert_eq!(aufteilen("pausemenue:zu"), None);
         assert_eq!(aufteilen("handy:zu"), None);
