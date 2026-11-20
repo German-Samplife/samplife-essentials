@@ -40,8 +40,11 @@ namespace SamplifeEssentials
             get { return Path.Combine(Pfade.Launcher, "letzte-module.txt"); }
         }
 
-        /// <summary>Liste der DLLs in gta_sa.exe aus diesem GTA-Verzeichnis als Text, leer, wenn das Spiel nicht laeuft.</summary>
-        public static string ModuleLesen(string gta)
+        /// <summary>
+        /// Liste der DLLs in gta_sa.exe aus diesem GTA-Verzeichnis als Text, leer, wenn das Spiel nicht laeuft. zeitpunkt: wann
+        /// gelesen wurde (z. B. „beim Erscheinen des Spielfensters“), steht als eigene Zeile im Text.
+        /// </summary>
+        public static string ModuleLesen(string gta, string zeitpunkt)
         {
             string ziel;
             Process[] prozesse;
@@ -66,7 +69,7 @@ namespace SamplifeEssentials
                         continue;
                     }
                     if (!string.Equals(pfad, ziel, StringComparison.OrdinalIgnoreCase)) continue;
-                    text = Auflisten(prozess, gta, ziel);
+                    text = Auflisten(prozess, gta, ziel, zeitpunkt);
                 }
                 catch (Exception fehler) { text = "Module in gta_sa.exe ließen sich nicht lesen: " + fehler.Message; }
                 finally { prozess.Dispose(); }
@@ -75,7 +78,7 @@ namespace SamplifeEssentials
             return text;
         }
 
-        static string Auflisten(Process prozess, string gta, string ziel)
+        static string Auflisten(Process prozess, string gta, string ziel, string zeitpunkt)
         {
             var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows).TrimEnd('\\') + "\\";
             var gtaOrdner = Path.GetFullPath(gta).TrimEnd('\\') + "\\";
@@ -96,6 +99,7 @@ namespace SamplifeEssentials
             }
             var text = new StringBuilder();
             text.Append("Module in gta_sa.exe, Launcher ").Append(Programm.Version).Append(", ").Append(Absturzbericht.Windows()).Append('\n');
+            text.Append("Gelesen: ").Append(zeitpunkt).Append('\n');
             text.Append(Kompatibilitaet(ziel)).Append('\n');
             text.Append(Laa.Status(gta)).Append('\n');
             text.Append("GTA unter „Programme“: ").Append(FremdeDateien.UnterProgramme(gta) ? "ja" : "nein").Append('\n');
@@ -198,8 +202,12 @@ namespace SamplifeEssentials
                 && svlog.IndexOf("device interface", StringComparison.Ordinal) < 0;
         }
 
+        // So viel vom Log der CJ-Kleidung (das Ende) geht mit, damit es die Logs von samp-cef nicht verdraengt
+        const int MaxKleidungLog = 6000;
+
         /// <summary>
-        /// Logs von samp-cef, die seit seitUtc geschrieben wurden: cef_client.log im GTA-Verzeichnis und die Logs im Ordner cef.
+        /// Logs von samp-cef, die seit seitUtc geschrieben wurden: cef_client.log im GTA-Verzeichnis und die Logs im Ordner cef,
+        /// dazu am Ende samplife-kleidung.log (Plugin von samp-cef, siehe KleidungLogLesen).
         /// </summary>
         public static string CefLogsLesen(string gta, DateTime seitUtc)
         {
@@ -221,8 +229,121 @@ namespace SamplifeEssentials
                 }
             }
             catch (Exception) { }
+            // Zuletzt, damit es beim Kuerzen (vorne) erhalten bleibt; selbst hoechstens MaxKleidungLog Zeichen
+            var kleidung = KleidungLogLesen(gta, seitUtc);
+            if (kleidung != "") text.Append("== ").Append(KleidungLog).Append(" ==\n").Append(kleidung).Append("\n\n");
             var ergebnis = text.ToString();
             return ergebnis.Length > MaxLog ? ergebnis.Substring(ergebnis.Length - MaxLog) : ergebnis;
+        }
+
+        const string KleidungLog = "samplife-kleidung.log";
+
+        /// <summary>
+        /// Log der CJ-Kleidung (kleidung/src/log.rs): je Spielstart neu, im GTA-Verzeichnis, sonst unter „Eigene
+        /// Dokumente\GTA San Andreas User Files“, sonst in %TEMP%. Es nennt, wann die Einstiege ins Spiel (0x53E981 und
+        /// Present) eingehakt wurden. Das Ende, hoechstens MaxKleidungLog Zeichen, leer ohne Log seit seitUtc.
+        /// </summary>
+        static string KleidungLogLesen(string gta, DateTime seitUtc)
+        {
+            var orte = new List<string> { Path.Combine(gta, KleidungLog), Path.Combine(UserFiles, KleidungLog) };
+            try { orte.Add(Path.Combine(Path.GetTempPath(), KleidungLog)); }
+            catch (Exception) { }
+            foreach (var datei in orte)
+            {
+                var inhalt = LogLesen(datei, seitUtc);
+                if (inhalt == "") continue;
+                return inhalt.Length > MaxKleidungLog ? inhalt.Substring(inhalt.Length - MaxKleidungLog) : inhalt;
+            }
+            return "";
+        }
+
+        /// <summary>Eine Datei im GTA-Verzeichnis, die sich in gta_sa.exe einhaengt (siehe ModsSuchen).</summary>
+        public class Mod
+        {
+            public string Pfad;     // relativ zum GTA-Verzeichnis
+            public bool Eigen;      // vom Launcher angelegt oder aktualisiert (samplife-launcher\installiert.json)
+        }
+
+        // Nicht durchsuchen: Sicherungen des Launchers und sein eigener Ordner
+        static readonly string[] ModsOhne = { Installation.SicherungsOrdner, Stand.Ordner };
+
+        /// <summary>
+        /// Was sich beim Start in gta_sa.exe einhaengt, von der Platte gelesen, also auch, wenn GTA abstuerzt, bevor der
+        /// Launcher die DLLs im Spiel lesen kann: alle .asi bis CrashTiefe Ordner tief (auch unter modloader), Plugins von
+        /// samp-cef (cef\plugins\*.dll) und DLLs neben gta_sa.exe unter den Namen, die ASI Loader, ReShade oder ENB benutzen
+        /// (d3d9.dll, dinput8.dll …, FremdeDateien.LoaderNamen). GTA selbst bringt keine davon mit. Ausgeschaltete Dateien
+        /// (.samplife-aus) zaehlen nicht.
+        /// </summary>
+        public static List<Mod> ModsSuchen(string gta)
+        {
+            var mods = new List<Mod>();
+            try
+            {
+                if (!Directory.Exists(gta)) return mods;
+                var eigene = Installiert.Laden(gta);
+                var dateien = new List<string>();
+                foreach (var datei in Suchen(gta, CrashTiefe, new[] { "*.asi" }))
+                {
+                    // „*.asi“ trifft unter Windows auch Endungen wie .asix
+                    if (!string.Equals(Path.GetExtension(datei), ".asi", StringComparison.OrdinalIgnoreCase)) continue;
+                    var relativ = Relativ(gta, datei);
+                    var ausgenommen = false;
+                    foreach (var ordner in ModsOhne)
+                        if (relativ.StartsWith(ordner + "\\", StringComparison.OrdinalIgnoreCase)) ausgenommen = true;
+                    if (!ausgenommen) dateien.Add(datei);
+                }
+                dateien.Sort(StringComparer.OrdinalIgnoreCase);
+                var plugins = Path.Combine(gta, "cef", "plugins");
+                if (Directory.Exists(plugins))
+                {
+                    var liste = new List<string>(Directory.GetFiles(plugins, "*.dll", SearchOption.TopDirectoryOnly));
+                    liste.Sort(StringComparer.OrdinalIgnoreCase);
+                    dateien.AddRange(liste);
+                }
+                foreach (var name in FremdeDateien.LoaderNamen)
+                {
+                    var datei = Path.Combine(gta, name);
+                    if (File.Exists(datei)) dateien.Add(datei);
+                }
+                foreach (var datei in dateien)
+                {
+                    var relativ = Relativ(gta, datei);
+                    mods.Add(new Mod { Pfad = relativ, Eigen = eigene.Suchen(relativ) != null });
+                }
+            }
+            catch (Exception) { }
+            return mods;
+        }
+
+        /// <summary>
+        /// Abschnitt fuer das Feld „module“: jede Datei aus ModsSuchen mit Hersteller und Version, die vom Launcher markiert.
+        /// </summary>
+        public static string ModsText(string gta)
+        {
+            var mods = ModsSuchen(gta);
+            var text = new StringBuilder();
+            text.Append("Mods im GTA-Verzeichnis (von der Platte gelesen, nicht aus dem laufenden Spiel): ").Append(mods.Count).Append('\n');
+            foreach (var mod in mods)
+            {
+                text.Append("  ").Append(mod.Pfad).Append(Herkunft(Path.Combine(gta, mod.Pfad), true));
+                if (mod.Eigen) text.Append(", vom Launcher");
+                text.Append('\n');
+            }
+            return text.ToString();
+        }
+
+        /// <summary>
+        /// Haengt ModsText an die DLL-Liste eines Berichts. Ist beides zusammen zu lang, wird die DLL-Liste hinten gekuerzt,
+        /// damit die Mods nicht abgeschnitten werden.
+        /// </summary>
+        public static string MitMods(string module, string gta)
+        {
+            var mods = ModsText(gta);
+            if (mods.Length > MaxModule) mods = mods.Substring(0, MaxModule);
+            if (module == "") return mods;
+            var platz = MaxModule - mods.Length - 1;
+            if (module.Length > platz) module = platz > 0 ? module.Substring(0, platz) : "";
+            return module.TrimEnd('\n') + "\n\n" + mods;
         }
 
         /// <summary>
@@ -276,9 +397,13 @@ namespace SamplifeEssentials
             return "Datei: " + Relativ(gta, neueste) + "\n" + inhalt;
         }
 
+        // So lang darf die Zeile „Fremde Mods“ in „umgebung“ werden (der Server nimmt 500 Zeichen fuer das ganze Feld)
+        const int MaxModsZeile = 300;
+
         /// <summary>
-        /// Kurzer Stand fuer jeden Bericht (Feld „umgebung“): 4GB-Patch in der gta_sa.exe und ob CrashInfo installiert ist,
-        /// mit oder ohne Log. crashlog: was CrashLogLesen fuer diesen Bericht gefunden hat.
+        /// Kurzer Stand fuer jeden Bericht (Feld „umgebung“, steht im Team-Discord direkt in der Meldung): 4GB-Patch in der
+        /// gta_sa.exe, ob CrashInfo installiert ist, mit oder ohne Log, und die Mods aus ModsSuchen, die nicht vom Launcher
+        /// kommen. crashlog: was CrashLogLesen fuer diesen Bericht gefunden hat.
         /// </summary>
         public static string Umgebung(string gta, string crashlog)
         {
@@ -293,7 +418,31 @@ namespace SamplifeEssentials
                 text.Append("CrashInfo: installiert (").Append(string.Join(", ", namen)).Append("), ")
                     .Append(string.IsNullOrEmpty(crashlog) ? "kein Log zu diesem Spiel gefunden" : "Log mitgeschickt");
             }
+            text.Append('\n').Append(FremdeModsZeile(gta));
             return text.ToString();
+        }
+
+        // „Fremde Mods: a.asi, modloader\x\b.asi, d3d9.dll“, hoechstens MaxModsZeile Zeichen, sonst „und n weitere“
+        static string FremdeModsZeile(string gta)
+        {
+            var fremde = new List<string>();
+            foreach (var mod in ModsSuchen(gta))
+                if (!mod.Eigen) fremde.Add(mod.Pfad);
+            if (fremde.Count == 0) return "Fremde Mods: keine";
+            var zeile = new StringBuilder("Fremde Mods: ");
+            for (var i = 0; i < fremde.Count; i++)
+            {
+                var rest = fremde.Count - i;
+                var teil = (i > 0 ? ", " : "") + fremde[i];
+                var schluss = rest > 1 ? " und " + (rest - 1) + " weitere" : "";
+                if (zeile.Length + teil.Length + schluss.Length > MaxModsZeile)
+                {
+                    zeile.Append(" und ").Append(rest).Append(" weitere");
+                    break;
+                }
+                zeile.Append(teil);
+            }
+            return zeile.ToString();
         }
 
         // So viele Absturz-Ereignisse (neueste zuerst) prueft FehlerModul hoechstens

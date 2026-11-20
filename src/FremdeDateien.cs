@@ -55,7 +55,7 @@ namespace SamplifeEssentials
 
         // Namen, unter denen ASI Loader (Ultimate ASI Loader, Silent's ASI Loader und andere) neben gta_sa.exe liegen.
         // GTA San Andreas bringt keine davon mit, nur vorbisFile.dll.
-        static readonly string[] LoaderNamen =
+        internal static readonly string[] LoaderNamen =
         {
             "dinput8.dll", "winmm.dll", "version.dll", "dsound.dll", "d3d8.dll", "d3d9.dll", "d3d10.dll", "d3d11.dll", "dxgi.dll",
             "ddraw.dll", "wininet.dll", "winhttp.dll", "msacm32.dll", "msvfw32.dll", "xlive.dll", "binkw32.dll", "x3daudio1_7.dll",
