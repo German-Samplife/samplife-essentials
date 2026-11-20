@@ -11,7 +11,8 @@
 //! weapon draw (ziehen.rs: upper body animation, no firing until it is over) and the drive-by while aiming
 //! (driveby.rs: a passenger leans out while he holds the right mouse button). Ab 0.9.0 färbt es einzelne Teile in
 //! der Farbe, die der Server schickt (farbe.rs, faerben.rs). Ab 0.10.0 öffnet ESC auf Wunsch des Servers
-//! dessen Menü statt des Pausemenüs von GTA (esc.rs).
+//! dessen Menü statt des Pausemenüs von GTA (esc.rs). Ab 0.11.0 reicht es die Einstellungen von SampVoice (F11) an
+//! das Control Panel des Servers weiter (stimme.rs, braucht sampvoice.asi ab sampvoice-3.1-sl6).
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -31,6 +32,7 @@ mod netz;
 mod outfit;
 mod rebuild;
 mod samp;
+mod stimme;
 mod watchdog;
 mod ziehen;
 

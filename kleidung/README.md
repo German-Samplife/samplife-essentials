@@ -12,6 +12,8 @@ Ab 0.9.6 lehnt sich ein Beifahrer **beim Zielen aus dem Fenster** und setzt sich
 
 Ab 0.10.0 öffnet **ESC** auf Wunsch des Servers dessen Menü statt des Pausemenüs von GTA, und das Spiel läuft weiter (siehe [ESC-Menü](#esc-menü)).
 
+Ab 0.11.0 lassen sich die **Einstellungen von SampVoice** (Menü F11) im Control Panel des Servers bedienen (siehe [SampVoice im Control Panel](#sampvoice-im-control-panel)).
+
 Ab 0.9.0 kann der Server einzelne Teile **färben**, z. B. ein gelbes T-Shirt für die Vagos oder ein lila T-Shirt für die Ballas, auch wo GTA keine solche Textur hat. Ab 0.9.1 nur noch Oberteil und Hose (siehe [Farben](#farben)).
 
 Stand: Der Essentials-Installer bringt das Plugin und den passenden samp-cef-Client mit. Der Gamemode von German Samplife (samplife2026) nutzt die Kleidung und die Farben; getestet wird mit ihm.
@@ -226,6 +228,28 @@ Gelesen mit einem Disassembler aus `gta_sa.exe` 1.0 US und abgeglichen mit gta-r
 Testen: im Spiel mit dem Pausenmenü des Gamemodes von German Samplife (samplife2026, Schalter `/pausemenue`).
 
 `/kleidunginfo` zeigt eine Zeile „ESC-Menü“: an oder aus (mit Grund), ob die Seite gerade offen ist und wie oft ESC abgefangen wurde, der Rückfall kam und das Menü von GTA geöffnet wurde.
+
+## SampVoice im Control Panel
+
+Ab **0.11.0** reicht das Plugin die Einstellungen von SampVoice an den Server weiter, der sie im Control Panel (`/icp`, Reiter Audio) zeigt: Ton, Lautstärke, Lautstärke angleichen, Filter für hohe Töne, Mikrofon, Mikrofon-Lautstärke, Eingabegerät, Mikrofontest und stummgeschaltete Spieler. Der Server speichert nichts; SampVoice behält alles wie bisher in `svconfig.bin` (Stummschaltungen in `svblacklist_<IP>_<Port>.txt`).
+
+Dafür braucht es die `sampvoice.asi` ab `sampvoice-3.1-sl6` (`sampvoice/einstellungen-export.patch`). Das Plugin sucht deren Exporte zur Laufzeit (`GetModuleHandleA("sampvoice.asi")`, `GetProcAddress`). Fehlen sie, antwortet es `{"da":0}`, und die Seite verweist weiter auf F11.
+
+| Ereignis | Richtung | Argumente |
+|---|---|---|
+| `stimme:frage` | Server → Client | keine |
+| `stimme:setzen` | Server → Client | Feld und Wert: `ton`, `angleichen`, `filter`, `mikro`, `test` mit `0`/`1`, `lautstaerke`, `mikrolautstaerke` mit `0` bis `100`, `geraet` mit dem Index in `geraete` |
+| `stimme:stumm` | Server → Client | Spieler-ID. Stummgeschaltet nur für diesen Spieler, wie in F11. |
+| `stimme:frei` | Server → Client | Spielername. Stummschaltung aufgehoben, auch für Spieler, die nicht online sind. |
+| `stimme:stand` | Client → Server | Antwort auf jedes `stimme:`-Ereignis, JSON nur aus ASCII (Umlaute als `\uXXXX`): `{"da":1, "wiedergabe", "aufnahme", "ton", "lautstaerke", "angleichen", "filter", "mikro", "mikrolautstaerke", "geraet", "test", "geraete": [Namen], "stumm": [{"name", "id"}]}`, ohne Exporte `{"da":0}` |
+
+- `wiedergabe` 0: BASS läuft noch nicht, Ton-Einstellungen wirken nicht. `aufnahme` 0: SampVoice ist noch nicht mit dem Sprach-Server verbunden, es gibt noch keine Geräteliste.
+- `id` -1: Der stummgeschaltete Spieler ist nicht online.
+- Höchstens 12 Geräte (Namen bis 64 Zeichen) und 40 stummgeschaltete Spieler.
+- Den Mikrofontest (`test 1`, man hört sich selbst) schaltet der Server beim Schließen der Seite wieder aus; das Plugin tut es beim Trennen vom CEF-Server.
+- Aufgerufen wird SampVoice im Spiel-Faden (`logic.rs`), wo auch das Menü und der Sprach-Client von SampVoice laufen.
+
+`/kleidunginfo` zeigt eine Zeile „SampVoice für /icp“: verfügbar oder nicht (mit Grund) und wie viele Anfragen kamen und wie viele SampVoice abgelehnt hat.
 
 ## Lippen beim Sprechen
 

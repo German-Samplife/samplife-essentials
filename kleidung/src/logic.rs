@@ -23,6 +23,7 @@ use crate::rebuild;
 use crate::samp::{self, SampVersion};
 use crate::driveby::DriveBy;
 use crate::esc::Esc;
+use crate::stimme::Stimme;
 use crate::ziehen::Ziehen;
 
 const PREFIX: &str = "{007DFF}[Kleidung]{FFFFFF} ";
@@ -175,6 +176,8 @@ struct State {
     driveby: DriveBy,
     /// ESC opens the server's menu instead of GTA's (esc.rs)
     esc: Esc,
+    /// settings of SampVoice (F11) for /icp (stimme.rs)
+    stimme: Stimme,
     mikro: Mikro,
     /// Teile mit Farbe nach dem Umbau umfärben (`@RRGGBB`)
     faerber: Faerber,
@@ -210,6 +213,7 @@ impl State {
             ziehen: Ziehen::new(),
             driveby: DriveBy::new(),
             esc: Esc::new(),
+            stimme: Stimme::new(),
             mikro: Mikro::new(),
             faerber: Faerber::new(),
         }
@@ -442,6 +446,14 @@ impl State {
 
             Nachricht::EscBeenden => self.esc.beenden(),
 
+            Nachricht::StimmeFrage => self.stimme.frage(),
+
+            Nachricht::StimmeSetzen(feld, wert) => self.stimme.setzen(feld, wert),
+
+            Nachricht::StimmeStumm(id) => self.stimme.stumm(id),
+
+            Nachricht::StimmeFrei(name) => self.stimme.frei(&name),
+
             Nachricht::LippenAn(id) => self.lippen.an(ver, id),
 
             Nachricht::LippenAus(id) => self.lippen.aus(ver, id),
@@ -453,6 +465,7 @@ impl State {
                 self.ziehen.getrennt();
                 self.driveby.getrennt();
                 self.esc.getrennt();
+                self.stimme.getrennt();
                 self.lippen.getrennt(ver);
                 self.mikro.getrennt();
                 self.aktiv = false;
@@ -854,6 +867,7 @@ impl State {
         samp::chat_line(ver, WHITE, &format!("Waffe ziehen: {}", self.ziehen.zustand()));
         samp::chat_line(ver, WHITE, &format!("Drive-by: {}", self.driveby.zustand()));
         samp::chat_line(ver, WHITE, &format!("ESC-Menü: {}", self.esc.zustand()));
+        samp::chat_line(ver, WHITE, &format!("SampVoice für /icp: {}", self.stimme.zustand()));
         samp::chat_line(ver, WHITE, &format!("Farben: {}", self.faerber.zustand()));
         samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.lippen.zustand()));
         samp::chat_line(ver, WHITE, &format!("Lippen: {}", self.mikro.zustand()));
