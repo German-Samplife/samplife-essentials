@@ -1,6 +1,8 @@
 # Baut den Launcher aus dem Quelltext dieses Repositorys und hängt ihn an ein Release.
 # Auslöser: ein Tag wie v2.0.0. Bei Pushes auf andere Branches (Änderungen am Launcher) und von Hand wird nur gebaut,
-# geprüft und es werden Bildschirmfotos des Fensters als Artefakt abgelegt.
+# geprüft und es werden Bildschirmfotos des Fensters als Artefakt abgelegt. Ohne eigenen Tag-Push geht ein Release auch
+# von Hand: Actions → Release → Run workflow auf main mit release_tag (z. B. v2.8.1). Dann legt der Lauf Tag und Release
+# selbst an, auf genau dem Commit, den er gebaut hat (wie in cef.yml).
 name: Release
 
 on:
@@ -16,6 +18,11 @@ on:
       - "app.manifest"
       - ".github/workflows/release.yml"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release anlegen mit diesem Tag, z. B. v2.8.1 (nur auf main, muss zur Version in src/Programm.cs passen; leer: nur bauen und prüfen)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -26,11 +33,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # RELEASE_TAG: Name des Releases, leer bei reinen Prüfläufen. Beim Tag-Push der Tag selbst, beim Start von Hand
+      # release_tag, aber nur auf main, im Schema v<Version> und nur, wenn es den Tag noch nicht gibt.
+      - name: Release-Tag bestimmen
+        shell: pwsh
+        env:
+          EINGABE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = ""
+          if ("${{ github.ref_type }}" -eq "tag") {
+            if ("${{ github.ref_name }}" -like "v*") { $tag = "${{ github.ref_name }}" }
+          } elseif ($env:EINGABE_TAG) {
+            $tag = $env:EINGABE_TAG.Trim()
+            if ("${{ github.ref }}" -ne "refs/heads/main") { throw "Ein Release von Hand nur auf main, nicht auf ${{ github.ref }}" }
+            if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Tag '$tag' passt nicht zum Schema v<Version>" }
+            $vorhanden = git ls-remote --tags origin "refs/tags/$tag"
+            if ($vorhanden) { throw "Den Tag $tag gibt es schon" }
+          }
+          "RELEASE_TAG=$tag" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          if ($tag) { "Release: $tag auf ${{ github.sha }}" } else { "Nur bauen und prüfen, kein Release" }
+
       - name: Version im Quelltext muss zum Tag passen
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $tag = $env:RELEASE_TAG.TrimStart("v")
           $quelle = (Select-String -Path src/Programm.cs -Pattern 'public const string Version = "([^"]+)"').Matches[0].Groups[1].Value
           if ($tag -ne $quelle) { throw "Tag v$tag passt nicht zur Version $quelle in src/Programm.cs" }
 
@@ -85,13 +113,13 @@ jobs:
           path: release/
 
       - name: Release anlegen
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_TAG != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $text = @"
-          Samplife Launcher ${{ github.ref_name }}
+          Samplife Launcher $env:RELEASE_TAG
 
           Herunterladen, starten, GTA-Verzeichnis bestätigen, Namen eingeben, auf „Spielen" klicken. Der Launcher hält deine Dateien auf dem Stand des Servers und verbindet dich direkt. Die Datei ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen" → „Trotzdem ausführen").
 
@@ -101,4 +129,5 @@ jobs:
 
           SHA-256: ``$env:SHA256`` · Größe: $env:GROESSE Bytes (für den Block ``launcher`` im Manifest)
           "@
-          gh release create "${{ github.ref_name }}" "release/Samplife.Launcher.exe" "release/Samplife.Essentials.Installer.exe" "release/SHA256SUMS.txt" --title "Samplife Launcher ${{ github.ref_name }}" --notes $text --latest
+          # Beim Start von Hand gibt es den Tag noch nicht: gh legt ihn auf dem gebauten Commit an
+          gh release create "$env:RELEASE_TAG" "release/Samplife.Launcher.exe" "release/Samplife.Essentials.Installer.exe" "release/SHA256SUMS.txt" --target "${{ github.sha }}" --title "Samplife Launcher $env:RELEASE_TAG" --notes $text --latest
