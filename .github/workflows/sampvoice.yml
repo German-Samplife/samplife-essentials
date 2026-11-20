@@ -96,7 +96,7 @@ jobs:
           # Einstellungen für /icp (einstellungen-export.patch): samplife-kleidung.dll sucht diese Namen mit GetProcAddress
           $exporte = & $dumpbin.FullName /exports $asi | Out-String
           foreach ($name in "SamplifeStimmeVersion", "SamplifeStimmeLesen", "SamplifeStimmeSetzen", "SamplifeStimmeGeraet", "SamplifeStimmeStummEintrag", "SamplifeStimmeStumm", "SamplifeStimmeFrei") {
-            if ($exporte -notmatch "$name") { throw "Export $name fehlt in sampvoice.asi" }
+            if ($exporte -notmatch "\b$name\b") { throw "Export $name fehlt in sampvoice.asi" }
           }
 
       - name: Paket zusammenstellen
