@@ -250,9 +250,12 @@ namespace SamplifeEssentials
         // Seine Prozess-ID; bleibt nach SpielProzessLoslassen stehen, fuer Diagnose.FehlerModul
         int spielProzessId;
         string spielWarnung = "";
-        // DLLs in gta_sa.exe (Diagnose.ModuleLesen), einmal je Spiel, sobald das Fenster eine Weile steht
+        // DLLs in gta_sa.exe (Diagnose.ModuleLesen), zweimal je Spiel: sobald das Fenster da ist (fuer Abstuerze beim Laden)
+        // und noch einmal, wenn es ModulWartezeit steht (dann sind auch samp-cef und SampVoice ganz geladen).
+        // spielModuleStufe: welche Lesung schon angestossen ist, spielModuleErgebnis: von welcher spielModule stammt
+        const int ModuleFrueh = 1, ModuleSpaet = 2;
         DateTime spielFensterUtc;
-        bool spielModuleGelesen;
+        int spielModuleStufe, spielModuleErgebnis;
         string spielModule = "";
         static readonly TimeSpan ModulWartezeit = TimeSpan.FromSeconds(40);
         // So lange wartet der Launcher auf gta_sa.exe, bevor er wieder bereit ist
@@ -1545,7 +1548,8 @@ namespace SamplifeEssentials
             spielFensterDa = false;
             SpielProzessLoslassen();
             spielProzessId = 0;
-            spielModuleGelesen = false;
+            spielModuleStufe = 0;
+            spielModuleErgebnis = 0;
             spielModule = "";
             haengerSekunden = 0;
             haengerSchreibt = false;
@@ -1586,7 +1590,9 @@ namespace SamplifeEssentials
                         ? "Das Spiel läuft. " + spielWarnung
                         : "Das Spiel läuft. Den Launcher kannst du offen lassen oder schließen.";
                 }
-                if (spielFensterDa && !spielModuleGelesen && DateTime.UtcNow - spielFensterUtc > ModulWartezeit) SpielModuleLesen();
+                if (spielFensterDa && spielModuleStufe < ModuleFrueh) SpielModuleLesen(ModuleFrueh);
+                if (spielFensterDa && spielModuleStufe < ModuleSpaet && DateTime.UtcNow - spielFensterUtc > ModulWartezeit)
+                    SpielModuleLesen(ModuleSpaet);
                 if (spielFensterDa && DateTime.UtcNow - spielFensterUtc > HaengerStart) HaengerPruefen();
                 return;
             }
@@ -1720,13 +1726,22 @@ namespace SamplifeEssentials
                 : "GTA hat sich ohne Absturzbericht beendet (Code " + hex + "). Schick uns die Diagnose, damit wir sehen, woran es lag.";
         }
 
-        /// <summary>Liest die DLLs in gta_sa.exe im Hintergrund und merkt sie fuer einen Bericht (src/Diagnose.cs).</summary>
-        async void SpielModuleLesen()
+        /// <summary>
+        /// Liest die DLLs in gta_sa.exe im Hintergrund und merkt sie fuer einen Bericht (src/Diagnose.cs). Die fruehe Liste
+        /// (ModuleFrueh) ueberschreibt nie die spaete, auch wenn sie als zweite fertig wird.
+        /// </summary>
+        async void SpielModuleLesen(int stufe)
         {
-            spielModuleGelesen = true;
+            spielModuleStufe = stufe;
             var gta = Gta;
-            var text = await Task.Run(() => Diagnose.ModuleLesen(gta));
-            if (text == "") return;
+            var start = spielStartUtc;
+            var zeitpunkt = stufe == ModuleFrueh
+                ? "beim Erscheinen des Spielfensters (samp-cef und SampVoice laden danach womöglich noch nach)"
+                : "etwa " + (int)ModulWartezeit.TotalSeconds + " Sekunden nach dem Erscheinen des Spielfensters";
+            var text = await Task.Run(() => Diagnose.ModuleLesen(gta, zeitpunkt));
+            // Leer (Spiel schon beendet), inzwischen ein neues Spiel oder die spaete Liste ist schon da
+            if (text == "" || start != spielStartUtc || stufe < spielModuleErgebnis) return;
+            spielModuleErgebnis = stufe;
             spielModule = text;
             Diagnose.ModuleMerken(text);
         }
@@ -2063,7 +2078,7 @@ namespace SamplifeEssentials
             absturzFrage.Text = "Was hast du gerade gemacht? (freiwillig)";
             absturzHinweis.Text = "Mitgeschickt werden die Datei crashinfo.txt von SA-MP, wenn vorhanden das Absturz-Log von CrashInfo, "
                 + "welche Programme (DLL-Dateien) im Spiel geladen waren, "
-                + "mit Hersteller und Version, dein Name im Spiel, die Version des Launchers und deine Windows-Version. Keine Passwörter "
+                + "mit Hersteller und Version, welche Mods (.asi-Dateien) im GTA-Verzeichnis liegen, dein Name im Spiel, die Version des Launchers und deine Windows-Version. Keine Passwörter "
                 + "und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
             FensterBerichtZeigen();
         }
@@ -2084,7 +2099,8 @@ namespace SamplifeEssentials
                     + "laden dann auch die Browser-Oberflächen nicht richtig. Schick uns die Diagnose, damit wir sehen, welches Programm sich dazwischenhängt.";
             absturzFrage.Text = gemeldet ? "Was ging nicht?" : "Was ging nicht? (freiwillig)";
             absturzHinweis.Text = "Mitgeschickt werden: welche Programme (DLL-Dateien) im Spiel geladen waren, mit Hersteller und Version, "
-                + "ob für GTA ein Kompatibilitätsmodus an ist, die Logs von SampVoice (svlog.txt) und CEF (cef_client.log), "
+                + "welche Mods (.asi-Dateien) im GTA-Verzeichnis liegen, "
+                + "ob für GTA ein Kompatibilitätsmodus an ist, die Logs von SampVoice (svlog.txt), CEF (cef_client.log) und der CJ-Kleidung, "
                 + "wenn vorhanden das Absturz-Log von CrashInfo, dein Name im Spiel, "
                 + "die Version des Launchers und deine Windows-Version. Keine Passwörter und keine eigenen Dateien; dein Windows-Benutzername wird entfernt.";
             if (speicherabzug != "")
@@ -2139,7 +2155,8 @@ namespace SamplifeEssentials
                 zusatz["svlog"] = diagnoseSvLog;
                 zusatz["ceflog"] = diagnoseCefLog;
                 if (diagnoseCrashLog != "") zusatz["crashlog"] = diagnoseCrashLog;
-                if (diagnoseModule != "") zusatz["module"] = diagnoseModule;
+                // Mods von der Platte immer, auch wenn GTA abstuerzte, bevor die DLLs im Spiel gelesen waren
+                zusatz["module"] = Diagnose.MitMods(diagnoseModule, Gta);
                 var abzug = Haenger.Lesen(diagnoseSpeicherabzug);
                 if (abzug != "") zusatz["speicherabzug"] = abzug;
                 zusatz["umgebung"] = Diagnose.Umgebung(Gta, diagnoseCrashLog);
@@ -2152,8 +2169,9 @@ namespace SamplifeEssentials
                 return false;
             }
             // DLLs aus dem Spiel, das abgestuerzt ist: gelesen hoechstens drei Stunden davor
+            // dazu die Mods im GTA-Verzeichnis
             var module = Diagnose.GemerkteModule(absturzZeit.AddHours(-3), absturzZeit.AddMinutes(1));
-            if (module != "") zusatz["module"] = module;
+            zusatz["module"] = Diagnose.MitMods(module, Gta);
             // Log von CrashInfo.SA.asi zu diesem Absturz, wenn der Spieler es hat: geschrieben hoechstens zwei Minuten davor
             var crashlog = Diagnose.CrashLogLesen(Gta, absturzZeit.AddMinutes(-2));
             if (crashlog != "") zusatz["crashlog"] = crashlog;
@@ -2181,7 +2199,7 @@ namespace SamplifeEssentials
             if (zusatz.TryGetValue("umgebung", out wert)) text.Append(((string)wert).Replace("\n", "\r\n")).Append("\r\n");
             text.Append("Dein Kommentar: ").Append(absturzKommentar.Text.Trim()).Append("\r\n");
             Abschnitt(text, "crashinfo.txt von SA-MP", inhalt);
-            if (zusatz.TryGetValue("module", out wert)) Abschnitt(text, "Programme (DLL-Dateien) im Spiel", (string)wert);
+            if (zusatz.TryGetValue("module", out wert)) Abschnitt(text, "Programme (DLL-Dateien) im Spiel und Mods im GTA-Verzeichnis", (string)wert);
             if (zusatz.TryGetValue("svlog", out wert)) Abschnitt(text, "svlog.txt von SampVoice", (string)wert);
             if (zusatz.TryGetValue("ceflog", out wert)) Abschnitt(text, "Logs von CEF", (string)wert);
             if (zusatz.TryGetValue("crashlog", out wert)) Abschnitt(text, "Absturz-Log von CrashInfo", (string)wert);
